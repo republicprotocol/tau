@@ -103,8 +103,9 @@ var _ = Describe("Random number generators", func() {
 							})
 						},
 						func() {
-							globalRnShares := make(shamir.Shares, entry.n)
+							defer close(done)
 
+							globalRnShares := make(shamir.Shares, entry.n)
 							co.ParForAll(outputs, func(i int) {
 								defer GinkgoRecover()
 
@@ -149,7 +150,6 @@ var _ = Describe("Random number generators", func() {
 								kSecret := shamir.Join(globalRnShares[i : i+entry.k])
 								Expect(secret).To(Equal(kSecret))
 							}
-							close(done)
 						})
 				})
 			})
