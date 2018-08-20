@@ -2,23 +2,29 @@ package vm
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/republicprotocol/shamir-go"
 )
 
-// Rnger generates secure random numbers using a secure multi-party
-// computation. The random number generated is not known by any Rnger in the
-// network, unless some threshold of Rngers are malicious.
+// Rnger generates secure random numbers running a secure multi-party
+// computation with other Rngers in its network. After generating a secure
+// random number, each Rnger in the network will have a Shamir's secret share
+// of a global random number. This global random number cannot be opened unless
+// some threshold of malicious Rngers collude.
 type Rnger interface {
 
 	// Run the Rnger. It will read messages from the input channel and write
-	// messages to the output channel. Close the done channel to stop the Rnger.
+	// messages to the output channel. Depending on the type of output message,
+	// the user must route the message to the appropriate Rnger in the network.
+	// Closing the done channel will stop the Rnger.
 	Run(done <-chan (struct{}), input <-chan RngInputMessage, output chan<- RngOutputMessage)
 }
 
-// An RngInputMessage can be passed to the Rnger as an input. It will process
-// the message and output an error when it encounters an unexpected type. No
-// types external to this package should implement this interface.
+// An RngInputMessage can be passed to the Rnger as an input. It will be
+// processed by the Rnger and an error will be output if the message is an
+// unexpected type. No types external to this package should implement this
+// interface.
 type RngInputMessage interface {
 
 	// IsRngInputMessage is a marker used to restrict RngInputMessages to types
@@ -26,9 +32,11 @@ type RngInputMessage interface {
 	IsRngInputMessage()
 }
 
-// An RngOutputMessage can be passed from the Rnger as an output. The user must
-// check the message type and handle the message appropriately. No types
-// external to this package should implement this interface.
+// An RngOutputMessage can be passed from the Rnger as an output. Depending on
+// the type of output message, the user must route the message to the
+// appropriate Rnger in the network. See the documentation specific to each
+// message for information on how to handle it. No types external to this
+// package should implement this interface.
 type RngOutputMessage interface {
 
 	// IsRngOutputMessage is a marker used to restrict RngOutputMessages to
@@ -36,10 +44,25 @@ type RngOutputMessage interface {
 	IsRngOutputMessage()
 }
 
-// The GenerateRn message signals the Rnger to begin a secure random number
-// generation. The secure random number is identified by a nonce, that must be
-// agreed upon by all Rngers running the secure random number generation
-// algorithm.
+// A CheckDeadline message signals to the Rnger that it should clean up all
+// pending random number generations that have exceeded their deadline. It is
+// up to the user to determine the frequency of this message. Higher
+// frequencies will result in more accurate clean up times, but slower
+// performance.
+type CheckDeadline struct {
+	Time time.Time
+}
+
+// IsRngInputMessage implements the RngInputMessage interface.
+func (message CheckDeadline) IsRngInputMessage() {
+}
+
+// A GenerateRn message signals to the Rnger that is should begin a secure
+// random number generation. The secure random number that will be generated is
+// identified by a nonce. The nonce must be unique and must be agreed on by all
+// Rngers in the network. After receiving this message, an Rnger will produce
+// a LocalRnShare for all Rngers in the network. The user must route these
+// LocalRnShare messages to their respective Rngers.
 type GenerateRn struct {
 	Nonce []byte
 }
@@ -48,9 +71,10 @@ type GenerateRn struct {
 func (msg GenerateRn) IsRngInputMessage() {
 }
 
-// A GenerateRnErr is output by an Rnger when an error is encountered during
-// the secure random number generation algorithm. No specific handling is
-// required by the user.
+// A GenerateRnErr message is produced by an Rnger when an error is encountered
+// during the secure random number generation algorithm. It is up to the user
+// to handle this error in a way that is appropriate for the specific
+// application.
 type GenerateRnErr struct {
 	Nonce []byte
 	Err   error
@@ -60,9 +84,12 @@ type GenerateRnErr struct {
 func (msg GenerateRnErr) IsRngOutputMessage() {
 }
 
-// A LocalRnShare is output by an Rnger for each other Rnger in the network. It
-// is also accepted as input from other Rngers. The user must route this
-// message to the appropriate Rnger when it is output.
+// A LocalRnShare message is produced by an Rnger after receiving a GenerateRn
+// message. A LocalRnShare message will be produced for each Rnger in the
+// network and it is up to the user to route this message to the appropriate
+// Rnger. A LocalRnShare message can also be passed to an Rnger as input,
+// representing the LocalRnShare messages sent to it by other Rngers in the
+// network.
 type LocalRnShare struct {
 	Nonce []byte
 	To    uint64
@@ -78,9 +105,9 @@ func (msg LocalRnShare) IsRngInputMessage() {
 func (msg LocalRnShare) IsRngOutputMessage() {
 }
 
-// A GlobalRnShare is output by an Rnger at the end of the secure random number
-// generation algorithm. It represents its Shamir's share of the secure random
-// number identified across the network by the nonce.
+// A GlobalRnShare message is produced by an Rnger at the end of a successful
+// secure random number generation. It is the Shamir's secret share of the
+// secure random number that has been generated.
 type GlobalRnShare struct {
 	Nonce []byte
 	Share shamir.Share
@@ -98,8 +125,9 @@ type rnger struct {
 }
 
 // NewRnger returns an Rnger that is identified as the i-th player in a network
-// with n players and k threshold. The user can specify a buffer capacity for
-// messages output by the Rnger.
+// with n players and k threshold. The Rnger will allocate a buffer for its
+// output messages and this buffer will grow indefinitely if the messages
+// output from the Rnger are not consumed.
 func NewRnger(i uint64, n, k int64, bufferCap int) Rnger {
 	return &rnger{
 		i: i,
@@ -109,9 +137,9 @@ func NewRnger(i uint64, n, k int64, bufferCap int) Rnger {
 	}
 }
 
-// Run implements the Rnger interface. It is blocking and should be run in a
-// background goroutine by the user. It is recommended that the input and
-// output channels are buffered, however it is not required.
+// Run implements the Rnger interface. Calls to Rnger.Run are blocking and
+// should be run in a background goroutine. It is recommended that the input
+// and output channels are buffered, however it is not required.
 func (rnger *rnger) Run(done <-chan (struct{}), input <-chan RngInputMessage, output chan<- RngOutputMessage) {
 	for {
 		var outputMessage RngOutputMessage
