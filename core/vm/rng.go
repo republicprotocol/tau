@@ -7,10 +7,19 @@ import (
 	"github.com/republicprotocol/shamir-go"
 )
 
+// A Nonce is used to uniquely identify the generation of a secure random
+// number. All players in the secure multi-party computation network must use
+// the same nonce to identify the same generation.
+type Nonce [32]byte
+
+// An Address identifies a unique player within the secure multi-party
+// computation network.
+type Address uint64
+
 // Rnger generates secure random numbers running a secure multi-party
 // computation with other Rngers in its network. After generating a secure
-// random number, each Rnger in the network will have a Shamir's secret share
-// of a global random number. This global random number cannot be opened unless
+// random number, each Rnger in the network will have a Shamir's secret share of
+// a global random number. This global random number cannot be opened unless
 // some threshold of malicious Rngers collude.
 type Rnger interface {
 
@@ -47,11 +56,11 @@ type RngOutputMessage interface {
 // A GenerateRn message signals to the Rnger that is should begin a secure
 // random number generation. The secure random number that will be generated is
 // identified by a nonce. The nonce must be unique and must be agreed on by all
-// Rngers in the network. After receiving this message, an Rnger will produce
-// a LocalRnShare for all Rngers in the network. The user must route these
+// Rngers in the network. After receiving this message, an Rnger will produce a
+// LocalRnShare for all Rngers in the network. The user must route these
 // LocalRnShare messages to their respective Rngers.
 type GenerateRn struct {
-	Nonce []byte
+	Nonce
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
@@ -59,12 +68,11 @@ func (message GenerateRn) IsRngInputMessage() {
 }
 
 // A GenerateRnErr message is produced by an Rnger when an error is encountered
-// during the secure random number generation algorithm. It is up to the user
-// to handle this error in a way that is appropriate for the specific
-// application.
+// during the secure random number generation algorithm. It is up to the user to
+// handle this error in a way that is appropriate for the specific application.
 type GenerateRnErr struct {
-	Nonce []byte
-	Err   error
+	Nonce
+	error
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
@@ -78,10 +86,11 @@ func (message GenerateRnErr) IsRngOutputMessage() {
 // representing the LocalRnShare messages sent to it by other Rngers in the
 // network.
 type LocalRnShare struct {
-	Nonce []byte
-	To    uint64
-	From  uint64
-	Share shamir.Share
+	Nonce
+	shamir.Share
+
+	To   Address
+	From Address
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
@@ -92,52 +101,33 @@ func (message LocalRnShare) IsRngInputMessage() {
 func (message LocalRnShare) IsRngOutputMessage() {
 }
 
-// A VoteForRnShares message is produced by an Rnger after receiving a
-// sufficient number of LocalRnShares, or after a secure random number
-// generation has exceeded its deadline. A VoteForRnShares message will be
-// produced for each Rnger in the network and it is up to the user to route
-// this message to the appropriate Rnger.
-type VoteForRnShares struct {
-	Nonce  []byte
-	To     uint64
-	From   uint64
-	Shares shamir.Shares
+// A VoteToCommit message is produced by an Rnger after receiving a sufficient
+// number of LocalRnShares messages, or after a secure random number generation
+// has exceeded its deadline. A VoteToCommit message will be produced for each
+// Rnger in the network and it is up to the user to route this message to the
+// appropriate Rnger.
+type VoteToCommit struct {
+	Nonce
+
+	To      Address
+	From    Address
+	Players []Address
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
-func (message VoteForRnShares) IsRngInputMessage() {
+func (message VoteToCommit) IsRngInputMessage() {
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
-func (message VoteForRnShares) IsRngOutputMessage() {
-}
-
-// A CommitToRnShares message is produced by an Rnger after receiving a
-// sufficient number of VoteForRnShares, or after a secure random number
-// generation has exceeded its deadline. A CommitToRnShares message will be
-// produced for each Rnger in the network and it is up to the user to route
-// this message to the appropriate Rnger.
-type CommitToRnShares struct {
-	Nonce  []byte
-	To     uint64
-	From   uint64
-	Shares shamir.Shares
-}
-
-// IsRngInputMessage implements the RngInputMessage interface.
-func (message CommitToRnShares) IsRngInputMessage() {
-}
-
-// IsRngOutputMessage implements the RngOutputMessage interface.
-func (message CommitToRnShares) IsRngOutputMessage() {
+func (message VoteToCommit) IsRngOutputMessage() {
 }
 
 // A GlobalRnShare message is produced by an Rnger at the end of a successful
 // secure random number generation. It is the Shamir's secret share of the
 // secure random number that has been generated.
 type GlobalRnShare struct {
-	Nonce []byte
-	Share shamir.Share
+	Nonce
+	shamir.Share
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
@@ -145,41 +135,55 @@ func (message GlobalRnShare) IsRngOutputMessage() {
 }
 
 // A CheckDeadline message signals to the Rnger that it should clean up all
-// pending random number generations that have exceeded their deadline. It is
-// up to the user to determine the frequency of this message. Higher
-// frequencies will result in more accurate clean up times, but slower
-// performance.
+// pending random number generations that have exceeded their deadline. It is up
+// to the user to determine the frequency of this message. Higher frequencies
+// will result in more accurate clean up times, but slower performance.
 type CheckDeadline struct {
-	Time time.Time
+	time.Time
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
 func (message CheckDeadline) IsRngInputMessage() {
 }
 
+type LocalRnSharesTable struct {
+	StartedAt time.Time
+	Table     map[Address]LocalRnShare
+}
+
+type VoteTable struct {
+	StartedAt time.Time
+	Table     map[Address]VoteToCommit
+}
+
 type rnger struct {
-	i             uint64
-	n, k          int64
-	outputBuffer  []RngOutputMessage
-	localRnShares map[string](map[uint64]LocalRnShare)
+	addr         Address
+	n, k         int64
+	outputBuffer []RngOutputMessage
+	timeout      time.Duration
+
+	localRnShares map[Nonce]LocalRnSharesTable
+	votes         map[Nonce]LocalRnSharesTable
 }
 
 // NewRnger returns an Rnger that is identified as the i-th player in a network
 // with n players and k threshold. The Rnger will allocate a buffer for its
-// output messages and this buffer will grow indefinitely if the messages
-// output from the Rnger are not consumed.
-func NewRnger(i uint64, n, k int64, bufferCap int) Rnger {
+// output messages and this buffer will grow indefinitely if the messages output
+// from the Rnger are not consumed.
+func NewRnger(addr Address, n, k int64, timeout time.Duration, bufferCap int) Rnger {
 	return &rnger{
-		i: i,
-		n: n, k: k,
+		addr:          addr,
+		n:             n,
+		k:             k,
 		outputBuffer:  make([]RngOutputMessage, 0, bufferCap),
-		localRnShares: map[string](map[uint64]LocalRnShare){},
+		localRnShares: map[Nonce]LocalRnSharesTable{},
+		timeout:       timeout,
 	}
 }
 
 // Run implements the Rnger interface. Calls to Rnger.Run are blocking and
-// should be run in a background goroutine. It is recommended that the input
-// and output channels are buffered, however it is not required.
+// should be run in a background goroutine. It is recommended that the input and
+// output channels are buffered, however it is not required.
 func (rnger *rnger) Run(done <-chan (struct{}), input <-chan RngInputMessage, output chan<- RngOutputMessage) {
 	for {
 		var outputMessage RngOutputMessage
@@ -214,11 +218,8 @@ func (rnger *rnger) handleInputMessage(message RngInputMessage) {
 	case LocalRnShare:
 		rnger.handleLocalRnShare(message)
 
-	case VoteForRnShares:
-		rnger.handleVoteForRnShares(message)
-
-	case CommitToRnShares:
-		rnger.handleCommitToRnShares(message)
+	case VoteToCommit:
+		rnger.handleVoteToCommit(message)
 
 	case CheckDeadline:
 		rnger.handleCheckDeadline(message)
@@ -234,7 +235,7 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 	if err != nil {
 		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
 			Nonce: message.Nonce,
-			Err:   err,
+			error: err,
 		})
 		return
 	}
@@ -244,11 +245,11 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 	for j := uint64(0); j < uint64(len(rnShares)); j++ {
 		localRnShare := LocalRnShare{
 			Nonce: message.Nonce,
-			To:    j,
-			From:  rnger.i,
+			To:    Address(j),
+			From:  rnger.addr,
 			Share: rnShares[j],
 		}
-		if j == rnger.i {
+		if Address(j) == rnger.addr {
 			rnger.handleLocalRnShare(localRnShare)
 			continue
 		}
@@ -257,45 +258,76 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 }
 
 func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
-	if message.To != rnger.i || message.Share.Index != rnger.i+1 {
+	if message.To != rnger.addr || message.Share.Index != uint64(rnger.addr)+1 {
 		// This message is not meant for us
 		return
 	}
 
 	// Initialise the map for this nonce if it does not already exist
-	nonce := string(message.Nonce)
-	if _, ok := rnger.localRnShares[nonce]; !ok {
-		rnger.localRnShares[nonce] = map[uint64]LocalRnShare{}
+	if _, ok := rnger.localRnShares[message.Nonce]; !ok {
+		rnger.localRnShares[message.Nonce] = LocalRnSharesTable{
+			StartedAt: time.Now(),
+			Table:     map[Address]LocalRnShare{},
+		}
 	}
-	rnger.localRnShares[nonce][message.From] = message
+	rnger.localRnShares[message.Nonce].Table[message.From] = message
 
 	// Once we have acquired a LocalRnShare from each player in the network we
 	// can add them to produce our GlobalRnShare
-	if int64(len(rnger.localRnShares[nonce])) == rnger.n {
-		share := shamir.Share{
-			Index: uint64(rnger.i + 1),
-			Value: 0,
-		}
-		for _, localRngShare := range rnger.localRnShares[nonce] {
-			share = share.Add(&localRngShare.Share)
-		}
-		globalRnShare := GlobalRnShare{
-			Nonce: message.Nonce,
-			Share: share,
-		}
-		rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
-		delete(rnger.localRnShares, nonce)
+	if int64(len(rnger.localRnShares[message.Nonce].Table)) == rnger.n {
+		rnger.voteForNonce(message.Nonce)
+
 	}
 }
 
-func (rnger *rnger) handleVoteForRnShares(message VoteForRnShares) {
-	panic("unimplemented")
-}
-
-func (rnger *rnger) handleCommitToRnShares(message CommitToRnShares) {
+func (rnger *rnger) handleVoteToCommit(message VoteToCommit) {
 	panic("unimplemented")
 }
 
 func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
-	panic("unimplemented")
+	now := time.Now()
+	for nonce := range rnger.localRnShares {
+		if rnger.localRnShares[nonce].StartedAt.Add(rnger.timeout).Before(now) {
+			if int64(len(rnger.localRnShares[nonce].Table)) >= rnger.k {
+				rnger.voteForNonce(nonce)
+			}
+			delete(rnger.localRnShares, nonce)
+		}
+	}
+}
+
+func (rnger *rnger) voteForNonce(nonce Nonce) {
+	if _, ok := rnger.localRnShares[nonce]; !ok {
+		// We have already voted, or the deadline was exceeded before enough
+		// shares were received to vote
+		return
+	}
+
+	vote := VoteToCommit{
+		Nonce:   nonce,
+		From:    rnger.addr,
+		Players: make([]Address, 0, rnger.k),
+	}
+	for addr := range rnger.localRnShares[nonce].Table {
+		vote.Players = append(vote.Players, addr)
+	}
+	for _, player := range vote.Players {
+		vote.To = player
+		rnger.outputBuffer = append(rnger.outputBuffer, vote)
+	}
+}
+
+func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
+	globalRnShare := GlobalRnShare{
+		Nonce: nonce,
+		Share: shamir.Share{
+			Index: uint64(rnger.addr) + 1,
+			Value: 0,
+		},
+	}
+	for _, localRngShare := range rnger.localRnShares[nonce].Table {
+		globalRnShare.Share = globalRnShare.Share.Add(&localRngShare.Share)
+	}
+	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
+	delete(rnger.localRnShares, nonce)
 }
