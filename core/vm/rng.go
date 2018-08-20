@@ -157,10 +157,10 @@ type VoteTable struct {
 }
 
 type rnger struct {
+	timeout      time.Duration
 	addr         Address
 	n, k         int64
 	outputBuffer []RngOutputMessage
-	timeout      time.Duration
 
 	localRnShares map[Nonce]LocalRnSharesTable
 	votes         map[Nonce]LocalRnSharesTable
@@ -170,14 +170,14 @@ type rnger struct {
 // with n players and k threshold. The Rnger will allocate a buffer for its
 // output messages and this buffer will grow indefinitely if the messages output
 // from the Rnger are not consumed.
-func NewRnger(addr Address, n, k int64, timeout time.Duration, bufferCap int) Rnger {
+func NewRnger(timeout time.Duration, addr Address, n, k int64, bufferCap int) Rnger {
 	return &rnger{
+		timeout:       timeout,
 		addr:          addr,
 		n:             n,
 		k:             k,
 		outputBuffer:  make([]RngOutputMessage, 0, bufferCap),
 		localRnShares: map[Nonce]LocalRnSharesTable{},
-		timeout:       timeout,
 	}
 }
 

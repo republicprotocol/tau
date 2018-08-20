@@ -3,6 +3,7 @@ package vm_test
 import (
 	"crypto/rand"
 	"fmt"
+	"time"
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/shamir-go"
@@ -18,7 +19,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(0, 1, 1, 1)
+			rnger := NewRnger(time.Second, 0, 1, 1, 1)
 			input := make(chan RngInputMessage)
 			output := make(chan RngOutputMessage)
 
@@ -37,7 +38,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(0, 1, 1, 1)
+			rnger := NewRnger(time.Second, 0, 1, 1, 1)
 			input := make(chan RngInputMessage)
 			output := make(chan RngOutputMessage)
 
@@ -67,6 +68,7 @@ var _ = Describe("Random number generators", func() {
 
 		for _, entry := range table {
 			entry := entry
+
 			Context(fmt.Sprintf("when n = %v and k = %v and each player has a buffer capacity of %v", entry.n, entry.k, entry.bufferCap), func() {
 				It("should produce consistent global random number shares", func(doneT Done) {
 					defer close(doneT)
@@ -76,14 +78,14 @@ var _ = Describe("Random number generators", func() {
 					inputs := make([]chan RngInputMessage, entry.n)
 					outputs := make([]chan RngOutputMessage, entry.n)
 					for i := int64(0); i < entry.n; i++ {
-						rngers[i] = NewRnger(uint64(i), entry.n, entry.k, entry.bufferCap)
+						rngers[i] = NewRnger(time.Second, Address(i), entry.n, entry.k, entry.bufferCap)
 						inputs[i] = make(chan RngInputMessage, entry.bufferCap)
 						outputs[i] = make(chan RngOutputMessage, entry.bufferCap)
 					}
 
 					// Nonce that will be used to identify the secure random
 					// number
-					nonce := make([]byte, 32)
+					nonce := [32]byte{}
 					n, err := rand.Read(nonce[:])
 					Expect(n).To(Equal(32))
 					Expect(err).To(BeNil())
@@ -99,7 +101,7 @@ var _ = Describe("Random number generators", func() {
 						func() {
 							// Instruct all players to generate a random number
 							co.ParForAll(inputs, func(i int) {
-								inputs[i] <- GenerateRn{Nonce: nonce[:]}
+								inputs[i] <- GenerateRn{Nonce: nonce}
 							})
 						},
 						func() {
