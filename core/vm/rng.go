@@ -44,19 +44,6 @@ type RngOutputMessage interface {
 	IsRngOutputMessage()
 }
 
-// A CheckDeadline message signals to the Rnger that it should clean up all
-// pending random number generations that have exceeded their deadline. It is
-// up to the user to determine the frequency of this message. Higher
-// frequencies will result in more accurate clean up times, but slower
-// performance.
-type CheckDeadline struct {
-	Time time.Time
-}
-
-// IsRngInputMessage implements the RngInputMessage interface.
-func (message CheckDeadline) IsRngInputMessage() {
-}
-
 // A GenerateRn message signals to the Rnger that is should begin a secure
 // random number generation. The secure random number that will be generated is
 // identified by a nonce. The nonce must be unique and must be agreed on by all
@@ -68,7 +55,7 @@ type GenerateRn struct {
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
-func (msg GenerateRn) IsRngInputMessage() {
+func (message GenerateRn) IsRngInputMessage() {
 }
 
 // A GenerateRnErr message is produced by an Rnger when an error is encountered
@@ -81,7 +68,7 @@ type GenerateRnErr struct {
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
-func (msg GenerateRnErr) IsRngOutputMessage() {
+func (message GenerateRnErr) IsRngOutputMessage() {
 }
 
 // A LocalRnShare message is produced by an Rnger after receiving a GenerateRn
@@ -98,11 +85,51 @@ type LocalRnShare struct {
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
-func (msg LocalRnShare) IsRngInputMessage() {
+func (message LocalRnShare) IsRngInputMessage() {
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
-func (msg LocalRnShare) IsRngOutputMessage() {
+func (message LocalRnShare) IsRngOutputMessage() {
+}
+
+// A VoteForRnShares message is produced by an Rnger after receiving a
+// sufficient number of LocalRnShares, or after a secure random number
+// generation has exceeded its deadline. A VoteForRnShares message will be
+// produced for each Rnger in the network and it is up to the user to route
+// this message to the appropriate Rnger.
+type VoteForRnShares struct {
+	Nonce  []byte
+	To     uint64
+	From   uint64
+	Shares shamir.Shares
+}
+
+// IsRngInputMessage implements the RngInputMessage interface.
+func (message VoteForRnShares) IsRngInputMessage() {
+}
+
+// IsRngOutputMessage implements the RngOutputMessage interface.
+func (message VoteForRnShares) IsRngOutputMessage() {
+}
+
+// A CommitToRnShares message is produced by an Rnger after receiving a
+// sufficient number of VoteForRnShares, or after a secure random number
+// generation has exceeded its deadline. A CommitToRnShares message will be
+// produced for each Rnger in the network and it is up to the user to route
+// this message to the appropriate Rnger.
+type CommitToRnShares struct {
+	Nonce  []byte
+	To     uint64
+	From   uint64
+	Shares shamir.Shares
+}
+
+// IsRngInputMessage implements the RngInputMessage interface.
+func (message CommitToRnShares) IsRngInputMessage() {
+}
+
+// IsRngOutputMessage implements the RngOutputMessage interface.
+func (message CommitToRnShares) IsRngOutputMessage() {
 }
 
 // A GlobalRnShare message is produced by an Rnger at the end of a successful
@@ -114,7 +141,20 @@ type GlobalRnShare struct {
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
-func (msg GlobalRnShare) IsRngOutputMessage() {
+func (message GlobalRnShare) IsRngOutputMessage() {
+}
+
+// A CheckDeadline message signals to the Rnger that it should clean up all
+// pending random number generations that have exceeded their deadline. It is
+// up to the user to determine the frequency of this message. Higher
+// frequencies will result in more accurate clean up times, but slower
+// performance.
+type CheckDeadline struct {
+	Time time.Time
+}
+
+// IsRngInputMessage implements the RngInputMessage interface.
+func (message CheckDeadline) IsRngInputMessage() {
 }
 
 type rnger struct {
@@ -167,11 +207,21 @@ func (rnger *rnger) Run(done <-chan (struct{}), input <-chan RngInputMessage, ou
 
 func (rnger *rnger) handleInputMessage(message RngInputMessage) {
 	switch message := message.(type) {
+
 	case GenerateRn:
 		rnger.handleGenerateRn(message)
 
 	case LocalRnShare:
 		rnger.handleLocalRnShare(message)
+
+	case VoteForRnShares:
+		rnger.handleVoteForRnShares(message)
+
+	case CommitToRnShares:
+		rnger.handleCommitToRnShares(message)
+
+	case CheckDeadline:
+		rnger.handleCheckDeadline(message)
 	}
 }
 
@@ -236,4 +286,16 @@ func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
 		rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 		delete(rnger.localRnShares, nonce)
 	}
+}
+
+func (rnger *rnger) handleVoteForRnShares(message VoteForRnShares) {
+	panic("unimplemented")
+}
+
+func (rnger *rnger) handleCommitToRnShares(message CommitToRnShares) {
+	panic("unimplemented")
+}
+
+func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
+	panic("unimplemented")
 }
