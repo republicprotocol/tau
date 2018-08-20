@@ -1,7 +1,8 @@
 package vm_test
 
 import (
-	"log"
+	"crypto/rand"
+	"fmt"
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/shamir-go"
@@ -11,136 +12,148 @@ import (
 	. "github.com/republicprotocol/smpc-go/core/vm"
 )
 
-var _ = Describe("Random number generator", func() {
+var _ = Describe("Random number generators", func() {
 
-	const (
-		BufferCap = 0
-	)
-
-	Context("when generating random numbers", func() {
-
-		It("should shutdown when the done channel is closed", func(doneT Done) {
+	Context("when closing the done channel", func() {
+		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(0, 1, 1, BufferCap)
+			rnger := NewRnger(0, 1, 1, 1)
+			input := make(chan RngInputMessage)
+			output := make(chan RngOutputMessage)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
 				func() {
-					rnger.Run(done, nil, nil)
+					rnger.Run(done, input, output)
 				},
 				func() {
 					close(done)
 				})
 		})
+	})
 
-		Context("when using a single machine", func() {
-			It("should output a global random number immediately", func(doneT Done) {
-				defer close(doneT)
+	Context("when closing the input channel", func() {
+		It("should clean up and shutdown", func(doneT Done) {
+			defer close(doneT)
 
-				rnger := NewRnger(0, 1, 1, BufferCap)
-				input := make(chan RngMessage)
-				output := make(chan RngResult)
+			rnger := NewRnger(0, 1, 1, 1)
+			input := make(chan RngInputMessage)
+			output := make(chan RngOutputMessage)
 
-				done := make(chan (struct{}))
-				co.ParBegin(
-					func() {
-						rnger.Run(done, input, output)
-					},
-					func() {
-						input <- Gen{Nonce: []byte{1}}
-						result, ok := <-output
-						Expect(ok).To(BeTrue())
-						globalRngShare, ok := result.(GlobalRngShare)
-						Expect(ok).To(BeTrue())
-						Expect(globalRngShare.Nonce).To(Equal([]byte{1}))
-						close(done)
-					})
-			})
+			done := make(chan (struct{}))
+			co.ParBegin(
+				func() {
+					rnger.Run(done, input, output)
+				},
+				func() {
+					close(input)
+				})
 		})
+	})
 
-		Context("when using multiple machines", func() {
-			It("should output a global random number after receiving all local shares", func(doneT Done) {
-				defer close(doneT)
+	Context("when running the secure random number generation algorithm", func() {
 
-				numRngers := int64(32)
-				n := numRngers
-				k := n / 2
-				rngers := make([]Rnger, numRngers)
-				inputs := make([]chan RngMessage, numRngers)
-				outputs := make([]chan RngResult, numRngers)
-				for i := range rngers {
-					rngers[i] = NewRnger(int64(i), n, k, BufferCap)
-					inputs[i] = make(chan RngMessage)
-					outputs[i] = make(chan RngResult)
-				}
+		table := []struct {
+			n, k      int64
+			bufferCap int
+		}{
+			{3, 2, 0}, {3, 2, 1}, {3, 2, 2}, {3, 2, 4},
+			{6, 4, 0}, {6, 4, 1}, {6, 4, 2}, {6, 4, 4},
+			{12, 8, 0}, {12, 8, 1}, {12, 8, 2}, {12, 8, 4},
+			{24, 16, 0}, {24, 16, 1}, {24, 16, 2}, {24, 16, 4},
+			{48, 32, 0}, {48, 32, 1}, {48, 32, 2}, {48, 32, 4},
+		}
 
-				done := make(chan (struct{}))
-				co.ParBegin(
-					func() {
-						co.ParForAll(rngers, func(i int) {
-							rngers[i].Run(done, inputs[i], outputs[i])
-						})
-					},
-					func() {
-						defer GinkgoRecover()
+		for _, entry := range table {
+			entry := entry
+			Context(fmt.Sprintf("when n = %v and k = %v and each player has a buffer capacity of %v", entry.n, entry.k, entry.bufferCap), func() {
+				It("should produce consistent global random number shares", func(doneT Done) {
+					defer close(doneT)
 
-						co.ParForAll(inputs, func(i int) {
-							inputs[i] <- Gen{Nonce: []byte{1}}
-						})
+					// Initialis the players
+					rngers := make([]Rnger, entry.n)
+					inputs := make([]chan RngInputMessage, entry.n)
+					outputs := make([]chan RngOutputMessage, entry.n)
+					for i := int64(0); i < entry.n; i++ {
+						rngers[i] = NewRnger(uint64(i), entry.n, entry.k, entry.bufferCap)
+						inputs[i] = make(chan RngInputMessage, entry.bufferCap)
+						outputs[i] = make(chan RngOutputMessage, entry.bufferCap)
+					}
 
-						globalRngShares := make([]GlobalRngShare, numRngers)
-						co.ParForAll(outputs, func(i int) {
-							defer GinkgoRecover()
+					// Nonce that will be used to identify the secure random
+					// number
+					nonce := make([]byte, 32)
+					n, err := rand.Read(nonce[:])
+					Expect(n).To(Equal(32))
+					Expect(err).To(BeNil())
 
-							numLocalRngShares := int64(0)
+					done := make(chan (struct{}))
+					co.ParBegin(
+						func() {
+							// Run the players until the done channel is closed
+							co.ParForAll(rngers, func(i int) {
+								rngers[i].Run(done, inputs[i], outputs[i])
+							})
+						},
+						func() {
+							// Instruct all players to generate a random number
+							co.ParForAll(inputs, func(i int) {
+								inputs[i] <- GenerateRn{Nonce: nonce[:]}
+							})
+						},
+						func() {
+							globalRnShares := make(shamir.Shares, entry.n)
 
-							for j := int64(0); j < n; j++ {
-								result, ok := <-outputs[i]
-								Expect(ok).To(BeTrue())
+							co.ParForAll(outputs, func(i int) {
+								defer GinkgoRecover()
 
-								switch result.(type) {
-								case LocalRngShare:
-									localRngShare, ok := result.(LocalRngShare)
+								numLocalRnShares := int64(0)
+								numGlobalRnShares := int64(0)
+
+								// Expect exactly n messages from each player;
+								// a LocalRnShare for each other player and a
+								// GlobalRnShare of the secure random number
+								// that is generated
+								for n := int64(0); n < entry.n; n++ {
+									message, ok := <-outputs[i]
 									Expect(ok).To(BeTrue())
-									Expect(localRngShare.Nonce).To(Equal([]byte{1}))
-									Expect(localRngShare.From).To(Equal(int64(i)))
-									inputs[localRngShare.J] <- localRngShare
-									numLocalRngShares++
 
-								case GlobalRngShare:
-									globalRngShare, ok := result.(GlobalRngShare)
-									Expect(ok).To(BeTrue())
-									Expect(globalRngShare.Nonce).To(Equal([]byte{1}))
-									globalRngShares[i] = globalRngShare
+									switch message := message.(type) {
+									case LocalRnShare:
+										// Route the LocalRnShare to the
+										// appropriate player
+										Expect(message.Nonce).To(Equal(nonce))
+										Expect(message.From).To(Equal(uint64(i)))
+										inputs[message.To] <- message
+										numLocalRnShares++
+
+									case GlobalRnShare:
+										Expect(message.Nonce).To(Equal(nonce))
+										globalRnShares[i] = message.Share
+										numGlobalRnShares++
+									}
 								}
-							}
 
-							Expect(numLocalRngShares).To(Equal(numRngers - 1))
+								// Expect a LocalRnShare from each player for
+								// every other player
+								Expect(numLocalRnShares).To(Equal(entry.n - 1))
+								Expect(numGlobalRnShares).To(Equal(int64(1)))
+							})
+
+							// Reconstruct the secret using different subsets
+							// of shares and expect that all reconstructed
+							// secrets are equal
+							secret := shamir.Join(globalRnShares)
+							for i := int64(0); i < entry.n-entry.k; i++ {
+								kSecret := shamir.Join(globalRnShares[i : i+entry.k])
+								Expect(secret).To(Equal(kSecret))
+							}
+							close(done)
 						})
-
-						var prevSecret *uint64
-						for i := int64(0); i < n-k; i++ {
-							subset := globalRngShares[i : i+k]
-							shares := shamir.Shares{}
-							for _, elem := range subset {
-								shares = append(shares, elem.Share)
-							}
-
-							log.Printf("%v =>\n\tshares: %v", i, shares)
-
-							secret := shamir.Join(shares)
-							if prevSecret == nil {
-								prevSecret = &secret
-							} else {
-								Expect(secret).To(Equal(*prevSecret))
-							}
-						}
-
-						close(done)
-					})
+				})
 			})
-		})
+		}
 
 	})
 

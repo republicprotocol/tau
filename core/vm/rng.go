@@ -1,153 +1,211 @@
 package vm
 
 import (
-	"fmt"
 	"math/rand"
 
-	shamir "github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/shamir-go"
 )
 
+// Rnger generates secure random numbers using a secure multi-party
+// computation. The random number generated is not known by any Rnger in the
+// network, unless some threshold of Rngers are malicious.
 type Rnger interface {
-	Run(done <-chan (struct{}), input <-chan RngMessage, output chan<- RngResult)
+
+	// Run the Rnger. It will read messages from the input channel and write
+	// messages to the output channel. Close the done channel to stop the Rnger.
+	Run(done <-chan (struct{}), input <-chan RngInputMessage, output chan<- RngOutputMessage)
 }
 
-type RngMessage interface {
-	IsRngMessage()
+// An RngInputMessage can be passed to the Rnger as an input. It will process
+// the message and output an error when it encounters an unexpected type. No
+// types external to this package should implement this interface.
+type RngInputMessage interface {
+
+	// IsRngInputMessage is a marker used to restrict RngInputMessages to types
+	// that have been explicitly marked. It is never called.
+	IsRngInputMessage()
 }
 
-type Gen struct {
+// An RngOutputMessage can be passed from the Rnger as an output. The user must
+// check the message type and handle the message appropriately. No types
+// external to this package should implement this interface.
+type RngOutputMessage interface {
+
+	// IsRngOutputMessage is a marker used to restrict RngOutputMessages to
+	// types that have been explicitly marked. It is never called.
+	IsRngOutputMessage()
+}
+
+// The GenerateRn message signals the Rnger to begin a secure random number
+// generation. The secure random number is identified by a nonce, that must be
+// agreed upon by all Rngers running the secure random number generation
+// algorithm.
+type GenerateRn struct {
 	Nonce []byte
 }
 
-func (g Gen) IsRngMessage() {
+// IsRngInputMessage implements the RngInputMessage interface.
+func (msg GenerateRn) IsRngInputMessage() {
 }
 
-type LocalRngShare struct {
+// A GenerateRnErr is output by an Rnger when an error is encountered during
+// the secure random number generation algorithm. No specific handling is
+// required by the user.
+type GenerateRnErr struct {
 	Nonce []byte
-	J     int64
-	From  int64
+	Err   error
+}
+
+// IsRngOutputMessage implements the RngOutputMessage interface.
+func (msg GenerateRnErr) IsRngOutputMessage() {
+}
+
+// A LocalRnShare is output by an Rnger for each other Rnger in the network. It
+// is also accepted as input from other Rngers. The user must route this
+// message to the appropriate Rnger when it is output.
+type LocalRnShare struct {
+	Nonce []byte
+	To    uint64
+	From  uint64
 	Share shamir.Share
 }
 
-func (share LocalRngShare) IsRngMessage() {
+// IsRngInputMessage implements the RngInputMessage interface.
+func (msg LocalRnShare) IsRngInputMessage() {
 }
 
-func (share LocalRngShare) IsRngResult() {
+// IsRngOutputMessage implements the RngOutputMessage interface.
+func (msg LocalRnShare) IsRngOutputMessage() {
 }
 
-type RngResult interface {
-	IsRngResult()
-}
-
-type GlobalRngShare struct {
+// A GlobalRnShare is output by an Rnger at the end of the secure random number
+// generation algorithm. It represents its Shamir's share of the secure random
+// number identified across the network by the nonce.
+type GlobalRnShare struct {
 	Nonce []byte
 	Share shamir.Share
 }
 
-func (share GlobalRngShare) IsRngResult() {
+// IsRngOutputMessage implements the RngOutputMessage interface.
+func (msg GlobalRnShare) IsRngOutputMessage() {
 }
 
 type rnger struct {
-	i, n, k      int64
-	resultBuffer []RngResult
-	r            map[string](map[int64]LocalRngShare)
+	i             uint64
+	n, k          int64
+	outputBuffer  []RngOutputMessage
+	localRnShares map[string](map[uint64]LocalRnShare)
 }
 
-func NewRnger(i, n, k int64, bufferCap int) Rnger {
+// NewRnger returns an Rnger that is identified as the i-th player in a network
+// with n players and k threshold. The user can specify a buffer capacity for
+// messages output by the Rnger.
+func NewRnger(i uint64, n, k int64, bufferCap int) Rnger {
 	return &rnger{
-		i: i, n: n, k: k,
-		resultBuffer: make([]RngResult, 0, bufferCap),
-		r:            map[string](map[int64]LocalRngShare){},
+		i: i,
+		n: n, k: k,
+		outputBuffer:  make([]RngOutputMessage, 0, bufferCap),
+		localRnShares: map[string](map[uint64]LocalRnShare){},
 	}
 }
 
-func (actor *rnger) Run(done <-chan (struct{}), messages <-chan RngMessage, results chan<- RngResult) {
+// Run implements the Rnger interface. It is blocking and should be run in a
+// background goroutine by the user. It is recommended that the input and
+// output channels are buffered, however it is not required.
+func (rnger *rnger) Run(done <-chan (struct{}), input <-chan RngInputMessage, output chan<- RngOutputMessage) {
 	for {
-		var res RngResult
-		var resCh chan<- RngResult
-		if len(actor.resultBuffer) > 0 {
-			res = actor.resultBuffer[0]
-			resCh = results
+		var outputMessage RngOutputMessage
+		var outputMaybe chan<- RngOutputMessage
+		if len(rnger.outputBuffer) > 0 {
+			outputMessage = rnger.outputBuffer[0]
+			outputMaybe = output
 		}
 
 		select {
 		case <-done:
 			return
 
-		case message, ok := <-messages:
+		case message, ok := <-input:
 			if !ok {
 				return
 			}
-			actor.handleMessage(message)
+			rnger.handleInputMessage(message)
 
-		case resCh <- res:
-			actor.resultBuffer = actor.resultBuffer[1:]
+		case outputMaybe <- outputMessage:
+			rnger.outputBuffer = rnger.outputBuffer[1:]
 		}
 	}
 }
 
-func (actor *rnger) handleMessage(message RngMessage) {
+func (rnger *rnger) handleInputMessage(message RngInputMessage) {
 	switch message := message.(type) {
-	case Gen:
-		actor.handleGen(message)
+	case GenerateRn:
+		rnger.handleGenerateRn(message)
 
-	case LocalRngShare:
-		actor.handleLocalRngShare(message)
+	case LocalRnShare:
+		rnger.handleLocalRnShare(message)
 	}
 }
 
-func (actor *rnger) handleGen(message Gen) {
-	r := rand.Uint64() % shamir.Prime
-	rShares, err := shamir.Split(actor.n, actor.k, r)
+func (rnger *rnger) handleGenerateRn(message GenerateRn) {
+
+	// Generate a local random number and split it into shares for each player
+	// in the network
+	rn := rand.Uint64() % shamir.Prime
+	rnShares, err := shamir.Split(rnger.n, rnger.k, rn)
 	if err != nil {
-		panic(fmt.Errorf("probably want to output this error: %v", err))
-	}
-
-	for j := int64(0); j < int64(len(rShares)); j++ {
-		localRngShare := LocalRngShare{
+		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
 			Nonce: message.Nonce,
-			J:     j,
-			From:  actor.i,
-			Share: rShares[j],
-		}
-		if j == actor.i {
-			actor.handleLocalRngShare(localRngShare)
-			continue
-		}
-		actor.resultBuffer = append(actor.resultBuffer, localRngShare)
-	}
-}
-
-func (actor *rnger) handleLocalRngShare(message LocalRngShare) {
-	if message.J != actor.i {
-		// This message is not meant for us
+			Err:   err,
+		})
 		return
 	}
-	if message.Share.Index != uint64(actor.i+1) {
+
+	// Send each share to the appropriate player by outputting a LocalRnShare
+	// message
+	for j := uint64(0); j < uint64(len(rnShares)); j++ {
+		localRnShare := LocalRnShare{
+			Nonce: message.Nonce,
+			To:    j,
+			From:  rnger.i,
+			Share: rnShares[j],
+		}
+		if j == rnger.i {
+			rnger.handleLocalRnShare(localRnShare)
+			continue
+		}
+		rnger.outputBuffer = append(rnger.outputBuffer, localRnShare)
+	}
+}
+
+func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
+	if message.To != rnger.i || message.Share.Index != rnger.i+1 {
 		// This message is not meant for us
 		return
 	}
 
 	// Initialise the map for this nonce if it does not already exist
 	nonce := string(message.Nonce)
-	if _, ok := actor.r[nonce]; !ok {
-		actor.r[nonce] = map[int64]LocalRngShare{}
+	if _, ok := rnger.localRnShares[nonce]; !ok {
+		rnger.localRnShares[nonce] = map[uint64]LocalRnShare{}
 	}
+	rnger.localRnShares[nonce][message.From] = message
 
-	actor.r[nonce][message.From] = message
-	if int64(len(actor.r[nonce])) == actor.n {
+	// Once we have acquired a LocalRnShare from each player in the network we
+	// can add them to produce our GlobalRnShare
+	if int64(len(rnger.localRnShares[nonce])) == rnger.n {
 		share := shamir.Share{
-			Index: uint64(actor.i + 1),
+			Index: uint64(rnger.i + 1),
 			Value: 0,
 		}
-		for _, localRngShare := range actor.r[nonce] {
+		for _, localRngShare := range rnger.localRnShares[nonce] {
 			share = share.Add(&localRngShare.Share)
 		}
-		globalRngShare := GlobalRngShare{
+		globalRnShare := GlobalRnShare{
 			Nonce: message.Nonce,
 			Share: share,
 		}
-		actor.resultBuffer = append(actor.resultBuffer, globalRngShare)
-		delete(actor.r, nonce)
+		rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
+		delete(rnger.localRnShares, nonce)
 	}
 }
