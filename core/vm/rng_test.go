@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log"
 	mathRand "math/rand"
 	"sync"
 	"time"
@@ -102,6 +103,7 @@ var _ = Describe("Random number generators", func() {
 
 	routeMessage := func(done <-chan (struct{}), inputs chan RngInputMessage, message RngInputMessage, failureRate int) {
 		if mathRand.Intn(100) < failureRate {
+			log.Printf("[debug] simulated message drop")
 			// Simluate an unstable network connection and randomly drop
 			// messages
 			return
@@ -230,7 +232,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(100*time.Millisecond*time.Duration(entry.k), entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -247,7 +249,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, 100*time.Millisecond)
+							runTicker(done, inputs, 10*time.Millisecond)
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -306,22 +308,34 @@ var _ = Describe("Random number generators", func() {
 							err := verifyShares(globalRnShares, entry.n, entry.k)
 							Expect(err).To(BeNil())
 						})
-				}, 30 /* 4 second timeout */)
+				})
 			})
 		}
 	})
 
-	Context("when running the secure random number generation algorithm in a partially connected network", func() {
+	FContext("when running the secure random number generation algorithm in a partially connected network", func() {
 
 		table := []struct {
 			n, k                   int64
 			bufferCap, failureRate int
 		}{
-			// Failure rate = 10%
-			{3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
-			{6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
-			{12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
-			{24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
+			// Failure rate = 1%
+			{3, 2, 0, 1}, {3, 2, 1, 1}, {3, 2, 2, 1}, {3, 2, 4, 1},
+			{6, 4, 0, 1}, {6, 4, 1, 1}, {6, 4, 2, 1}, {6, 4, 4, 1},
+			{12, 8, 0, 1}, {12, 8, 1, 1}, {12, 8, 2, 1}, {12, 8, 4, 1},
+			{24, 16, 0, 1}, {24, 16, 1, 1}, {24, 16, 2, 1}, {24, 16, 4, 1},
+
+			// // Failure rate = 5%
+			// {3, 2, 0, 5}, {3, 2, 1, 5}, {3, 2, 2, 5}, {3, 2, 4, 5},
+			// {6, 4, 0, 5}, {6, 4, 1, 5}, {6, 4, 2, 5}, {6, 4, 4, 5},
+			// {12, 8, 0, 5}, {12, 8, 1, 5}, {12, 8, 2, 5}, {12, 8, 4, 5},
+			// {24, 16, 0, 5}, {24, 16, 1, 5}, {24, 16, 2, 5}, {24, 16, 4, 5},
+
+			// // Failure rate = 10%
+			// {3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
+			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
 
 			// // Failure rate = 20%
 			// {3, 2, 0, 20}, {3, 2, 1, 20}, {3, 2, 2, 20}, {3, 2, 4, 20},
@@ -346,7 +360,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(time.Second*time.Duration(entry.k), entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -363,7 +377,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, time.Second)
+							runTicker(done, inputs, 10*time.Millisecond)
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -382,7 +396,7 @@ var _ = Describe("Random number generators", func() {
 							failureRate := entry.failureRate
 							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
 
-							globalRnShares := make(shamir.Shares, 0, len(rngers))
+							globalRnShares := map[string]shamir.Shares{}
 							generateRnErrs := make([]GenerateRnErr, 0, len(rngers))
 							for i := range rngers {
 								addr := Address(i)
@@ -408,19 +422,33 @@ var _ = Describe("Random number generators", func() {
 									Expect(message.Nonce).To(Equal(nonce))
 								}
 								if len(results.GlobalRnShareMessages[addr]) > 0 {
-									globalRnShares = append(globalRnShares, results.GlobalRnShareMessages[addr][0].Share)
+									key := fmt.Sprintf("%v", results.GlobalRnShareMessages[addr][0].Players)
+									if _, ok := globalRnShares[key]; !ok {
+										globalRnShares[key] = shamir.Shares{}
+									}
+									globalRnShares[key] = append(globalRnShares[key], results.GlobalRnShareMessages[addr][0].Share)
 								}
 								if len(results.GenerateRnErrMessages[addr]) > 0 {
 									generateRnErrs = append(generateRnErrs, results.GenerateRnErrMessages[addr][0])
 								}
 							}
-							Expect(len(globalRnShares)).To(BeNumerically(">=", entry.k))
 							Expect(len(generateRnErrs)).To(BeNumerically("<", entry.k))
+
+							// Exactly one set of players should receive a
+							// sufficient vote
+							sufficientKey := ""
+							for key := range globalRnShares {
+								if int64(len(globalRnShares[key])) >= entry.k {
+									Expect(sufficientKey).To(Equal(""))
+									sufficientKey = key
+								}
+							}
+							Expect(sufficientKey).ToNot(Equal(""))
 
 							// Reconstruct the secret using different subsets
 							// of shares and expect that all reconstructed
 							// secrets are equal
-							err := verifyShares(globalRnShares, entry.n, entry.k)
+							err := verifyShares(globalRnShares[sufficientKey], int64(len(globalRnShares[sufficientKey])), entry.k)
 							Expect(err).To(BeNil())
 						})
 				}, 30 /* 4 second timeout */)

@@ -131,6 +131,8 @@ func (message Vote) IsRngOutputMessage() {
 type GlobalRnShare struct {
 	Nonce
 	shamir.Share
+
+	Players []Address
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
@@ -377,23 +379,12 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 
 	players, err := PickPlayers(votes, rnger.k)
 	if err != nil {
-		log.Printf("[debug] player %v produced an error", rnger.addr)
+		log.Printf("[error] player %v: %v", rnger.addr, err)
 		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
 			Nonce: nonce,
 			error: err,
 		})
 		return
-	}
-
-	// Check that we have all shares
-	for _, player := range players {
-		if _, ok := rnger.localRnShares[nonce].Table[player]; !ok {
-			log.Printf("[debug] player %v produced an error", rnger.addr)
-			rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
-				Nonce: nonce,
-				error: errors.New("not invited to the party"),
-			})
-		}
 	}
 
 	globalRnShare := GlobalRnShare{
@@ -402,13 +393,22 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 			Index: uint64(rnger.addr) + 1,
 			Value: 0,
 		},
+		Players: players,
 	}
 	for _, player := range players {
-		localRnShare := rnger.localRnShares[nonce].Table[player]
+		localRnShare, ok := rnger.localRnShares[nonce].Table[player]
+		if !ok {
+			log.Printf("[error] player %v: not invited to the party", rnger.addr)
+			rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
+				Nonce: nonce,
+				error: errors.New("not invited to the party"),
+			})
+			return
+		}
 		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
 
-	log.Printf("[debug] player %v produced global random number", rnger.addr)
+	log.Printf("[debug] player %v: global random number", rnger.addr)
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
 
