@@ -2,7 +2,6 @@ package vm
 
 import (
 	"errors"
-	"log"
 	"math/rand"
 	"sort"
 	"time"
@@ -261,7 +260,6 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 			Share: rnShares[j],
 		}
 		if Address(j) == rnger.addr {
-			log.Println("SELF SENDING =>", rnger.addr)
 			rnger.handleLocalRnShare(localRnShare)
 			continue
 		}
@@ -352,23 +350,22 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 	}
 	for _, player := range vote.Players {
 		if player == rnger.addr {
-			log.Println("TRUE FOR PLAYER =>", rnger.addr)
-			vote.To = rnger.addr
-			rnger.handleVoteToCommit(vote)
 			continue
 		}
 		vote.To = player
 		rnger.outputBuffer = append(rnger.outputBuffer, vote)
 	}
 
+	vote.To = rnger.addr
+	rnger.handleVoteToCommit(vote)
 }
 
 func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	// Prevent building a GlobalRnShare more than once
-	// if rnger.hasBuiltGlobalRnShare[nonce] {
-	// 	return
-	// }
-	// rnger.hasBuiltGlobalRnShare[nonce] = true
+	if rnger.hasBuiltGlobalRnShare[nonce] {
+		return
+	}
+	rnger.hasBuiltGlobalRnShare[nonce] = true
 
 	votes := make([]VoteToCommit, rnger.n)
 	for _, vote := range rnger.votes[nonce].Table {
