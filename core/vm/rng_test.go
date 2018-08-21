@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	mathRand "math/rand"
+	"sync"
 	"time"
 
 	"github.com/republicprotocol/co-go"
@@ -97,21 +98,23 @@ var _ = Describe("Random number generators", func() {
 
 	routeMessages := func(done <-chan (struct{}), inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage), messagesPerPlayer int, failureRate int) routingResults {
 		// Initialise results
+		resultsMu := new(sync.Mutex)
 		results := routingResults{
 			LocalRnShareMessages:  map[Address]([]LocalRnShare){},
 			VoteMessages:          map[Address]([]VoteToCommit){},
 			GlobalRnShareMessages: map[Address]([]GlobalRnShare){},
 			GenerateRnErrMessages: map[Address]([]GenerateRnErr){},
 		}
-		co.ParForAll(outputs, func(i int) {
-			defer GinkgoRecover()
-
-			// Initialise results for each specific player
+		for i := range inputs {
 			addr := Address(i)
 			results.LocalRnShareMessages[addr] = make([]LocalRnShare, 0)
 			results.VoteMessages[addr] = make([]VoteToCommit, 0)
 			results.GlobalRnShareMessages[addr] = make([]GlobalRnShare, 0)
 			results.GenerateRnErrMessages[addr] = make([]GenerateRnErr, 0)
+		}
+
+		co.ParForAll(outputs, func(i int) {
+			addr := Address(i)
 
 			// Expect to route a specific number of messages per player
 			var message RngOutputMessage
@@ -131,33 +134,38 @@ var _ = Describe("Random number generators", func() {
 					continue
 				}
 
-				switch message := message.(type) {
-				case LocalRnShare:
-					// Route LocalRnShare messages to their respective player
-					select {
-					case <-done:
-						return
-					case inputs[message.To] <- message:
-						results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
+				func() {
+					resultsMu.Lock()
+					defer resultsMu.Unlock()
+
+					switch message := message.(type) {
+					case LocalRnShare:
+						// Route LocalRnShare messages to their respective player
+						select {
+						case <-done:
+							return
+						case inputs[message.To] <- message:
+							results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
+						}
+
+					case VoteToCommit:
+						// Route VoteToCommit messages to their respective player
+						select {
+						case <-done:
+							return
+						case inputs[message.To] <- message:
+							results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
+						}
+
+					case GlobalRnShare:
+						// GlobalRnShare messages do not need to be routed
+						results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
+
+					case GenerateRnErr:
+						// GenerateRnErr messages do not need to be routed
+						results.GenerateRnErrMessages[addr] = append(results.GenerateRnErrMessages[addr], message)
 					}
-
-				case VoteToCommit:
-					// Route VoteToCommit messages to their respective player
-					select {
-					case <-done:
-						return
-					case inputs[message.To] <- message:
-						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
-					}
-
-				case GlobalRnShare:
-					// GlobalRnShare messages do not need to be routed
-					results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
-
-				case GenerateRnErr:
-					// GenerateRnErr messages do not need to be routed
-					results.GenerateRnErrMessages[addr] = append(results.GenerateRnErrMessages[addr], message)
-				}
+				}()
 			}
 		})
 		return results
@@ -204,20 +212,42 @@ var _ = Describe("Random number generators", func() {
 	Context("when running the secure random number generation algorithm", func() {
 
 		table := []struct {
-			n, k      int64
-			bufferCap int
+			n, k                   int64
+			bufferCap, failureRate int
 		}{
-			{3, 2, 0}, {3, 2, 1}, {3, 2, 2}, {3, 2, 4},
-			{6, 4, 0}, {6, 4, 1}, {6, 4, 2}, {6, 4, 4},
-			{12, 8, 0}, {12, 8, 1}, {12, 8, 2}, {12, 8, 4},
-			{24, 16, 0}, {24, 16, 1}, {24, 16, 2}, {24, 16, 4},
-			{48, 32, 0}, {48, 32, 1}, {48, 32, 2}, {48, 32, 4},
+			// Failure rate = 0%
+			{3, 2, 0, 0}, {3, 2, 1, 0}, {3, 2, 2, 0}, {3, 2, 4, 0},
+			{6, 4, 0, 0}, {6, 4, 1, 0}, {6, 4, 2, 0}, {6, 4, 4, 0},
+			{12, 8, 0, 0}, {12, 8, 1, 0}, {12, 8, 2, 0}, {12, 8, 4, 0},
+			{24, 16, 0, 0}, {24, 16, 1, 0}, {24, 16, 2, 0}, {24, 16, 4, 0},
+			{48, 32, 0, 0}, {48, 32, 1, 0}, {48, 32, 2, 0}, {48, 32, 4, 0},
+
+			// // Failure rate = 10%
+			// {3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
+			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
+			// {48, 32, 0, 10}, {48, 32, 1, 10}, {48, 32, 2, 10}, {48, 32, 4, 10},
+
+			// // Failure rate = 20%
+			// {3, 2, 0, 20}, {3, 2, 1, 20}, {3, 2, 2, 20}, {3, 2, 4, 20},
+			// {6, 4, 0, 20}, {6, 4, 1, 20}, {6, 4, 2, 20}, {6, 4, 4, 20},
+			// {12, 8, 0, 20}, {12, 8, 1, 20}, {12, 8, 2, 20}, {12, 8, 4, 20},
+			// {24, 16, 0, 20}, {24, 16, 1, 20}, {24, 16, 2, 20}, {24, 16, 4, 20},
+			// {48, 32, 0, 20}, {48, 32, 1, 20}, {48, 32, 2, 20}, {48, 32, 4, 20},
+
+			// // Failure rate = 30%
+			// {3, 2, 0, 30}, {3, 2, 1, 30}, {3, 2, 2, 30}, {3, 2, 4, 30},
+			// {6, 4, 0, 30}, {6, 4, 1, 30}, {6, 4, 2, 30}, {6, 4, 4, 30},
+			// {12, 8, 0, 30}, {12, 8, 1, 30}, {12, 8, 2, 30}, {12, 8, 4, 30},
+			// {24, 16, 0, 30}, {24, 16, 1, 30}, {24, 16, 2, 30}, {24, 16, 4, 30},
+			// {48, 32, 0, 30}, {48, 32, 1, 30}, {48, 32, 2, 30}, {48, 32, 4, 30},
 		}
 
 		for _, entry := range table {
 			entry := entry
 
-			Context(fmt.Sprintf("when n = %v and k = %v and each player has a buffer capacity of %v", entry.n, entry.k, entry.bufferCap), func() {
+			Context(fmt.Sprintf("when n = %v and k = %v and each player has a buffer capacity of %v with a failure rate of %v%%", entry.n, entry.k, entry.bufferCap, entry.failureRate), func() {
 				It("should produce consistent global random number shares", func(doneT Done) {
 					defer close(doneT)
 
@@ -225,9 +255,9 @@ var _ = Describe("Random number generators", func() {
 
 					// Nonce that will be used to identify the secure random
 					// number
-					nonce := [32]byte{}
+					nonce := Nonce{}
 					n, err := rand.Read(nonce[:])
-					Expect(n).To(Equal(32))
+					Expect(n).To(Equal(len(nonce)))
 					Expect(err).To(BeNil())
 
 					done := make(chan (struct{}))
@@ -245,6 +275,7 @@ var _ = Describe("Random number generators", func() {
 							genRn(done, inputs, nonce)
 						},
 						func() {
+							defer GinkgoRecover()
 							defer close(done)
 
 							// Route messages between players until the expected
@@ -253,16 +284,18 @@ var _ = Describe("Random number generators", func() {
 							// messages, and n GlobalRnShare messages
 							messagesPerPlayerPerBroadcast := int(entry.n - 1)
 							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
-							failureRate := 0
+							failureRate := entry.failureRate
 							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
 
 							globalRnShares := make(shamir.Shares, len(rngers))
 							for i := range rngers {
 								addr := Address(i)
 
+								minMessagesPerBroadcast := int(float64(messagesPerPlayerPerBroadcast) * float64(failureRate/2) / float64(100))
+
 								// Expect the correct number of messages
-								Expect(results.LocalRnShareMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
-								Expect(results.VoteMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
+								Expect(len(results.LocalRnShareMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
+								Expect(len(results.VoteMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
 								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(1))
 								Expect(results.GenerateRnErrMessages[addr]).To(HaveLen(0))
 
@@ -274,7 +307,7 @@ var _ = Describe("Random number generators", func() {
 								for _, message := range results.VoteMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
 									Expect(message.From).To(Equal(addr))
-									Expect(message.Players).To(HaveLen(len(rngers)))
+									Expect(len(message.Players)).To(BeNumerically(">=", int(entry.k)))
 								}
 								for _, message := range results.VoteMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
@@ -289,7 +322,7 @@ var _ = Describe("Random number generators", func() {
 							err := verifyShares(globalRnShares, entry.n, entry.k)
 							Expect(err).To(BeNil())
 						})
-				})
+				}, 30 /* 4 second timeout */)
 			})
 		}
 	})
