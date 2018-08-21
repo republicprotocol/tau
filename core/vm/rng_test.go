@@ -20,13 +20,13 @@ var _ = Describe("Random number generators", func() {
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
-	initPlayers := func(n, k int64, bufferCap int) ([]Rnger, [](chan RngInputMessage), [](chan RngOutputMessage)) {
+	initPlayers := func(timeout time.Duration, n, k int64, bufferCap int) ([]Rnger, [](chan RngInputMessage), [](chan RngOutputMessage)) {
 		// Initialis the players
 		rngers := make([]Rnger, n)
 		inputs := make([]chan RngInputMessage, n)
 		outputs := make([]chan RngOutputMessage, n)
 		for i := int64(0); i < n; i++ {
-			rngers[i] = NewRnger(100*time.Millisecond, Address(i), n, k, bufferCap)
+			rngers[i] = NewRnger(timeout, Address(i), n, k, bufferCap)
 			inputs[i] = make(chan RngInputMessage, bufferCap)
 			outputs[i] = make(chan RngOutputMessage, bufferCap)
 		}
@@ -95,7 +95,7 @@ var _ = Describe("Random number generators", func() {
 	// routingResults from routing messages between players.
 	type routingResults struct {
 		LocalRnShareMessages  map[Address]([]LocalRnShare)
-		VoteMessages          map[Address]([]VoteToCommit)
+		VoteMessages          map[Address]([]Vote)
 		GlobalRnShareMessages map[Address]([]GlobalRnShare)
 		GenerateRnErrMessages map[Address]([]GenerateRnErr)
 	}
@@ -119,14 +119,14 @@ var _ = Describe("Random number generators", func() {
 		resultsMu := new(sync.Mutex)
 		results := routingResults{
 			LocalRnShareMessages:  map[Address]([]LocalRnShare){},
-			VoteMessages:          map[Address]([]VoteToCommit){},
+			VoteMessages:          map[Address]([]Vote){},
 			GlobalRnShareMessages: map[Address]([]GlobalRnShare){},
 			GenerateRnErrMessages: map[Address]([]GenerateRnErr){},
 		}
 		for i := range inputs {
 			addr := Address(i)
 			results.LocalRnShareMessages[addr] = make([]LocalRnShare, 0)
-			results.VoteMessages[addr] = make([]VoteToCommit, 0)
+			results.VoteMessages[addr] = make([]Vote, 0)
 			results.GlobalRnShareMessages[addr] = make([]GlobalRnShare, 0)
 			results.GenerateRnErrMessages[addr] = make([]GenerateRnErr, 0)
 		}
@@ -156,7 +156,7 @@ var _ = Describe("Random number generators", func() {
 						results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
 						routeMessage(done, inputs[message.To], message, failureRate)
 
-					case VoteToCommit:
+					case Vote:
 						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
 						routeMessage(done, inputs[message.To], message, failureRate)
 
@@ -230,7 +230,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(100*time.Millisecond*time.Duration(entry.k), entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -259,8 +259,8 @@ var _ = Describe("Random number generators", func() {
 
 							// Route messages between players until the expected
 							// number of messages has been routed; n-1
-							// LocalRnShare messages, n-1 VoteToCommit messages,
-							// and n GlobalRnShare (of GenerateRnErr) messages
+							// LocalRnShare messages, n-1 Vote messages, and n
+							// GlobalRnShare (of GenerateRnErr) messages
 							messagesPerPlayerPerBroadcast := int(entry.n - 1)
 							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
 							failureRate := 0
@@ -319,10 +319,9 @@ var _ = Describe("Random number generators", func() {
 		}{
 			// Failure rate = 10%
 			{3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
-			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
-			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
-			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
-			// {48, 32, 0, 10}, {48, 32, 1, 10}, {48, 32, 2, 10}, {48, 32, 4, 10},
+			{6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			{12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			{24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
 
 			// // Failure rate = 20%
 			// {3, 2, 0, 20}, {3, 2, 1, 20}, {3, 2, 2, 20}, {3, 2, 4, 20},
@@ -347,7 +346,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(time.Second*time.Duration(entry.k), entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -364,7 +363,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, 100*time.Millisecond)
+							runTicker(done, inputs, time.Second)
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -376,7 +375,7 @@ var _ = Describe("Random number generators", func() {
 
 							// Route messages between players until the expected
 							// number of messages has been routed; n-1
-							// LocalRnShare messages, n-1 VoteToCommit messages,
+							// LocalRnShare messages, n-1 Vote messages,
 							// and n GlobalRnShare (of GenerateRnErr) messages
 							messagesPerPlayerPerBroadcast := int(entry.n - 1)
 							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1

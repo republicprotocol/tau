@@ -2,7 +2,6 @@ package vm
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"math/rand"
 	"sort"
@@ -105,12 +104,12 @@ func (message LocalRnShare) IsRngInputMessage() {
 func (message LocalRnShare) IsRngOutputMessage() {
 }
 
-// A VoteToCommit message is produced by an Rnger after receiving a sufficient
-// number of LocalRnShares messages, or after a secure random number generation
-// has exceeded its deadline. A VoteToCommit message will be produced for each
-// Rnger in the network and it is up to the user to route this message to the
-// appropriate Rnger.
-type VoteToCommit struct {
+// A Vote message is produced by an Rnger after receiving a sufficient number of
+// LocalRnShares messages, or after a secure random number generation has
+// exceeded its deadline. A Vote message will be produced for each Rnger in the
+// network and it is up to the user to route this message to the appropriate
+// Rnger.
+type Vote struct {
 	Nonce
 
 	To      Address
@@ -119,11 +118,11 @@ type VoteToCommit struct {
 }
 
 // IsRngInputMessage implements the RngInputMessage interface.
-func (message VoteToCommit) IsRngInputMessage() {
+func (message Vote) IsRngInputMessage() {
 }
 
 // IsRngOutputMessage implements the RngOutputMessage interface.
-func (message VoteToCommit) IsRngOutputMessage() {
+func (message Vote) IsRngOutputMessage() {
 }
 
 // A GlobalRnShare message is produced by an Rnger at the end of a successful
@@ -150,14 +149,18 @@ type CheckDeadline struct {
 func (message CheckDeadline) IsRngInputMessage() {
 }
 
+// A LocalRnSharesTable stores all shares received for a nonce and the timestamp
+// at which the first share was received.
 type LocalRnSharesTable struct {
 	StartedAt time.Time
 	Table     map[Address]LocalRnShare
 }
 
+// A VoteTable stores all votes received for a nonce and the timestamp at which
+// the first vote was received.
 type VoteTable struct {
 	StartedAt time.Time
-	Table     map[Address]VoteToCommit
+	Table     map[Address]Vote
 }
 
 type rnger struct {
@@ -231,9 +234,9 @@ func (rnger *rnger) handleInputMessage(message RngInputMessage) {
 		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleLocalRnShare(message)
 
-	case VoteToCommit:
+	case Vote:
 		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleVoteToCommit(message)
+		rnger.handleVote(message)
 
 	case CheckDeadline:
 		rnger.handleCheckDeadline(message)
@@ -287,13 +290,13 @@ func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
 	rnger.localRnShares[message.Nonce].Table[message.From] = message
 
 	// Once we have acquired a LocalRnShare from each player in the network we
-	// can produce a VoteToCommit
+	// can produce a Vote
 	if int64(len(rnger.localRnShares[message.Nonce].Table)) == rnger.n {
 		rnger.voteForNonce(message.Nonce)
 	}
 }
 
-func (rnger *rnger) handleVoteToCommit(message VoteToCommit) {
+func (rnger *rnger) handleVote(message Vote) {
 	if message.To != rnger.addr {
 		// This message is not meant for us
 		return
@@ -307,12 +310,12 @@ func (rnger *rnger) handleVoteToCommit(message VoteToCommit) {
 	if _, ok := rnger.votes[message.Nonce]; !ok {
 		rnger.votes[message.Nonce] = VoteTable{
 			StartedAt: time.Now(),
-			Table:     map[Address]VoteToCommit{},
+			Table:     map[Address]Vote{},
 		}
 	}
 	rnger.votes[message.Nonce].Table[message.From] = message
 
-	// Once we have acquired a VoteToCommit from each player in the network we
+	// Once we have acquired a Vote from each player in the network we
 	// can produce a GlobalRnShare
 	if int64(len(rnger.votes[message.Nonce].Table)) == rnger.n {
 		rnger.buildGlobalRnShare(message.Nonce)
@@ -340,7 +343,7 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 	}
 	rnger.hasVoted[nonce] = true
 
-	vote := VoteToCommit{
+	vote := Vote{
 		Nonce:   nonce,
 		From:    rnger.addr,
 		Players: make([]Address, 0, rnger.k),
@@ -348,7 +351,6 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 	for addr := range rnger.localRnShares[nonce].Table {
 		vote.Players = append(vote.Players, addr)
 	}
-	log.Printf("[debug] player %v broadcasting vote = %v", rnger.addr, vote.Players)
 	for j := int64(0); j < rnger.n; j++ {
 		if Address(j) == rnger.addr {
 			continue
@@ -358,7 +360,7 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 	}
 
 	vote.To = rnger.addr
-	rnger.handleVoteToCommit(vote)
+	rnger.handleVote(vote)
 }
 
 func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
@@ -368,7 +370,7 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	}
 	rnger.hasBuiltGlobalRnShare[nonce] = true
 
-	votes := make([]VoteToCommit, 0, rnger.n)
+	votes := make([]Vote, 0, rnger.n)
 	for _, vote := range rnger.votes[nonce].Table {
 		votes = append(votes, vote)
 	}
@@ -382,7 +384,6 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 		})
 		return
 	}
-	log.Printf("[debug] player %v has selected players = %v", rnger.addr, players)
 
 	// Check that we have all shares
 	for _, player := range players {
@@ -411,26 +412,21 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
 
-func PickPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
+func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 	playerList, err := potentialPlayers(votes, k)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert lists of players into constant-time lookup sets
-	rngerAddr := Address(696969)
-	voteSetsStr := ""
 	voteSets := make([]map[Address](struct{}), 0, len(votes))
 	for _, vote := range votes {
-		rngerAddr = vote.To
 		set := map[Address](struct{}){}
 		for _, addr := range vote.Players {
 			set[addr] = struct{}{}
 		}
 		voteSets = append(voteSets, set)
-		voteSetsStr += fmt.Sprintf("\n\t%v", vote.Players)
 	}
-	log.Printf("[debug] player %v building global random number share =%v", rngerAddr, voteSetsStr)
 
 	// Check all subsets of size at least k for one that is in at least k votes
 	max := len(playerList)
@@ -464,7 +460,7 @@ func PickPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
 	return nil, errors.New("insufficient players to form a majority")
 }
 
-func potentialPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
+func potentialPlayers(votes []Vote, k int64) ([]Address, error) {
 	playerCounts := map[Address]int64{}
 
 	// Count the number of times a player is in a vote
