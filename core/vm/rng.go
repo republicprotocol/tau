@@ -411,6 +411,10 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
 
+// PickPlayers finds a subset of the players that are contained in all of the
+// votes. This subset of players will determine the shares that are added
+// together to contruct the global random number. PickPlayers will return an
+// error if no subset of size at least k exists.
 func PickPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
 	playerList, err := potentialPlayers(votes, k)
 	if err != nil {
