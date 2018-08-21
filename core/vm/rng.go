@@ -465,32 +465,6 @@ func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 
 	}
 
-	// mask := 1<<uint(max) - 1
-	// for ; mask >= 1<<uint(k)-1; mask-- {
-	// 	if int64(bitCount(mask)) < k {
-	// 		continue
-	// 	}
-
-	// 	// Extract the subset based on the bit mask
-	// 	currentPlayerList = currentPlayerList[0:0]
-	// 	for i, m := 0, mask; m > 0; i, m = i+1, m/2 {
-	// 		if m%2 == 1 {
-	// 			currentPlayerList = append(currentPlayerList, playerList[max-i-1])
-	// 		}
-	// 	}
-
-	// 	subsetHits := int64(0)
-	// 	for _, voteSet := range voteSets {
-	// 		if containsAddressSubset(currentPlayerList, voteSet) {
-	// 			subsetHits++
-	// 		}
-	// 	}
-
-	// 	if subsetHits >= k {
-	// 		return currentPlayerList, nil
-	// 	}
-	// }
-
 	return nil, errors.New("insufficient players to form a majority")
 }
 
