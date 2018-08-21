@@ -174,12 +174,14 @@ type rnger struct {
 // from the Rnger are not consumed.
 func NewRnger(timeout time.Duration, addr Address, n, k int64, bufferCap int) Rnger {
 	return &rnger{
-		timeout:       timeout,
-		addr:          addr,
-		n:             n,
-		k:             k,
-		outputBuffer:  make([]RngOutputMessage, 0, bufferCap),
+		timeout:      timeout,
+		addr:         addr,
+		n:            n,
+		k:            k,
+		outputBuffer: make([]RngOutputMessage, 0, bufferCap),
+
 		localRnShares: map[Nonce]LocalRnSharesTable{},
+		votes:         map[Nonce]VoteTable{},
 	}
 }
 
@@ -336,6 +338,10 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 		vote.Players = append(vote.Players, addr)
 	}
 	for _, player := range vote.Players {
+		if player == rnger.addr {
+			// Do not send a message to self
+			continue
+		}
 		vote.To = player
 		rnger.outputBuffer = append(rnger.outputBuffer, vote)
 	}
