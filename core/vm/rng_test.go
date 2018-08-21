@@ -320,10 +320,10 @@ var _ = Describe("Random number generators", func() {
 			bufferCap, failureRate int
 		}{
 			// Failure rate = 1%
-			{3, 2, 0, 1}, {3, 2, 1, 1}, {3, 2, 2, 1}, {3, 2, 4, 1},
-			{6, 4, 0, 1}, {6, 4, 1, 1}, {6, 4, 2, 1}, {6, 4, 4, 1},
-			{12, 8, 0, 1}, {12, 8, 1, 1}, {12, 8, 2, 1}, {12, 8, 4, 1},
-			{24, 16, 0, 1}, {24, 16, 1, 1}, {24, 16, 2, 1}, {24, 16, 4, 1},
+			// {3, 2, 0, 1}, {3, 2, 1, 1}, {3, 2, 2, 1}, {3, 2, 4, 1},
+			// {6, 4, 0, 1}, {6, 4, 1, 1}, {6, 4, 2, 1}, {6, 4, 4, 1},
+			{12, 8, 0, 1}, {12, 8, 1, 1}, {12, 8, 2, 1}, {12, 8, 4, 5},
+			// {24, 16, 0, 1}, {24, 16, 1, 1}, {24, 16, 2, 1}, {24, 16, 4, 1},
 
 			// // Failure rate = 5%
 			// {3, 2, 0, 5}, {3, 2, 1, 5}, {3, 2, 2, 5}, {3, 2, 4, 5},
@@ -360,7 +360,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(5*time.Second, entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -377,7 +377,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, 10*time.Millisecond)
+							runTicker(done, inputs, 100*time.Millisecond)
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -406,8 +406,7 @@ var _ = Describe("Random number generators", func() {
 								// Expect the correct number of messages
 								Expect(len(results.LocalRnShareMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
 								Expect(len(results.VoteMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
-								Expect(len(results.GlobalRnShareMessages[addr])).To(BeNumerically("<=", 1))
-								Expect(len(results.GenerateRnErrMessages[addr])).To(BeNumerically("<=", 1))
+								Expect(len(results.GlobalRnShareMessages[addr]) + len(results.GenerateRnErrMessages[addr])).To(Equal(1))
 
 								// Expect the correct form of messages
 								for _, message := range results.LocalRnShareMessages[addr] {
@@ -443,6 +442,10 @@ var _ = Describe("Random number generators", func() {
 									sufficientKey = key
 								}
 							}
+							log.Printf("global random shares =\n")
+							for key, value := range globalRnShares {
+								log.Printf("\t%v => %v\n", key, len(value))
+							}
 							Expect(sufficientKey).ToNot(Equal(""))
 
 							// Reconstruct the secret using different subsets
@@ -451,7 +454,7 @@ var _ = Describe("Random number generators", func() {
 							err := verifyShares(globalRnShares[sufficientKey], int64(len(globalRnShares[sufficientKey])), entry.k)
 							Expect(err).To(BeNil())
 						})
-				}, 30 /* 4 second timeout */)
+				}, 60 /* 1 minute timeout */)
 			})
 		}
 	})

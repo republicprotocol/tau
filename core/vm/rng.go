@@ -294,7 +294,7 @@ func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
 	// Once we have acquired a LocalRnShare from each player in the network we
 	// can produce a Vote
 	if int64(len(rnger.localRnShares[message.Nonce].Table)) == rnger.n {
-		rnger.voteForNonce(message.Nonce)
+		rnger.vote(message.Nonce)
 	}
 }
 
@@ -307,6 +307,7 @@ func (rnger *rnger) handleVote(message Vote) {
 	sort.Slice(message.Players, func(i, j int) bool {
 		return message.Players[i] < message.Players[j]
 	})
+	log.Printf("[debug] player %v received vote = (%v) %v", rnger.addr, len(message.Players), message.Players)
 
 	// Initialise the map for this nonce if it does not already exist
 	if _, ok := rnger.votes[message.Nonce]; !ok {
@@ -328,7 +329,7 @@ func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
 	now := time.Now()
 	for nonce := range rnger.localRnShares {
 		if rnger.localRnShares[nonce].StartedAt.Add(rnger.timeout).Before(now) {
-			rnger.voteForNonce(nonce)
+			rnger.vote(nonce)
 		}
 	}
 	for nonce := range rnger.votes {
@@ -338,7 +339,7 @@ func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
 	}
 }
 
-func (rnger *rnger) voteForNonce(nonce Nonce) {
+func (rnger *rnger) vote(nonce Nonce) {
 	// Prevent broadcasting a vote more than once
 	if rnger.hasVoted[nonce] {
 		return
@@ -407,6 +408,7 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 		}
 		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
+	log.Printf("[debug] player %v building = (%v) %v", rnger.addr, len(players), players)
 
 	log.Printf("[debug] player %v: global random number", rnger.addr)
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
