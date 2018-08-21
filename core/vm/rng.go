@@ -1,7 +1,9 @@
 package vm
 
 import (
+	"errors"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/republicprotocol/shamir-go"
@@ -163,7 +165,7 @@ type rnger struct {
 	outputBuffer []RngOutputMessage
 
 	localRnShares map[Nonce]LocalRnSharesTable
-	votes         map[Nonce]LocalRnSharesTable
+	votes         map[Nonce]VoteTable
 }
 
 // NewRnger returns an Rnger that is identified as the i-th player in a network
@@ -273,15 +275,38 @@ func (rnger *rnger) handleLocalRnShare(message LocalRnShare) {
 	rnger.localRnShares[message.Nonce].Table[message.From] = message
 
 	// Once we have acquired a LocalRnShare from each player in the network we
-	// can add them to produce our GlobalRnShare
+	// can produce a VoteToCommit
 	if int64(len(rnger.localRnShares[message.Nonce].Table)) == rnger.n {
+		// FIXME: Check for double voting.
 		rnger.voteForNonce(message.Nonce)
-
 	}
 }
 
 func (rnger *rnger) handleVoteToCommit(message VoteToCommit) {
-	panic("unimplemented")
+	if message.To != rnger.addr {
+		// This message is not meant for us
+		return
+	}
+
+	sort.Slice(message.Players, func(i, j int) bool {
+		return message.Players[i] < message.Players[j]
+	})
+
+	// Initialise the map for this nonce if it does not already exist
+	if _, ok := rnger.votes[message.Nonce]; !ok {
+		rnger.votes[message.Nonce] = VoteTable{
+			StartedAt: time.Now(),
+			Table:     map[Address]VoteToCommit{},
+		}
+	}
+	rnger.votes[message.Nonce].Table[message.From] = message
+
+	// Once we have acquired a VoteToCommit from each player in the network we
+	// can produce a GlobalRnShare
+	if int64(len(rnger.votes[message.Nonce].Table)) == rnger.n {
+		// FIXME: Check for double building.
+		rnger.buildGlobalRnShare(message.Nonce)
+	}
 }
 
 func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
@@ -291,15 +316,14 @@ func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
 			if int64(len(rnger.localRnShares[nonce].Table)) >= rnger.k {
 				rnger.voteForNonce(nonce)
 			}
-			delete(rnger.localRnShares, nonce)
 		}
 	}
 }
 
 func (rnger *rnger) voteForNonce(nonce Nonce) {
+	// FIXME: Check for double voting.
+
 	if _, ok := rnger.localRnShares[nonce]; !ok {
-		// We have already voted, or the deadline was exceeded before enough
-		// shares were received to vote
 		return
 	}
 
@@ -315,9 +339,28 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 		vote.To = player
 		rnger.outputBuffer = append(rnger.outputBuffer, vote)
 	}
+
+	vote.To = rnger.addr
+	rnger.handleVoteToCommit(vote)
 }
 
 func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
+	// FIXME: Check for double building.
+
+	votes := make([]VoteToCommit, rnger.n)
+	for _, vote := range rnger.votes[nonce].Table {
+		votes = append(votes, vote)
+	}
+
+	players, err := PickPlayers(votes, rnger.k)
+	if err != nil {
+		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
+			Nonce: nonce,
+			error: err,
+		})
+		return
+	}
+
 	globalRnShare := GlobalRnShare{
 		Nonce: nonce,
 		Share: shamir.Share{
@@ -325,9 +368,113 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 			Value: 0,
 		},
 	}
-	for _, localRngShare := range rnger.localRnShares[nonce].Table {
-		globalRnShare.Share = globalRnShare.Share.Add(&localRngShare.Share)
+
+	for _, player := range players {
+		localRnShare := rnger.localRnShares[nonce].Table[player]
+		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
-	delete(rnger.localRnShares, nonce)
+}
+
+func PickPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
+	playerList, err := potentialPlayers(votes, k)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check all subsets of size at least k for one that is in at least k votes
+	max := len(playerList)
+	currentPlayerList := make([]Address, 0, max)
+	mask := 1<<uint(max) - 1
+	for ; mask >= 1<<uint(k)-1; mask-- {
+		if int64(bitCount(mask)) < k {
+			continue
+		}
+
+		// Extract the subset based on the bit mask
+		currentPlayerList = currentPlayerList[0:0]
+		for i, m := 0, mask; m > 0; i, m = i+1, m/2 {
+			if m%2 == 1 {
+				currentPlayerList = append(currentPlayerList, playerList[max-i-1])
+			}
+		}
+
+		subsetHits := int64(0)
+		for _, vote := range votes {
+			if containsAddressSubset(currentPlayerList, vote.Players) {
+				subsetHits++
+			}
+		}
+
+		if subsetHits >= k {
+			return currentPlayerList, nil
+		}
+	}
+
+	return nil, errors.New("insufficient players to form a majority")
+}
+
+func potentialPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
+	playerCounts := map[Address]int64{}
+
+	// Count the number of times a player is in a vote
+	for _, vote := range votes {
+		for _, addr := range vote.Players {
+			playerCounts[addr]++
+		}
+	}
+
+	// Remove players that are not in enough votes
+	for key, value := range playerCounts {
+		if value < k {
+			delete(playerCounts, key)
+		}
+	}
+
+	max := len(playerCounts)
+	if int64(max) < k {
+		// Not enough players to proceed
+		return nil, errors.New("insufficient players to form a majority")
+	}
+
+	// Extract the potential players from the map
+	playerList := make([]Address, 0, max)
+	for addr := range playerCounts {
+		playerList = append(playerList, addr)
+	}
+
+	// Sort the list so that picking is deterministic
+	sort.Slice(playerList, func(i, j int) bool {
+		return playerList[i] < playerList[j]
+	})
+
+	return playerList, nil
+}
+
+func bitCount(n int) (count int) {
+	for n > 0 {
+		if n%2 == 1 {
+			count++
+		}
+		n /= 2
+	}
+	return
+}
+
+func addrInSlice(addr Address, s []Address) bool {
+	for _, elem := range s {
+		if addr == elem {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAddressSubset(subset, set []Address) bool {
+	for _, addr := range subset {
+		if !addrInSlice(addr, set) {
+			return false
+		}
+	}
+	return true
 }
