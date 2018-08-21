@@ -26,7 +26,7 @@ var _ = Describe("Random number generators", func() {
 		inputs := make([]chan RngInputMessage, n)
 		outputs := make([]chan RngOutputMessage, n)
 		for i := int64(0); i < n; i++ {
-			rngers[i] = NewRnger(time.Second, Address(i), n, k, bufferCap)
+			rngers[i] = NewRnger(100*time.Millisecond, Address(i), n, k, bufferCap)
 			inputs[i] = make(chan RngInputMessage, bufferCap)
 			outputs[i] = make(chan RngOutputMessage, bufferCap)
 		}
@@ -100,6 +100,20 @@ var _ = Describe("Random number generators", func() {
 		GenerateRnErrMessages map[Address]([]GenerateRnErr)
 	}
 
+	routeMessage := func(done <-chan (struct{}), inputs chan RngInputMessage, message RngInputMessage, failureRate int) {
+		if mathRand.Intn(100) < failureRate {
+			// Simluate an unstable network connection and randomly drop
+			// messages
+			return
+		}
+		// Route LocalRnShare messages to their respective player
+		select {
+		case <-done:
+			return
+		case inputs <- message:
+		}
+	}
+
 	routeMessages := func(done <-chan (struct{}), inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage), messagesPerPlayer int, failureRate int) routingResults {
 		// Initialise results
 		resultsMu := new(sync.Mutex)
@@ -132,11 +146,6 @@ var _ = Describe("Random number generators", func() {
 						return
 					}
 				}
-				if mathRand.Intn(100) < failureRate {
-					// Simluate an unstable network connection and randomly drop
-					// messages
-					continue
-				}
 
 				func() {
 					resultsMu.Lock()
@@ -144,29 +153,17 @@ var _ = Describe("Random number generators", func() {
 
 					switch message := message.(type) {
 					case LocalRnShare:
-						// Route LocalRnShare messages to their respective player
-						select {
-						case <-done:
-							return
-						case inputs[message.To] <- message:
-							results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
-						}
+						results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
+						routeMessage(done, inputs[message.To], message, failureRate)
 
 					case VoteToCommit:
-						// Route VoteToCommit messages to their respective player
-						select {
-						case <-done:
-							return
-						case inputs[message.To] <- message:
-							results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
-						}
+						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
+						routeMessage(done, inputs[message.To], message, failureRate)
 
 					case GlobalRnShare:
-						// GlobalRnShare messages do not need to be routed
 						results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
 
 					case GenerateRnErr:
-						// GenerateRnErr messages do not need to be routed
 						results.GenerateRnErrMessages[addr] = append(results.GenerateRnErrMessages[addr], message)
 					}
 				}()
@@ -213,24 +210,118 @@ var _ = Describe("Random number generators", func() {
 		})
 	})
 
-	Context("when running the secure random number generation algorithm", func() {
+	Context("when running the secure random number generation algorithm in a fully connected network", func() {
+
+		table := []struct {
+			n, k      int64
+			bufferCap int
+		}{
+			{3, 2, 0}, {3, 2, 1}, {3, 2, 2}, {3, 2, 4},
+			{6, 4, 0}, {6, 4, 1}, {6, 4, 2}, {6, 4, 4},
+			{12, 8, 0}, {12, 8, 1}, {12, 8, 2}, {12, 8, 4},
+			{24, 16, 0}, {24, 16, 1}, {24, 16, 2}, {24, 16, 4},
+		}
+
+		for _, entry := range table {
+			entry := entry
+
+			Context(fmt.Sprintf("when n = %v and k = %v and each player has a buffer capacity of %v", entry.n, entry.k, entry.bufferCap), func() {
+				It("should produce consistent global random number shares", func(doneT Done) {
+					defer close(doneT)
+
+					mathRand.Seed(time.Now().UnixNano())
+					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.bufferCap)
+
+					// Nonce that will be used to identify the secure random
+					// number
+					nonce := Nonce{}
+					n, err := rand.Read(nonce[:])
+					Expect(n).To(Equal(len(nonce)))
+					Expect(err).To(BeNil())
+
+					done := make(chan (struct{}))
+					co.ParBegin(
+						func() {
+							// Run the players until the done channel is closed
+							runPlayers(done, rngers, inputs, outputs)
+						},
+						func() {
+							// Run a globally timer for all players
+							runTicker(done, inputs, 100*time.Millisecond)
+						},
+						func() {
+							// Instruct all players to generate a random number
+							genRn(done, inputs, nonce)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							// Route messages between players until the expected
+							// number of messages has been routed; n-1
+							// LocalRnShare messages, n-1 VoteToCommit messages,
+							// and n GlobalRnShare (of GenerateRnErr) messages
+							messagesPerPlayerPerBroadcast := int(entry.n - 1)
+							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
+							failureRate := 0
+							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
+
+							globalRnShares := make(shamir.Shares, 0, len(rngers))
+							generateRnErrs := make([]GenerateRnErr, 0, len(rngers))
+							for i := range rngers {
+								addr := Address(i)
+
+								// Expect the correct number of messages
+								Expect(results.LocalRnShareMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
+								Expect(results.VoteMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
+								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(1))
+								Expect(results.GenerateRnErrMessages[addr]).To(HaveLen(0))
+
+								// Expect the correct form of messages
+								for _, message := range results.LocalRnShareMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
+									Expect(message.From).To(Equal(addr))
+								}
+								for _, message := range results.VoteMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
+									Expect(message.From).To(Equal(addr))
+									Expect(message.Players).To(HaveLen(int(entry.n)))
+								}
+								for _, message := range results.VoteMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
+								}
+								if len(results.GlobalRnShareMessages[addr]) > 0 {
+									globalRnShares = append(globalRnShares, results.GlobalRnShareMessages[addr][0].Share)
+								}
+								if len(results.GenerateRnErrMessages[addr]) > 0 {
+									generateRnErrs = append(generateRnErrs, results.GenerateRnErrMessages[addr][0])
+								}
+							}
+							Expect(globalRnShares).To(HaveLen(int(entry.n)))
+							Expect(generateRnErrs).To(HaveLen(0))
+
+							// Reconstruct the secret using different subsets
+							// of shares and expect that all reconstructed
+							// secrets are equal
+							err := verifyShares(globalRnShares, entry.n, entry.k)
+							Expect(err).To(BeNil())
+						})
+				}, 30 /* 4 second timeout */)
+			})
+		}
+	})
+
+	Context("when running the secure random number generation algorithm in a partially connected network", func() {
 
 		table := []struct {
 			n, k                   int64
 			bufferCap, failureRate int
 		}{
-			// Failure rate = 0%
-			{3, 2, 0, 0}, {3, 2, 1, 0}, {3, 2, 2, 0}, {3, 2, 4, 0},
-			{6, 4, 0, 0}, {6, 4, 1, 0}, {6, 4, 2, 0}, {6, 4, 4, 0},
-			{12, 8, 0, 0}, {12, 8, 1, 0}, {12, 8, 2, 0}, {12, 8, 4, 0},
-			{24, 16, 0, 0}, {24, 16, 1, 0}, {24, 16, 2, 0}, {24, 16, 4, 0},
-			// {48, 32, 0, 0}, {48, 32, 1, 0}, {48, 32, 2, 0}, {48, 32, 4, 0},
-
 			// Failure rate = 10%
 			{3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
-			{6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
-			{12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
-			{24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
+			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
 			// {48, 32, 0, 10}, {48, 32, 1, 10}, {48, 32, 2, 10}, {48, 32, 4, 10},
 
 			// // Failure rate = 20%
@@ -255,6 +346,7 @@ var _ = Describe("Random number generators", func() {
 				It("should produce consistent global random number shares", func(doneT Done) {
 					defer close(doneT)
 
+					mathRand.Seed(time.Now().UnixNano())
 					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
@@ -272,7 +364,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, time.Millisecond)
+							runTicker(done, inputs, 100*time.Millisecond)
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -284,14 +376,15 @@ var _ = Describe("Random number generators", func() {
 
 							// Route messages between players until the expected
 							// number of messages has been routed; n-1
-							// LocalRnShare messages, n-1 VoteToCommite
-							// messages, and n GlobalRnShare messages
+							// LocalRnShare messages, n-1 VoteToCommit messages,
+							// and n GlobalRnShare (of GenerateRnErr) messages
 							messagesPerPlayerPerBroadcast := int(entry.n - 1)
 							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
 							failureRate := entry.failureRate
 							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
 
-							globalRnShares := make(shamir.Shares, len(rngers))
+							globalRnShares := make(shamir.Shares, 0, len(rngers))
+							generateRnErrs := make([]GenerateRnErr, 0, len(rngers))
 							for i := range rngers {
 								addr := Address(i)
 
@@ -300,8 +393,8 @@ var _ = Describe("Random number generators", func() {
 								// Expect the correct number of messages
 								Expect(len(results.LocalRnShareMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
 								Expect(len(results.VoteMessages[addr])).To(BeNumerically(">", minMessagesPerBroadcast))
-								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(1))
-								Expect(results.GenerateRnErrMessages[addr]).To(HaveLen(0))
+								Expect(len(results.GlobalRnShareMessages[addr])).To(BeNumerically("<=", 1))
+								Expect(len(results.GenerateRnErrMessages[addr])).To(BeNumerically("<=", 1))
 
 								// Expect the correct form of messages
 								for _, message := range results.LocalRnShareMessages[addr] {
@@ -311,14 +404,19 @@ var _ = Describe("Random number generators", func() {
 								for _, message := range results.VoteMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
 									Expect(message.From).To(Equal(addr))
-									Expect(len(message.Players)).To(BeNumerically(">=", int(entry.k)))
 								}
 								for _, message := range results.VoteMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
 								}
-
-								globalRnShares[i] = results.GlobalRnShareMessages[addr][0].Share
+								if len(results.GlobalRnShareMessages[addr]) > 0 {
+									globalRnShares = append(globalRnShares, results.GlobalRnShareMessages[addr][0].Share)
+								}
+								if len(results.GenerateRnErrMessages[addr]) > 0 {
+									generateRnErrs = append(generateRnErrs, results.GenerateRnErrMessages[addr][0])
+								}
 							}
+							Expect(len(globalRnShares)).To(BeNumerically(">=", entry.k))
+							Expect(len(generateRnErrs)).To(BeNumerically("<", entry.k))
 
 							// Reconstruct the secret using different subsets
 							// of shares and expect that all reconstructed

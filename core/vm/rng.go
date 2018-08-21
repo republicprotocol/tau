@@ -2,6 +2,8 @@ package vm
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"time"
@@ -221,14 +223,16 @@ func (rnger *rnger) Run(done <-chan (struct{}), input <-chan RngInputMessage, ou
 
 func (rnger *rnger) handleInputMessage(message RngInputMessage) {
 	switch message := message.(type) {
-
 	case GenerateRn:
+		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleGenerateRn(message)
 
 	case LocalRnShare:
+		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleLocalRnShare(message)
 
 	case VoteToCommit:
+		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleVoteToCommit(message)
 
 	case CheckDeadline:
@@ -316,21 +320,17 @@ func (rnger *rnger) handleVoteToCommit(message VoteToCommit) {
 }
 
 func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
-	// now := time.Now()
-	// for nonce := range rnger.localRnShares {
-	// 	if rnger.localRnShares[nonce].StartedAt.Add(rnger.timeout).Before(now) {
-	// 		if int64(len(rnger.localRnShares[nonce].Table)) >= rnger.k {
-	// 			rnger.voteForNonce(nonce)
-	// 		}
-	// 	}
-	// }
-	// for nonce := range rnger.votes {
-	// 	if rnger.votes[nonce].StartedAt.Add(rnger.timeout).Before(now) {
-	// 		if int64(len(rnger.votes[nonce].Table)) >= rnger.k {
-	// 			rnger.buildGlobalRnShare(nonce)
-	// 		}
-	// 	}
-	// }
+	now := time.Now()
+	for nonce := range rnger.localRnShares {
+		if rnger.localRnShares[nonce].StartedAt.Add(rnger.timeout).Before(now) {
+			rnger.voteForNonce(nonce)
+		}
+	}
+	for nonce := range rnger.votes {
+		if rnger.votes[nonce].StartedAt.Add(rnger.timeout).Before(now) {
+			rnger.buildGlobalRnShare(nonce)
+		}
+	}
 }
 
 func (rnger *rnger) voteForNonce(nonce Nonce) {
@@ -348,11 +348,12 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 	for addr := range rnger.localRnShares[nonce].Table {
 		vote.Players = append(vote.Players, addr)
 	}
-	for _, player := range vote.Players {
-		if player == rnger.addr {
+	log.Printf("[debug] player %v broadcasting vote = %v", rnger.addr, vote.Players)
+	for j := int64(0); j < rnger.n; j++ {
+		if Address(j) == rnger.addr {
 			continue
 		}
-		vote.To = player
+		vote.To = Address(j)
 		rnger.outputBuffer = append(rnger.outputBuffer, vote)
 	}
 
@@ -367,18 +368,31 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	}
 	rnger.hasBuiltGlobalRnShare[nonce] = true
 
-	votes := make([]VoteToCommit, rnger.n)
+	votes := make([]VoteToCommit, 0, rnger.n)
 	for _, vote := range rnger.votes[nonce].Table {
 		votes = append(votes, vote)
 	}
 
 	players, err := PickPlayers(votes, rnger.k)
 	if err != nil {
+		log.Printf("[debug] player %v produced an error", rnger.addr)
 		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
 			Nonce: nonce,
 			error: err,
 		})
 		return
+	}
+	log.Printf("[debug] player %v has selected players = %v", rnger.addr, players)
+
+	// Check that we have all shares
+	for _, player := range players {
+		if _, ok := rnger.localRnShares[nonce].Table[player]; !ok {
+			log.Printf("[debug] player %v produced an error", rnger.addr)
+			rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
+				Nonce: nonce,
+				error: errors.New("not invited to the party"),
+			})
+		}
 	}
 
 	globalRnShare := GlobalRnShare{
@@ -388,11 +402,12 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 			Value: 0,
 		},
 	}
-
 	for _, player := range players {
 		localRnShare := rnger.localRnShares[nonce].Table[player]
 		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
+
+	log.Printf("[debug] player %v produced global random number", rnger.addr)
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
 
@@ -403,14 +418,19 @@ func PickPlayers(votes []VoteToCommit, k int64) ([]Address, error) {
 	}
 
 	// Convert lists of players into constant-time lookup sets
+	rngerAddr := Address(696969)
+	voteSetsStr := ""
 	voteSets := make([]map[Address](struct{}), 0, len(votes))
 	for _, vote := range votes {
+		rngerAddr = vote.To
 		set := map[Address](struct{}){}
 		for _, addr := range vote.Players {
 			set[addr] = struct{}{}
 		}
 		voteSets = append(voteSets, set)
+		voteSetsStr += fmt.Sprintf("\n\t%v", vote.Players)
 	}
+	log.Printf("[debug] player %v building global random number share =%v", rngerAddr, voteSetsStr)
 
 	// Check all subsets of size at least k for one that is in at least k votes
 	max := len(playerList)
