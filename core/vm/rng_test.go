@@ -2,7 +2,9 @@ package vm_test
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
+	mathRand "math/rand"
 	"time"
 
 	"github.com/republicprotocol/co-go"
@@ -14,6 +16,152 @@ import (
 )
 
 var _ = Describe("Random number generators", func() {
+
+	// initPlayers for a secure multi-party computation network. These players
+	// will communicate to run the secure random number generation algorithm.
+	initPlayers := func(n, k int64, bufferCap int) ([]Rnger, [](chan RngInputMessage), [](chan RngOutputMessage)) {
+		// Initialis the players
+		rngers := make([]Rnger, n)
+		inputs := make([]chan RngInputMessage, n)
+		outputs := make([]chan RngOutputMessage, n)
+		for i := int64(0); i < n; i++ {
+			rngers[i] = NewRnger(time.Second, Address(i), n, k, bufferCap)
+			inputs[i] = make(chan RngInputMessage, bufferCap)
+			outputs[i] = make(chan RngOutputMessage, bufferCap)
+		}
+		return rngers, inputs, outputs
+	}
+
+	// runPlayers unless the done channel is closed. The number of players,
+	// input channels, and output channels must match. The Address of a player
+	// must match the position of their channels.
+	runPlayers := func(done <-chan (struct{}), rngers []Rnger, inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage)) {
+		co.ParForAll(rngers, func(i int) {
+			rngers[i].Run(done, inputs[i], outputs[i])
+		})
+	}
+
+	// runTicker will send a CheckDeadline message, once per tick duration, to
+	// all input channels. The ticker will stop after the done channel is
+	// closed.
+	runTicker := func(done <-chan (struct{}), inputs [](chan RngInputMessage), duration time.Duration) {
+		ticker := time.NewTicker(duration)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				now := time.Now()
+				co.ParForAll(inputs, func(i int) {
+					inputs[i] <- CheckDeadline{Time: now}
+				})
+			}
+		}
+	}
+
+	// genRn will send a GenerateRn message to all input channels. This will
+	// initiate the generation of a secure random number for all players
+	// associated with one of the input channels.
+	genRn := func(done <-chan (struct{}), inputs [](chan RngInputMessage), nonce Nonce) {
+		co.ParForAll(inputs, func(i int) {
+			select {
+			case <-done:
+				return
+			case inputs[i] <- GenerateRn{Nonce: nonce}:
+			}
+		})
+	}
+
+	// verifyShares reconstruct to a consistent global random number. Different
+	// k sized subsets of shares are used to reconstruct a secret and an error
+	// is returned if the secrets are not equal.
+	verifyShares := func(shares shamir.Shares, n, k int64) error {
+		secret := shamir.Join(shares)
+		for i := int64(0); i < n-k; i++ {
+			kSecret := shamir.Join(shares[i : i+k])
+			if secret != kSecret {
+				return errors.New("malformed secret sharing")
+			}
+		}
+		return nil
+	}
+
+	// routingResults from routing messages between players.
+	type routingResults struct {
+		LocalRnShareMessages  map[Address]([]LocalRnShare)
+		VoteMessages          map[Address]([]VoteToCommit)
+		GlobalRnShareMessages map[Address]([]GlobalRnShare)
+		GenerateRnErrMessages map[Address]([]GenerateRnErr)
+	}
+
+	routeMessages := func(done <-chan (struct{}), inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage), messagesPerPlayer int, failureRate int) routingResults {
+		// Initialise results
+		results := routingResults{
+			LocalRnShareMessages:  map[Address]([]LocalRnShare){},
+			VoteMessages:          map[Address]([]VoteToCommit){},
+			GlobalRnShareMessages: map[Address]([]GlobalRnShare){},
+			GenerateRnErrMessages: map[Address]([]GenerateRnErr){},
+		}
+		co.ParForAll(outputs, func(i int) {
+			defer GinkgoRecover()
+
+			// Initialise results for each specific player
+			addr := Address(i)
+			results.LocalRnShareMessages[addr] = make([]LocalRnShare, 0)
+			results.VoteMessages[addr] = make([]VoteToCommit, 0)
+			results.GlobalRnShareMessages[addr] = make([]GlobalRnShare, 0)
+			results.GenerateRnErrMessages[addr] = make([]GenerateRnErr, 0)
+
+			// Expect to route a specific number of messages per player
+			var message RngOutputMessage
+			var ok bool
+			for n := 0; n < messagesPerPlayer || messagesPerPlayer <= 0; n++ {
+				select {
+				case <-done:
+					return
+				case message, ok = <-outputs[i]:
+					if !ok {
+						return
+					}
+				}
+				if mathRand.Intn(100) < failureRate {
+					// Simluate an unstable network connection and randomly drop
+					// messages
+					continue
+				}
+
+				switch message := message.(type) {
+				case LocalRnShare:
+					// Route LocalRnShare messages to their respective player
+					select {
+					case <-done:
+						return
+					case inputs[message.To] <- message:
+						results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
+					}
+
+				case VoteToCommit:
+					// Route VoteToCommit messages to their respective player
+					select {
+					case <-done:
+						return
+					case inputs[message.To] <- message:
+						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
+					}
+
+				case GlobalRnShare:
+					// GlobalRnShare messages do not need to be routed
+					results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
+
+				case GenerateRnErr:
+					// GenerateRnErr messages do not need to be routed
+					results.GenerateRnErrMessages[addr] = append(results.GenerateRnErrMessages[addr], message)
+				}
+			}
+		})
+		return results
+	}
 
 	Context("when closing the done channel", func() {
 		It("should clean up and shutdown", func(doneT Done) {
@@ -73,15 +221,7 @@ var _ = Describe("Random number generators", func() {
 				It("should produce consistent global random number shares", func(doneT Done) {
 					defer close(doneT)
 
-					// Initialis the players
-					rngers := make([]Rnger, entry.n)
-					inputs := make([]chan RngInputMessage, entry.n)
-					outputs := make([]chan RngOutputMessage, entry.n)
-					for i := int64(0); i < entry.n; i++ {
-						rngers[i] = NewRnger(time.Second, Address(i), entry.n, entry.k, entry.bufferCap)
-						inputs[i] = make(chan RngInputMessage, entry.bufferCap)
-						outputs[i] = make(chan RngOutputMessage, entry.bufferCap)
-					}
+					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -94,69 +234,63 @@ var _ = Describe("Random number generators", func() {
 					co.ParBegin(
 						func() {
 							// Run the players until the done channel is closed
-							co.ParForAll(rngers, func(i int) {
-								rngers[i].Run(done, inputs[i], outputs[i])
-							})
+							runPlayers(done, rngers, inputs, outputs)
+						},
+						func() {
+							// Run a globally timer for all players
+							runTicker(done, inputs, time.Millisecond)
 						},
 						func() {
 							// Instruct all players to generate a random number
-							co.ParForAll(inputs, func(i int) {
-								inputs[i] <- GenerateRn{Nonce: nonce}
-							})
+							genRn(done, inputs, nonce)
 						},
 						func() {
 							defer close(done)
 
-							globalRnShares := make(shamir.Shares, entry.n)
-							co.ParForAll(outputs, func(i int) {
-								defer GinkgoRecover()
+							// Route messages between players until the expected
+							// number of messages has been routed; n-1
+							// LocalRnShare messages, n-1 VoteToCommite
+							// messages, and n GlobalRnShare messages
+							messagesPerPlayerPerBroadcast := int(entry.n - 1)
+							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
+							failureRate := 0
+							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
 
-								numLocalRnShares := int64(0)
-								numGlobalRnShares := int64(0)
+							globalRnShares := make(shamir.Shares, len(rngers))
+							for i := range rngers {
+								addr := Address(i)
 
-								// Expect exactly n messages from each player;
-								// a LocalRnShare for each other player and a
-								// GlobalRnShare of the secure random number
-								// that is generated
-								for n := int64(0); n < entry.n; n++ {
-									message, ok := <-outputs[i]
-									Expect(ok).To(BeTrue())
+								// Expect the correct number of messages
+								Expect(results.LocalRnShareMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
+								Expect(results.VoteMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
+								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(1))
+								Expect(results.GenerateRnErrMessages[addr]).To(HaveLen(0))
 
-									switch message := message.(type) {
-									case LocalRnShare:
-										// Route the LocalRnShare to the
-										// appropriate player
-										Expect(message.Nonce).To(Equal(nonce))
-										Expect(message.From).To(Equal(uint64(i)))
-										inputs[message.To] <- message
-										numLocalRnShares++
-
-									case GlobalRnShare:
-										Expect(message.Nonce).To(Equal(nonce))
-										globalRnShares[i] = message.Share
-										numGlobalRnShares++
-									}
+								// Expect the correct form of messages
+								for _, message := range results.LocalRnShareMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
+									Expect(message.From).To(Equal(addr))
+								}
+								for _, message := range results.VoteMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
+									Expect(message.From).To(Equal(addr))
+									Expect(message.Players).To(HaveLen(len(rngers)))
+								}
+								for _, message := range results.VoteMessages[addr] {
+									Expect(message.Nonce).To(Equal(nonce))
 								}
 
-								// Expect a LocalRnShare from each player for
-								// every other player
-								Expect(numLocalRnShares).To(Equal(entry.n - 1))
-								Expect(numGlobalRnShares).To(Equal(int64(1)))
-							})
+								globalRnShares[i] = results.GlobalRnShareMessages[addr][0].Share
+							}
 
 							// Reconstruct the secret using different subsets
 							// of shares and expect that all reconstructed
 							// secrets are equal
-							secret := shamir.Join(globalRnShares)
-							for i := int64(0); i < entry.n-entry.k; i++ {
-								kSecret := shamir.Join(globalRnShares[i : i+entry.k])
-								Expect(secret).To(Equal(kSecret))
-							}
+							err := verifyShares(globalRnShares, entry.n, entry.k)
+							Expect(err).To(BeNil())
 						})
 				})
 			})
 		}
-
 	})
-
 })
