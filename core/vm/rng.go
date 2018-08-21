@@ -435,31 +435,61 @@ func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 	// Check all subsets of size at least k for one that is in at least k votes
 	max := len(playerList)
 	currentPlayerList := make([]Address, 0, max)
-	mask := 1<<uint(max) - 1
-	for ; mask >= 1<<uint(k)-1; mask-- {
-		if int64(bitCount(mask)) < k {
-			continue
-		}
 
-		// Extract the subset based on the bit mask
-		currentPlayerList = currentPlayerList[0:0]
-		for i, m := 0, mask; m > 0; i, m = i+1, m/2 {
-			if m%2 == 1 {
-				currentPlayerList = append(currentPlayerList, playerList[max-i-1])
+	for i := max; int64(i) >= k; i-- {
+		combin := NewCombinator(max, i)
+		for {
+			// Extract the subset based on the bit mask
+			currentPlayerList = currentPlayerList[0:0]
+			for i, m := range combin.mapping {
+				if m {
+					currentPlayerList = append(currentPlayerList, playerList[max-i-1])
+				}
+			}
+
+			subsetHits := int64(0)
+			for _, voteSet := range voteSets {
+				if containsAddressSubset(currentPlayerList, voteSet) {
+					subsetHits++
+				}
+			}
+
+			if subsetHits >= k {
+				return currentPlayerList, nil
+			}
+
+			if !combin.next() {
+				break
 			}
 		}
 
-		subsetHits := int64(0)
-		for _, voteSet := range voteSets {
-			if containsAddressSubset(currentPlayerList, voteSet) {
-				subsetHits++
-			}
-		}
-
-		if subsetHits >= k {
-			return currentPlayerList, nil
-		}
 	}
+
+	// mask := 1<<uint(max) - 1
+	// for ; mask >= 1<<uint(k)-1; mask-- {
+	// 	if int64(bitCount(mask)) < k {
+	// 		continue
+	// 	}
+
+	// 	// Extract the subset based on the bit mask
+	// 	currentPlayerList = currentPlayerList[0:0]
+	// 	for i, m := 0, mask; m > 0; i, m = i+1, m/2 {
+	// 		if m%2 == 1 {
+	// 			currentPlayerList = append(currentPlayerList, playerList[max-i-1])
+	// 		}
+	// 	}
+
+	// 	subsetHits := int64(0)
+	// 	for _, voteSet := range voteSets {
+	// 		if containsAddressSubset(currentPlayerList, voteSet) {
+	// 			subsetHits++
+	// 		}
+	// 	}
+
+	// 	if subsetHits >= k {
+	// 		return currentPlayerList, nil
+	// 	}
+	// }
 
 	return nil, errors.New("insufficient players to form a majority")
 }
@@ -518,4 +548,46 @@ func containsAddressSubset(subset []Address, set map[Address](struct{})) bool {
 		}
 	}
 	return true
+}
+
+type Combinator struct {
+	mapping []bool
+	n       int
+	x       int
+	y       int
+}
+
+func NewCombinator(n, k int) Combinator {
+	s, t := n-k, k
+	mapping := make([]bool, s+t)
+	for i := 0; i < t; i++ {
+		mapping[i] = true
+	}
+	return Combinator{mapping, s + t, t, t}
+}
+
+func (c *Combinator) next() bool {
+	if c.x >= c.n {
+		return false
+	}
+
+	c.mapping[c.x-1], c.mapping[c.y-1] = false, true
+	c.x++
+	c.y++
+
+	if !c.mapping[c.x-1] {
+		c.mapping[c.x-1], c.mapping[0] = true, false
+
+		if c.y > 2 {
+			c.x = 2
+		}
+
+		c.y = 1
+	}
+
+	return true
+}
+
+func (c *Combinator) swap(i, j int) {
+	c.mapping[i], c.mapping[j] = c.mapping[j], c.mapping[i]
 }
