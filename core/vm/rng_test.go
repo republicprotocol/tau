@@ -55,7 +55,11 @@ var _ = Describe("Random number generators", func() {
 			case <-ticker.C:
 				now := time.Now()
 				co.ParForAll(inputs, func(i int) {
-					inputs[i] <- CheckDeadline{Time: now}
+					select {
+					case <-done:
+						return
+					case inputs[i] <- CheckDeadline{Time: now}:
+					}
 				})
 			}
 		}
@@ -119,7 +123,7 @@ var _ = Describe("Random number generators", func() {
 			// Expect to route a specific number of messages per player
 			var message RngOutputMessage
 			var ok bool
-			for n := 0; n < messagesPerPlayer || messagesPerPlayer <= 0; n++ {
+			for n := 0; n < messagesPerPlayer; n++ {
 				select {
 				case <-done:
 					return
@@ -220,13 +224,13 @@ var _ = Describe("Random number generators", func() {
 			{6, 4, 0, 0}, {6, 4, 1, 0}, {6, 4, 2, 0}, {6, 4, 4, 0},
 			{12, 8, 0, 0}, {12, 8, 1, 0}, {12, 8, 2, 0}, {12, 8, 4, 0},
 			{24, 16, 0, 0}, {24, 16, 1, 0}, {24, 16, 2, 0}, {24, 16, 4, 0},
-			{48, 32, 0, 0}, {48, 32, 1, 0}, {48, 32, 2, 0}, {48, 32, 4, 0},
+			// {48, 32, 0, 0}, {48, 32, 1, 0}, {48, 32, 2, 0}, {48, 32, 4, 0},
 
-			// // Failure rate = 10%
-			// {3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
-			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
-			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
-			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
+			// Failure rate = 10%
+			{3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
+			{6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			{12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			{24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
 			// {48, 32, 0, 10}, {48, 32, 1, 10}, {48, 32, 2, 10}, {48, 32, 4, 10},
 
 			// // Failure rate = 20%
