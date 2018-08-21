@@ -347,6 +347,20 @@ func (rnger *rnger) voteForNonce(nonce Nonce) {
 func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 	// FIXME: Check for double building.
 
+	votes := make([]VoteToCommit, rnger.n)
+	for _, vote := range rnger.votes[nonce].Table {
+		votes = append(votes, vote)
+	}
+
+	players, err := PickPlayers(votes, rnger.k)
+	if err != nil {
+		rnger.outputBuffer = append(rnger.outputBuffer, GenerateRnErr{
+			Nonce: nonce,
+			error: err,
+		})
+		return
+	}
+
 	globalRnShare := GlobalRnShare{
 		Nonce: nonce,
 		Share: shamir.Share{
@@ -354,8 +368,10 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 			Value: 0,
 		},
 	}
-	for _, localRngShare := range rnger.localRnShares[nonce].Table {
-		globalRnShare.Share = globalRnShare.Share.Add(&localRngShare.Share)
+
+	for _, player := range players {
+		localRnShare := rnger.localRnShares[nonce].Table[player]
+		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
