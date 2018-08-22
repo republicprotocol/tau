@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/republicprotocol/shamir-go"
@@ -270,6 +271,10 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 		}
 		if Address(j) == rnger.addr {
 			rnger.handleLocalRnShare(localRnShare)
+			// Time events from when we are ready
+			table := rnger.localRnShares[message.Nonce]
+			table.StartedAt = time.Now()
+			rnger.localRnShares[message.Nonce] = table
 			continue
 		}
 		rnger.outputBuffer = append(rnger.outputBuffer, localRnShare)
@@ -307,7 +312,7 @@ func (rnger *rnger) handleVote(message Vote) {
 	sort.Slice(message.Players, func(i, j int) bool {
 		return message.Players[i] < message.Players[j]
 	})
-	log.Printf("[debug] player %v received vote = (%v) %v", rnger.addr, len(message.Players), message.Players)
+	// log.Printf("[debug] player %v received vote = (%v) %v", rnger.addr, len(message.Players), message.Players)
 
 	// Initialise the map for this nonce if it does not already exist
 	if _, ok := rnger.votes[message.Nonce]; !ok {
@@ -333,7 +338,7 @@ func (rnger *rnger) handleCheckDeadline(message CheckDeadline) {
 		}
 	}
 	for nonce := range rnger.votes {
-		if rnger.votes[nonce].StartedAt.Add(rnger.timeout).Before(now) {
+		if rnger.votes[nonce].StartedAt.Add(rnger.timeout * 2).Before(now) {
 			rnger.buildGlobalRnShare(nonce)
 		}
 	}
@@ -349,7 +354,7 @@ func (rnger *rnger) vote(nonce Nonce) {
 	vote := Vote{
 		Nonce:   nonce,
 		From:    rnger.addr,
-		Players: make([]Address, 0, rnger.k),
+		Players: make([]Address, 0, rnger.n),
 	}
 	for addr := range rnger.localRnShares[nonce].Table {
 		vote.Players = append(vote.Players, addr)
@@ -364,6 +369,11 @@ func (rnger *rnger) vote(nonce Nonce) {
 
 	vote.To = rnger.addr
 	rnger.handleVote(vote)
+
+	// Time events from when we are ready
+	table := rnger.votes[nonce]
+	table.StartedAt = time.Now()
+	rnger.votes[nonce] = table
 }
 
 func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
@@ -408,11 +418,14 @@ func (rnger *rnger) buildGlobalRnShare(nonce Nonce) {
 		}
 		globalRnShare.Share = globalRnShare.Share.Add(&localRnShare.Share)
 	}
-	log.Printf("[debug] player %v building = (%v) %v", rnger.addr, len(players), players)
+	// log.Printf("[debug] player %v building = (%v) %v", rnger.addr, len(players), players)
 
 	log.Printf("[debug] player %v: global random number", rnger.addr)
 	rnger.outputBuffer = append(rnger.outputBuffer, globalRnShare)
 }
+
+// FIXME: Used only for debugging.
+var debugMu = new(sync.Mutex)
 
 // PickPlayers finds a subset of the players that are contained in all of the
 // votes. This subset of players will determine the shares that are added
@@ -425,14 +438,23 @@ func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 	}
 
 	// Convert lists of players into constant-time lookup sets
+	rngerAddr := Address(696969)
 	voteSets := make([]map[Address](struct{}), 0, len(votes))
 	for _, vote := range votes {
+		rngerAddr = vote.To
 		set := map[Address](struct{}){}
 		for _, addr := range vote.Players {
 			set[addr] = struct{}{}
 		}
 		voteSets = append(voteSets, set)
 	}
+
+	debugMu.Lock()
+	log.Printf("[debug] player %v has voting set =\n", rngerAddr)
+	for _, vote := range votes {
+		log.Printf("[debug]\t%v", vote.Players)
+	}
+	debugMu.Unlock()
 
 	// Check all subsets of size at least k for one that is in at least k votes
 	max := len(playerList)
@@ -474,7 +496,9 @@ func potentialPlayers(votes []Vote, k int64) ([]Address, error) {
 	playerCounts := map[Address]int64{}
 
 	// Count the number of times a player is in a vote
+	rngerAddr := Address(696969)
 	for _, vote := range votes {
+		rngerAddr = vote.To
 		for _, addr := range vote.Players {
 			playerCounts[addr]++
 		}
@@ -489,6 +513,14 @@ func potentialPlayers(votes []Vote, k int64) ([]Address, error) {
 
 	max := len(playerCounts)
 	if int64(max) < k {
+
+		debugMu.Lock()
+		log.Printf("[error] player %v has voting set =\n", rngerAddr)
+		for _, vote := range votes {
+			log.Printf("[error]\t%v", vote.Players)
+		}
+		debugMu.Unlock()
+
 		// Not enough players to proceed
 		return nil, errors.New("insufficient players to form a majority")
 	}

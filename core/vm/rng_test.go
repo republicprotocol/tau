@@ -160,7 +160,8 @@ var _ = Describe("Random number generators", func() {
 
 					case Vote:
 						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
-						routeMessage(done, inputs[message.To], message, failureRate)
+						// Voting is assumed to be fault-tolerant
+						routeMessage(done, inputs[message.To], message, 0)
 
 					case GlobalRnShare:
 						results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
@@ -320,36 +321,36 @@ var _ = Describe("Random number generators", func() {
 			bufferCap, failureRate int
 		}{
 			// Failure rate = 1%
-			// {3, 2, 0, 1}, {3, 2, 1, 1}, {3, 2, 2, 1}, {3, 2, 4, 1},
-			// {6, 4, 0, 1}, {6, 4, 1, 1}, {6, 4, 2, 1}, {6, 4, 4, 1},
-			{12, 8, 0, 1}, {12, 8, 1, 1}, {12, 8, 2, 1}, {12, 8, 4, 5},
-			// {24, 16, 0, 1}, {24, 16, 1, 1}, {24, 16, 2, 1}, {24, 16, 4, 1},
+			{3, 2, 0, 1}, {3, 2, 1, 1}, {3, 2, 2, 1}, {3, 2, 4, 1},
+			{6, 4, 0, 1}, {6, 4, 1, 1}, {6, 4, 2, 1}, {6, 4, 4, 1},
+			{12, 8, 0, 1}, {12, 8, 1, 1}, {12, 8, 2, 1}, {12, 8, 4, 1},
+			{24, 16, 0, 1}, {24, 16, 1, 1}, {24, 16, 2, 1}, {24, 16, 4, 1},
 
-			// // Failure rate = 5%
-			// {3, 2, 0, 5}, {3, 2, 1, 5}, {3, 2, 2, 5}, {3, 2, 4, 5},
-			// {6, 4, 0, 5}, {6, 4, 1, 5}, {6, 4, 2, 5}, {6, 4, 4, 5},
-			// {12, 8, 0, 5}, {12, 8, 1, 5}, {12, 8, 2, 5}, {12, 8, 4, 5},
-			// {24, 16, 0, 5}, {24, 16, 1, 5}, {24, 16, 2, 5}, {24, 16, 4, 5},
+			// Failure rate = 5%
+			{3, 2, 0, 5}, {3, 2, 1, 5}, {3, 2, 2, 5}, {3, 2, 4, 5},
+			{6, 4, 0, 5}, {6, 4, 1, 5}, {6, 4, 2, 5}, {6, 4, 4, 5},
+			{12, 8, 0, 5}, {12, 8, 1, 5}, {12, 8, 2, 5}, {12, 8, 4, 5},
+			{24, 16, 0, 5}, {24, 16, 1, 5}, {24, 16, 2, 5}, {24, 16, 4, 5},
 
 			// // Failure rate = 10%
-			// {3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
-			// {6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
-			// {12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
-			// {24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
+			{3, 2, 0, 10}, {3, 2, 1, 10}, {3, 2, 2, 10}, {3, 2, 4, 10},
+			{6, 4, 0, 10}, {6, 4, 1, 10}, {6, 4, 2, 10}, {6, 4, 4, 10},
+			{12, 8, 0, 10}, {12, 8, 1, 10}, {12, 8, 2, 10}, {12, 8, 4, 10},
+			{24, 16, 0, 10}, {24, 16, 1, 10}, {24, 16, 2, 10}, {24, 16, 4, 10},
 
 			// // Failure rate = 20%
-			// {3, 2, 0, 20}, {3, 2, 1, 20}, {3, 2, 2, 20}, {3, 2, 4, 20},
-			// {6, 4, 0, 20}, {6, 4, 1, 20}, {6, 4, 2, 20}, {6, 4, 4, 20},
-			// {12, 8, 0, 20}, {12, 8, 1, 20}, {12, 8, 2, 20}, {12, 8, 4, 20},
-			// {24, 16, 0, 20}, {24, 16, 1, 20}, {24, 16, 2, 20}, {24, 16, 4, 20},
-			// {48, 32, 0, 20}, {48, 32, 1, 20}, {48, 32, 2, 20}, {48, 32, 4, 20},
+			{3, 2, 0, 20}, {3, 2, 1, 20}, {3, 2, 2, 20}, {3, 2, 4, 20},
+			{6, 4, 0, 20}, {6, 4, 1, 20}, {6, 4, 2, 20}, {6, 4, 4, 20},
+			{12, 8, 0, 20}, {12, 8, 1, 20}, {12, 8, 2, 20}, {12, 8, 4, 20},
+			{24, 16, 0, 20}, {24, 16, 1, 20}, {24, 16, 2, 20}, {24, 16, 4, 20},
+			{48, 32, 0, 20}, {48, 32, 1, 20}, {48, 32, 2, 20}, {48, 32, 4, 20},
 
 			// // Failure rate = 30%
-			// {3, 2, 0, 30}, {3, 2, 1, 30}, {3, 2, 2, 30}, {3, 2, 4, 30},
-			// {6, 4, 0, 30}, {6, 4, 1, 30}, {6, 4, 2, 30}, {6, 4, 4, 30},
-			// {12, 8, 0, 30}, {12, 8, 1, 30}, {12, 8, 2, 30}, {12, 8, 4, 30},
-			// {24, 16, 0, 30}, {24, 16, 1, 30}, {24, 16, 2, 30}, {24, 16, 4, 30},
-			// {48, 32, 0, 30}, {48, 32, 1, 30}, {48, 32, 2, 30}, {48, 32, 4, 30},
+			{3, 2, 0, 30}, {3, 2, 1, 30}, {3, 2, 2, 30}, {3, 2, 4, 30},
+			{6, 4, 0, 30}, {6, 4, 1, 30}, {6, 4, 2, 30}, {6, 4, 4, 30},
+			{12, 8, 0, 30}, {12, 8, 1, 30}, {12, 8, 2, 30}, {12, 8, 4, 30},
+			{24, 16, 0, 30}, {24, 16, 1, 30}, {24, 16, 2, 30}, {24, 16, 4, 30},
+			{48, 32, 0, 30}, {48, 32, 1, 30}, {48, 32, 2, 30}, {48, 32, 4, 30},
 		}
 
 		for _, entry := range table {
@@ -360,7 +361,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(5*time.Second, entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(100*time.Millisecond*time.Duration(entry.n), entry.n, entry.k, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -377,7 +378,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Run a globally timer for all players
-							runTicker(done, inputs, 100*time.Millisecond)
+							runTicker(done, inputs, 10*time.Millisecond*time.Duration(entry.n))
 						},
 						func() {
 							// Instruct all players to generate a random number
@@ -431,7 +432,7 @@ var _ = Describe("Random number generators", func() {
 									generateRnErrs = append(generateRnErrs, results.GenerateRnErrMessages[addr][0])
 								}
 							}
-							Expect(len(generateRnErrs)).To(BeNumerically("<", entry.k))
+							Expect(len(generateRnErrs)).To(BeNumerically("<=", int(entry.n-entry.k)))
 
 							// Exactly one set of players should receive a
 							// sufficient vote
@@ -454,7 +455,7 @@ var _ = Describe("Random number generators", func() {
 							err := verifyShares(globalRnShares[sufficientKey], int64(len(globalRnShares[sufficientKey])), entry.k)
 							Expect(err).To(BeNil())
 						})
-				}, 60 /* 1 minute timeout */)
+				}, 120 /* 1 minute timeout */)
 			})
 		}
 	})
