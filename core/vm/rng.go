@@ -460,7 +460,7 @@ func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 	max := len(playerList)
 	currentPlayerList := make([]Address, 0, max)
 
-	for i := max; int64(i) >= k; i-- {
+	for i := max; int64(i) >= k/2; i-- {
 		combin := NewCombinator(max, i)
 		for {
 			// Extract the subset based on the bit mask
@@ -478,7 +478,7 @@ func PickPlayers(votes []Vote, k int64) ([]Address, error) {
 				}
 			}
 
-			if subsetHits >= k {
+			if subsetHits >= k/2 {
 				return currentPlayerList, nil
 			}
 
