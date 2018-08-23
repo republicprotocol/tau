@@ -14,22 +14,22 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vm"
+	. "github.com/republicprotocol/smpc-go/core/vm/rng"
 )
 
 var _ = Describe("Random number generators", func() {
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
-	initPlayers := func(timeout time.Duration, n, k int64, bufferCap int) ([]Rnger, [](chan RngInputMessage), [](chan RngOutputMessage)) {
+	initPlayers := func(timeout time.Duration, n, k, t uint, bufferCap int) ([]Rnger, [](chan InputMessage), [](chan OutputMessage)) {
 		// Initialis the players
 		rngers := make([]Rnger, n)
-		inputs := make([]chan RngInputMessage, n)
-		outputs := make([]chan RngOutputMessage, n)
-		for i := int64(0); i < n; i++ {
-			rngers[i] = NewRnger(timeout, Address(i), n, k, bufferCap)
-			inputs[i] = make(chan RngInputMessage, bufferCap)
-			outputs[i] = make(chan RngOutputMessage, bufferCap)
+		inputs := make([]chan InputMessage, n)
+		outputs := make([]chan OutputMessage, n)
+		for i := uint(0); i < n; i++ {
+			rngers[i] = NewRnger(timeout, Address(i), Address(0), n, k, t, bufferCap)
+			inputs[i] = make(chan InputMessage, bufferCap)
+			outputs[i] = make(chan OutputMessage, bufferCap)
 		}
 		return rngers, inputs, outputs
 	}
@@ -37,7 +37,7 @@ var _ = Describe("Random number generators", func() {
 	// runPlayers unless the done channel is closed. The number of players,
 	// input channels, and output channels must match. The Address of a player
 	// must match the position of their channels.
-	runPlayers := func(done <-chan (struct{}), rngers []Rnger, inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage)) {
+	runPlayers := func(done <-chan (struct{}), rngers []Rnger, inputs [](chan InputMessage), outputs [](chan OutputMessage)) {
 		co.ParForAll(rngers, func(i int) {
 			rngers[i].Run(done, inputs[i], outputs[i])
 		})
@@ -46,7 +46,7 @@ var _ = Describe("Random number generators", func() {
 	// runTicker will send a CheckDeadline message, once per tick duration, to
 	// all input channels. The ticker will stop after the done channel is
 	// closed.
-	runTicker := func(done <-chan (struct{}), inputs [](chan RngInputMessage), duration time.Duration) {
+	runTicker := func(done <-chan (struct{}), inputs [](chan InputMessage), duration time.Duration) {
 		ticker := time.NewTicker(duration)
 		defer ticker.Stop()
 		for {
@@ -69,7 +69,7 @@ var _ = Describe("Random number generators", func() {
 	// genRn will send a GenerateRn message to all input channels. This will
 	// initiate the generation of a secure random number for all players
 	// associated with one of the input channels.
-	genRn := func(done <-chan (struct{}), inputs [](chan RngInputMessage), nonce Nonce) {
+	genRn := func(done <-chan (struct{}), inputs [](chan InputMessage), nonce Nonce) {
 		co.ParForAll(inputs, func(i int) {
 			select {
 			case <-done:
@@ -95,15 +95,16 @@ var _ = Describe("Random number generators", func() {
 
 	// routingResults from routing messages between players.
 	type routingResults struct {
-		LocalRnShareMessages  map[Address]([]LocalRnShare)
-		VoteMessages          map[Address]([]Vote)
-		GlobalRnShareMessages map[Address]([]GlobalRnShare)
-		GenerateRnErrMessages map[Address]([]GenerateRnErr)
+		ProposeRnMessages            map[Address]([]ProposeRn)
+		LocalRnSharesMessages        map[Address]([]LocalRnShares)
+		ProposeGlobalRnShareMessages map[Address]([]ProposeGlobalRnShare)
+		GlobalRnShareMessages        map[Address]([]GlobalRnShare)
+		ErrMessages                  map[Address]([]Err)
 	}
 
-	routeMessage := func(done <-chan (struct{}), inputs chan RngInputMessage, message RngInputMessage, failureRate int) {
+	routeMessage := func(done <-chan (struct{}), input chan InputMessage, message InputMessage, failureRate int) {
 		if mathRand.Intn(100) < failureRate {
-			log.Printf("[debug] simulated message drop")
+			log.Printf("[debug] simulated network error")
 			// Simluate an unstable network connection and randomly drop
 			// messages
 			return
@@ -112,32 +113,34 @@ var _ = Describe("Random number generators", func() {
 		select {
 		case <-done:
 			return
-		case inputs <- message:
+		case input <- message:
 		}
 	}
 
-	routeMessages := func(done <-chan (struct{}), inputs [](chan RngInputMessage), outputs [](chan RngOutputMessage), messagesPerPlayer int, failureRate int) routingResults {
+	routeMessages := func(done <-chan (struct{}), inputs [](chan InputMessage), outputs [](chan OutputMessage), messagesPerPlayer int, failureRate int) routingResults {
 		// Initialise results
 		resultsMu := new(sync.Mutex)
 		results := routingResults{
-			LocalRnShareMessages:  map[Address]([]LocalRnShare){},
-			VoteMessages:          map[Address]([]Vote){},
-			GlobalRnShareMessages: map[Address]([]GlobalRnShare){},
-			GenerateRnErrMessages: map[Address]([]GenerateRnErr){},
+			ProposeRnMessages:            map[Address]([]ProposeRn){},
+			LocalRnSharesMessages:        map[Address]([]LocalRnShares){},
+			ProposeGlobalRnShareMessages: map[Address]([]ProposeGlobalRnShare){},
+			GlobalRnShareMessages:        map[Address]([]GlobalRnShare){},
+			ErrMessages:                  map[Address]([]Err){},
 		}
 		for i := range inputs {
 			addr := Address(i)
-			results.LocalRnShareMessages[addr] = make([]LocalRnShare, 0)
-			results.VoteMessages[addr] = make([]Vote, 0)
+			results.ProposeRnMessages[addr] = make([]ProposeRn, 0)
+			results.LocalRnSharesMessages[addr] = make([]LocalRnShares, 0)
+			results.ProposeGlobalRnShareMessages[addr] = make([]ProposeGlobalRnShare, 0)
 			results.GlobalRnShareMessages[addr] = make([]GlobalRnShare, 0)
-			results.GenerateRnErrMessages[addr] = make([]GenerateRnErr, 0)
+			results.ErrMessages[addr] = make([]Err, 0)
 		}
 
 		co.ParForAll(outputs, func(i int) {
 			addr := Address(i)
 
 			// Expect to route a specific number of messages per player
-			var message RngOutputMessage
+			var message OutputMessage
 			var ok bool
 			for n := 0; n < messagesPerPlayer; n++ {
 				select {
@@ -154,20 +157,23 @@ var _ = Describe("Random number generators", func() {
 					defer resultsMu.Unlock()
 
 					switch message := message.(type) {
-					case LocalRnShare:
-						results.LocalRnShareMessages[addr] = append(results.LocalRnShareMessages[addr], message)
+					case ProposeRn:
+						results.ProposeRnMessages[addr] = append(results.ProposeRnMessages[addr], message)
 						routeMessage(done, inputs[message.To], message, failureRate)
 
-					case Vote:
-						results.VoteMessages[addr] = append(results.VoteMessages[addr], message)
-						// Voting is assumed to be fault-tolerant
-						routeMessage(done, inputs[message.To], message, 0)
+					case LocalRnShares:
+						results.LocalRnSharesMessages[addr] = append(results.LocalRnSharesMessages[addr], message)
+						routeMessage(done, inputs[message.To], message, failureRate)
+
+					case ProposeGlobalRnShare:
+						results.ProposeGlobalRnShareMessages[addr] = append(results.ProposeGlobalRnShareMessages[addr], message)
+						routeMessage(done, inputs[message.To], message, failureRate)
 
 					case GlobalRnShare:
 						results.GlobalRnShareMessages[addr] = append(results.GlobalRnShareMessages[addr], message)
 
-					case GenerateRnErr:
-						results.GenerateRnErrMessages[addr] = append(results.GenerateRnErrMessages[addr], message)
+					case Err:
+						results.ErrMessages[addr] = append(results.ErrMessages[addr], message)
 					}
 				}()
 			}
@@ -179,9 +185,9 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 1, 1, 1)
-			input := make(chan RngInputMessage)
-			output := make(chan RngOutputMessage)
+			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, 1)
+			input := make(chan InputMessage)
+			output := make(chan OutputMessage)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
@@ -198,9 +204,9 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 1, 1, 1)
-			input := make(chan RngInputMessage)
-			output := make(chan RngOutputMessage)
+			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, 1)
+			input := make(chan InputMessage)
+			output := make(chan OutputMessage)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
@@ -216,7 +222,7 @@ var _ = Describe("Random number generators", func() {
 	Context("when running the secure random number generation algorithm in a fully connected network", func() {
 
 		table := []struct {
-			n, k      int64
+			n, k      uint
 			bufferCap int
 		}{
 			{3, 2, 0}, {3, 2, 1}, {3, 2, 2}, {3, 2, 4},
@@ -233,7 +239,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.k/2, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
