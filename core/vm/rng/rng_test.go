@@ -1,4 +1,4 @@
-package vm_test
+package rng_test
 
 import (
 	"crypto/rand"
@@ -314,7 +314,7 @@ var _ = Describe("Random number generators", func() {
 		}
 	})
 
-	FContext("when running the secure random number generation algorithm in a partially connected network", func() {
+	Context("when running the secure random number generation algorithm in a partially connected network", func() {
 
 		table := []struct {
 			n, k                   int64
