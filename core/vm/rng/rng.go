@@ -2,6 +2,7 @@ package rng
 
 import (
 	"errors"
+	"log"
 	"math/rand"
 	"time"
 
@@ -118,24 +119,27 @@ func (rnger *rnger) sendMessage(message OutputMessage) {
 func (rnger *rnger) recvMessage(message InputMessage) {
 	switch message := message.(type) {
 	case Nominate:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
+		log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleNominate(message)
 
 	case GenerateRn:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
+		log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleGenerateRn(message)
 
 	case LocalRnShares:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
+		log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleLocalRnShares(message)
 
 	case ProposeRn:
+		log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleProposeRn(message)
 
 	case ProposeGlobalRnShare:
+		log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleProposeGlobalRnShare(message)
 
 	case VoteGlobalRnShare:
+		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleVoteGlobalRnShare(message)
 
 		// case Vote:
@@ -194,6 +198,7 @@ func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 
 	globalRnShares := rnger.buildProposeGlobalRnShares(message.Nonce)
 	for j := uint(0); j < rnger.n; j++ {
+		log.Printf("[debug] sending ProposeGlobalRnShares to %v", globalRnShares[j].To)
 		rnger.sendMessage(globalRnShares[j])
 	}
 
