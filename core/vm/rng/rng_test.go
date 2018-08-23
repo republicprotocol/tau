@@ -66,15 +66,19 @@ var _ = Describe("Random number generators", func() {
 		}
 	}
 
-	// genRn will send a GenerateRn message to all input channels. This will
-	// initiate the generation of a secure random number for all players
-	// associated with one of the input channels.
-	genRn := func(done <-chan (struct{}), inputs [](chan InputMessage), nonce Nonce) {
+	// genLeader will send a Nominate message to all input channels for the
+	// given leader. This will initiate the generation of a secure random number
+	// for all players associated with one of the input channels.
+	genLeader := func(done <-chan (struct{}), leader Address, inputs [](chan InputMessage), nonce Nonce) {
 		co.ParForAll(inputs, func(i int) {
 			select {
 			case <-done:
 				return
-			case inputs[i] <- GenerateRn{Nonce: nonce}:
+			case inputs[i] <- Nominate{Leader: leader}:
+				if leader == Address(i) {
+					// The leader starts the random number generation
+					inputs[i] <- GenerateRn{Nonce: nonce}
+				}
 			}
 		})
 	}
@@ -117,7 +121,7 @@ var _ = Describe("Random number generators", func() {
 		}
 	}
 
-	routeMessages := func(done <-chan (struct{}), inputs [](chan InputMessage), outputs [](chan OutputMessage), messagesPerPlayer int, failureRate int) routingResults {
+	routeMessages := func(done <-chan (struct{}), inputs [](chan InputMessage), outputs [](chan OutputMessage), messagesPerPlayer map[Address]int, failureRate int) routingResults {
 		// Initialise results
 		resultsMu := new(sync.Mutex)
 		results := routingResults{
@@ -142,7 +146,7 @@ var _ = Describe("Random number generators", func() {
 			// Expect to route a specific number of messages per player
 			var message OutputMessage
 			var ok bool
-			for n := 0; n < messagesPerPlayer; n++ {
+			for n := 0; n < messagesPerPlayer[addr]; n++ {
 				select {
 				case <-done:
 					return
@@ -248,6 +252,7 @@ var _ = Describe("Random number generators", func() {
 					Expect(n).To(Equal(len(nonce)))
 					Expect(err).To(BeNil())
 
+					leader := Address(mathRand.Uint64() % uint64(entry.n))
 					done := make(chan (struct{}))
 					co.ParBegin(
 						func() {
@@ -260,7 +265,7 @@ var _ = Describe("Random number generators", func() {
 						},
 						func() {
 							// Instruct all players to generate a random number
-							genRn(done, inputs, nonce)
+							genLeader(done, leader, inputs, nonce)
 						},
 						func() {
 							defer GinkgoRecover()
@@ -270,49 +275,84 @@ var _ = Describe("Random number generators", func() {
 							// number of messages has been routed; n-1
 							// LocalRnShare messages, n-1 Vote messages, and n
 							// GlobalRnShare (of GenerateRnErr) messages
+							messagesPerPlayer := map[Address]int{}
 							messagesPerPlayerPerBroadcast := int(entry.n - 1)
-							messagesPerPlayer := 2*messagesPerPlayerPerBroadcast + 1
 							failureRate := 0
+							for i := range rngers {
+								addr := Address(i)
+								if addr == leader {
+									messagesPerPlayer[addr] = 2 * int(entry.n-1)
+								} else {
+									messagesPerPlayer[addr] = 2
+								}
+							}
 							results := routeMessages(done, inputs, outputs, messagesPerPlayer, failureRate)
 
 							globalRnShares := make(shamir.Shares, 0, len(rngers))
-							generateRnErrs := make([]GenerateRnErr, 0, len(rngers))
+							errs := make([]Err, 0, len(rngers))
 							for i := range rngers {
 								addr := Address(i)
+								var messageCount int
 
 								// Expect the correct number of messages
-								Expect(results.LocalRnShareMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
-								Expect(results.VoteMessages[addr]).To(HaveLen(messagesPerPlayerPerBroadcast))
-								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(1))
-								Expect(results.GenerateRnErrMessages[addr]).To(HaveLen(0))
+								if addr == leader {
+									messageCount = int(entry.n - 1)
+								} else {
+									messageCount = 0
+								}
+								Expect(results.ProposeRnMessages[addr]).To(HaveLen(messageCount))
+
+								if addr == leader {
+									messageCount = 0
+								} else {
+									messageCount = 1
+								}
+								Expect(results.LocalRnSharesMessages[addr]).To(HaveLen(messageCount))
+
+								if addr == leader {
+									messageCount = int(entry.n - 1)
+								} else {
+									messageCount = 0
+								}
+								Expect(results.ProposeGlobalRnShareMessages[addr]).To(HaveLen(messageCount))
+
+								if addr == leader {
+									messageCount = 0
+								} else {
+									messageCount = 1
+								}
+								Expect(results.GlobalRnShareMessages[addr]).To(HaveLen(messageCount))
+
+								Expect(results.ErrMessages[addr]).To(HaveLen(0))
 
 								// Expect the correct form of messages
-								for _, message := range results.LocalRnShareMessages[addr] {
+								for _, message := range results.ProposeRnMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
 									Expect(message.From).To(Equal(addr))
 								}
-								for _, message := range results.VoteMessages[addr] {
+								for _, message := range results.LocalRnSharesMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
 									Expect(message.From).To(Equal(addr))
-									Expect(message.Players).To(HaveLen(int(entry.n)))
+									Expect(message.Shares).To(HaveLen(int(entry.n)))
 								}
-								for _, message := range results.VoteMessages[addr] {
+								for _, message := range results.ProposeGlobalRnShareMessages[addr] {
 									Expect(message.Nonce).To(Equal(nonce))
+									Expect(message.From).To(Equal(addr))
 								}
 								if len(results.GlobalRnShareMessages[addr]) > 0 {
 									globalRnShares = append(globalRnShares, results.GlobalRnShareMessages[addr][0].Share)
 								}
-								if len(results.GenerateRnErrMessages[addr]) > 0 {
-									generateRnErrs = append(generateRnErrs, results.GenerateRnErrMessages[addr][0])
+								if len(results.ErrMessages[addr]) > 0 {
+									errs = append(errs, results.ErrMessages[addr][0])
 								}
 							}
 							Expect(globalRnShares).To(HaveLen(int(entry.n)))
-							Expect(generateRnErrs).To(HaveLen(0))
+							Expect(errs).To(HaveLen(0))
 
 							// Reconstruct the secret using different subsets
 							// of shares and expect that all reconstructed
 							// secrets are equal
-							err := verifyShares(globalRnShares, entry.n, entry.k)
+							err := verifyShares(globalRnShares, int64(entry.n), int64(entry.k))
 							Expect(err).To(BeNil())
 						})
 				})
