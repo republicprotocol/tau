@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log"
 	mathRand "math/rand"
 	"time"
 
@@ -385,7 +386,8 @@ var _ = Describe("Random number generators", func() {
 									successRate = float64(entry.k)
 								}
 
-								globalRnShares := map[Address]GlobalRnShare{}
+								errMessages := []Err{}
+								globalRnSharesMessages := map[Address]GlobalRnShare{}
 								co.ParBegin(
 									func() {
 										// Close the done channel when we are
@@ -401,8 +403,8 @@ var _ = Describe("Random number generators", func() {
 											case <-timeout:
 												break EarlyExit
 											case result := <-results:
-												globalRnShares[result.From] = result
-												if len(globalRnShares) >= int(successRate) {
+												globalRnSharesMessages[result.From] = result
+												if len(globalRnSharesMessages) >= int(successRate) {
 													return
 												}
 											}
@@ -410,23 +412,25 @@ var _ = Describe("Random number generators", func() {
 									},
 									func() {
 										for err := range errs {
-											Expect(err).To(BeNil())
+											log.Printf("[error] %v", err.Error())
+											errMessages = append(errMessages, err)
 										}
 									})
 
 								// Expect the super majority to hold shares
-								Expect(len(globalRnShares)).To(BeNumerically(">=", int(entry.k)))
+								Expect(len(errMessages)).To(BeNumerically("<=", 0))
+								Expect(len(globalRnSharesMessages)).To(BeNumerically(">=", int(entry.k)))
 
 								// Extract the Shamir's secret shares from the results
 								shares := shamir.Shares{}
-								for _, globalRnShare := range globalRnShares {
+								for _, globalRnShare := range globalRnSharesMessages {
 									shares = append(shares, globalRnShare.Share)
 								}
 
 								// Reconstruct the secret using different subsets
 								// of shares and expect that all reconstructed
 								// secrets are equal
-								err := verifyShares(shares, int64(len(globalRnShares)), int64(entry.k))
+								err := verifyShares(shares, int64(len(shares)), int64(entry.k))
 								Expect(err).To(BeNil())
 							})
 					})

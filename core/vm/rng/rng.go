@@ -22,6 +22,7 @@ type State uint
 const (
 	StateNil State = iota
 	StateWaitingForLocalRnShares
+	StateWaitingForGlobalRnShares
 	StateFinished
 )
 
@@ -55,6 +56,7 @@ type rnger struct {
 	sendBufferCap int
 
 	states        map[Nonce]State
+	leaders       map[Nonce]Address
 	localRnShares map[Nonce](map[Address]ShareMap)
 }
 
@@ -75,6 +77,7 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, bufferC
 		sendBufferCap: bufferCap,
 
 		states:        map[Nonce]State{},
+		leaders:       map[Nonce]Address{},
 		localRnShares: map[Nonce](map[Address]ShareMap){},
 	}
 }
@@ -107,8 +110,8 @@ func (rnger *rnger) Run(done <-chan (struct{}), input <-chan InputMessage, outpu
 	}
 }
 
-func (rnger *rnger) isLeader() bool {
-	return rnger.leader == rnger.addr
+func (rnger *rnger) isLeader(nonce Nonce) bool {
+	return rnger.leaders[nonce] == rnger.addr
 }
 
 func (rnger *rnger) sendMessage(message OutputMessage) {
@@ -151,18 +154,23 @@ func (rnger *rnger) recvMessage(message InputMessage) {
 }
 
 func (rnger *rnger) handleNominate(message Nominate) {
+	// TODO: Logic for whether or not to accept a nomination.
 	rnger.leader = message.Leader
 }
 
 func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 	// Verify the current state of the Rnger
-	if !rnger.isLeader() {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot generate random number: must be the leader")))
+	if rnger.leader != rnger.addr {
+		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
 		return
 	}
 	if rnger.states[message.Nonce] != StateNil {
+		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: not in initial state")))
 		return
 	}
+
+	// Set rnger to leader for this nonce
+	rnger.leaders[message.Nonce] = rnger.addr
 
 	// Send a ProposeRn message to every other Rnger in the network
 	for j := uint(0); j < rnger.n; j++ {
@@ -175,11 +183,12 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 
 func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 	// Verify the current state of the Rnger
-	if !rnger.isLeader() {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept local random number shares: must be the leader")))
+	if !rnger.isLeader(message.Nonce) {
+		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: must be the leader")))
 		return
 	}
 	if rnger.states[message.Nonce] != StateWaitingForLocalRnShares {
+		//rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
 		return
 	}
 
@@ -200,14 +209,25 @@ func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 		rnger.sendMessage(globalRnShares[j])
 	}
 
-	// Transition to a new state
+	// Progress state
 	rnger.states[message.Nonce] = StateFinished
 }
 
 func (rnger *rnger) handleProposeRn(message ProposeRn) {
-	// Check that the message came from the leader
-	if message.From != rnger.leader {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept propose request: must come from the leader")))
+	// TODO: Logic for whether or not to accept a leader for a nonce.
+	if _, ok := rnger.leaders[message.Nonce]; !ok {
+		rnger.leaders[message.Nonce] = message.From
+	}
+	// TODO: Protection (if wanted) against multiple proposals from the same
+	// leader for the same nonce
+	if message.From != rnger.leaders[message.Nonce] {
+		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: already have a leader")))
+		return
+	}
+
+	// Verify that the internal state is correct
+	if rnger.states[message.Nonce] != StateNil && !rnger.isLeader(message.Nonce) {
+		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: not in initial state")))
 		return
 	}
 
@@ -230,6 +250,11 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 		Shares: shares,
 	}
 	rnger.sendMessage(localRnShares)
+
+	// Progress state if rnger is not the leader for this nonce
+	if !rnger.isLeader(message.Nonce) {
+		rnger.states[message.Nonce] = StateWaitingForGlobalRnShares
+	}
 }
 
 func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
@@ -247,6 +272,9 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 	}
 
 	rnger.sendMessage(globalRnShare)
+
+	// Progress state
+	rnger.states[message.Nonce] = StateFinished
 }
 
 func (rnger *rnger) handleVoteGlobalRnShare(message VoteGlobalRnShare) {
