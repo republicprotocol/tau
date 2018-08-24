@@ -17,12 +17,29 @@ type Nonce [32]byte
 // computation network.
 type Address uint64
 
+// State enumerates the possible states that the player can be in for a
+// particular computation (nonce).
 type State uint
 
 const (
+	// StateNil is the initial default state for a computation (nonce).
 	StateNil State = iota
+
+	// StateWaitingForLocalRnShares is the state that the computation leader is
+	// in once they have sent out ProposeRn and are waiting for the compute
+	// nodes to respond with their shares of their local random number.
 	StateWaitingForLocalRnShares
+
+	// StateWaitingForGlobalRnShares is the state that the compute nodes are in
+	// once they have sent out the shares of their local random number and are
+	// waiting to receive the shares for the global random number form the
+	// computation leader.
 	StateWaitingForGlobalRnShares
+
+	// StateFinished is the state that a player is in once they have completed
+	// the computation for a given nonce. This is achieved once they have
+	// received their global random number shares and have added the together to
+	// produce their single global random number share.
 	StateFinished
 )
 
