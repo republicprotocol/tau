@@ -128,12 +128,15 @@ func (message ProposeGlobalRnShare) IsOutputMessage() {
 type GlobalRnShare struct {
 	Nonce
 	shamir.Share
+
+	From Address
 }
 
-func NewGlobalRnShare(nonce Nonce, share shamir.Share) GlobalRnShare {
+func NewGlobalRnShare(nonce Nonce, share shamir.Share, from Address) GlobalRnShare {
 	return GlobalRnShare{
 		nonce,
 		share,
+		from,
 	}
 }
 
