@@ -33,6 +33,7 @@ type Pedersen struct {
 func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
 	if p == nil || q == nil || g == nil || h == nil {
 		err = errors.New("nil arguments")
+		return
 	}
 	if big.NewInt(0).Mod(p.Sub(p, big.NewInt(1)), q).Cmp(big.NewInt(0)) != 0 {
 		err = errors.New("q does not divide p - 1")
@@ -58,7 +59,8 @@ func (ped *Pedersen) SubgroupOrder() *big.Int {
 }
 
 // Commit takes a secret, s, and a randomising, t, number and produces a
-// pedersen commitment (g^s)(h^t).
+// pedersen commitment (g^s)(h^t). If either of the arguments are nil, the
+// function will return nil.
 func (ped *Pedersen) Commit(s, t *big.Int) *big.Int {
 	if s == nil || t == nil {
 		return nil
