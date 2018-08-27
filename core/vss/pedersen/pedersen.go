@@ -1,4 +1,4 @@
-package vss
+package pedersen
 
 import (
 	"errors"
@@ -31,6 +31,9 @@ type Pedersen struct {
 // commitments. It performs a basic divisibility check that is required for the
 // primes p and q.
 func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
+	if p == nil || q == nil || g == nil || h == nil {
+		err = errors.New("nil arguments")
+	}
 	if big.NewInt(0).Mod(p.Sub(p, big.NewInt(1)), q).Cmp(big.NewInt(0)) != 0 {
 		err = errors.New("q does not divide p - 1")
 		return
@@ -42,6 +45,16 @@ func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
 		h,
 	}
 	return
+}
+
+// GroupOrder returns q, the order of the subgroup of the multiplicative group Zp.
+func (ped *Pedersen) GroupOrder() *big.Int {
+	return ped.p
+}
+
+// SubgroupOrder returns q, the order of the subgroup of the multiplicative group Zp.
+func (ped *Pedersen) SubgroupOrder() *big.Int {
+	return ped.q
 }
 
 // Commit takes a secret, s, and a randomising, t, number and produces a
