@@ -35,7 +35,11 @@ func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
 		err = errors.New("nil arguments")
 		return
 	}
-	if big.NewInt(0).Mod(p.Sub(p, big.NewInt(1)), q).Cmp(big.NewInt(0)) != 0 {
+
+	check := new(big.Int).Set(p)
+	check.Sub(check, big.NewInt(1))
+	check.Mod(check, q)
+	if check.Cmp(big.NewInt(0)) != 0 {
 		err = errors.New("q does not divide p - 1")
 		return
 	}
