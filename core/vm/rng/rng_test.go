@@ -96,15 +96,6 @@ var _ = Describe("Random number generators", func() {
 		return nil
 	}
 
-	// routingResults from routing messages between players.
-	type routingResults struct {
-		ProposeRnMessages            map[Address]([]ProposeRn)
-		LocalRnSharesMessages        map[Address]([]LocalRnShares)
-		ProposeGlobalRnShareMessages map[Address]([]ProposeGlobalRnShare)
-		GlobalRnShareMessages        map[Address]([]GlobalRnShare)
-		ErrMessages                  map[Address]([]Err)
-	}
-
 	routeMessage := func(done <-chan (struct{}), input chan InputMessage, message InputMessage, failureRate int) {
 		if mathRand.Intn(100) < failureRate {
 			// Simluate an unstable network connection and randomly drop
