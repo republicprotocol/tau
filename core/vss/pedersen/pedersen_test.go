@@ -15,14 +15,15 @@ var _ = Describe("Pedersen commitments", func() {
 
 	const TRIALS = 50
 
+	// perturbInt perturbs an element by a random (non-zero) number.
 	perturbInt := func(ped Pedersen, n *big.Int) {
 		var r *big.Int
 		for {
-			r, _ = rand.Int(rand.Reader, ped.SubgroupOrder())
+			r, _ = rand.Int(rand.Reader, ped.GroupOrder())
 			if r.Cmp(big.NewInt(0)) != 0 {
-				// Make sure that the test will fail by ensureing
-				// that adding the random number will change the
-				// commitment.
+				// Make sure that the perturbed element is different by
+				// ensureing that adding the random number will change the
+				// element.
 				break
 			}
 		}
@@ -31,8 +32,8 @@ var _ = Describe("Pedersen commitments", func() {
 	}
 
 	// For each entry, q is chosen to be the largest prime less than 2^b for
-	// various bit lengths b, and p is chosen to be the least prime such
-	// that q divides  p - 1.
+	// various bit lengths b, and p is chosen to be the least prime such that q
+	// divides  p - 1.
 	table := []struct {
 		p, q, g, h *big.Int
 	}{
@@ -99,13 +100,13 @@ var _ = Describe("Pedersen commitments", func() {
 				DescribeTable("an error is expected", func(s, t, commitment *big.Int, err error) {
 					Expect(ped.Verify(s, t, commitment)).To(Equal(err))
 				},
-					Entry("with s nil", nil, big.NewInt(1), big.NewInt(1), ErrNilArguments),
-					Entry("with t nil", big.NewInt(1), nil, big.NewInt(1), ErrNilArguments),
-					Entry("with commitment nil", big.NewInt(1), big.NewInt(1), nil, ErrNilArguments),
-					Entry("with s, t nil", nil, nil, big.NewInt(1), ErrNilArguments),
-					Entry("with s, commitment nil", nil, big.NewInt(1), nil, ErrNilArguments),
-					Entry("with t, commitment nil", big.NewInt(1), nil, nil, ErrNilArguments),
-					Entry("with all nil", nil, nil, nil, ErrNilArguments),
+					Entry("when s is nil", nil, big.NewInt(1), big.NewInt(1), ErrNilArguments),
+					Entry("when t is nil", big.NewInt(1), nil, big.NewInt(1), ErrNilArguments),
+					Entry("when commitment is nil", big.NewInt(1), big.NewInt(1), nil, ErrNilArguments),
+					Entry("when s, t are nil", nil, nil, big.NewInt(1), ErrNilArguments),
+					Entry("when s, commitment are nil", nil, big.NewInt(1), nil, ErrNilArguments),
+					Entry("when t, commitment are nil", big.NewInt(1), nil, nil, ErrNilArguments),
+					Entry("when all arguments are nil", nil, nil, nil, ErrNilArguments),
 				)
 			})
 
@@ -113,9 +114,9 @@ var _ = Describe("Pedersen commitments", func() {
 				DescribeTable("it should return nil", func(s, t *big.Int) {
 					Expect(ped.Commit(s, t)).To(BeNil())
 				},
-					Entry("with s nil", nil, big.NewInt(1)),
-					Entry("with t nil", big.NewInt(1), nil),
-					Entry("with all nil", nil, nil),
+					Entry("when s is nil", nil, big.NewInt(1)),
+					Entry("when t is nil", big.NewInt(1), nil),
+					Entry("when all arguments are nil", nil, nil),
 				)
 			})
 
@@ -157,22 +158,42 @@ var _ = Describe("Pedersen commitments", func() {
 				_, err := New(p, q, g, h)
 				Expect(err).ToNot(BeNil())
 			},
-				Entry("with h nil", entry.p, entry.q, entry.g, nil),
-				Entry("with g nil", entry.p, entry.q, nil, entry.h),
-				Entry("with h, g nil", entry.p, entry.q, nil, nil),
-				Entry("with q nil", entry.p, nil, entry.g, entry.h),
-				Entry("with q, h nil", entry.p, nil, entry.g, nil),
-				Entry("with q, g nil", entry.p, nil, nil, entry.h),
-				Entry("with q, g, h nil", entry.p, nil, nil, nil),
-				Entry("with p nil", nil, entry.q, entry.g, entry.h),
-				Entry("with p, h nil", nil, entry.q, entry.g, nil),
-				Entry("with p, g nil", nil, entry.q, nil, entry.h),
-				Entry("with p, g, h nil", nil, entry.q, nil, nil),
-				Entry("with p, q nil", nil, nil, entry.g, entry.h),
-				Entry("with p, q, h nil", nil, nil, entry.g, nil),
-				Entry("with p, q, g nil", nil, nil, nil, entry.h),
-				Entry("with all nil", nil, nil, nil, nil),
+				Entry("when h is nil", entry.p, entry.q, entry.g, nil),
+				Entry("when g is nil", entry.p, entry.q, nil, entry.h),
+				Entry("when h, g are nil", entry.p, entry.q, nil, nil),
+				Entry("when q is nil", entry.p, nil, entry.g, entry.h),
+				Entry("when q, h are nil", entry.p, nil, entry.g, nil),
+				Entry("when q, g are nil", entry.p, nil, nil, entry.h),
+				Entry("when q, g, h are nil", entry.p, nil, nil, nil),
+				Entry("when p is nil", nil, entry.q, entry.g, entry.h),
+				Entry("when p, h are nil", nil, entry.q, entry.g, nil),
+				Entry("when p, g are nil", nil, entry.q, nil, entry.h),
+				Entry("when p, g, h are nil", nil, entry.q, nil, nil),
+				Entry("when p, q are nil", nil, nil, entry.g, entry.h),
+				Entry("when p, q, h are nil", nil, nil, entry.g, nil),
+				Entry("when p, q, g are nil", nil, nil, nil, entry.h),
+				Entry("when all arguments are nil", nil, nil, nil, nil),
 			)
+
+			Context("when picking p and q such that q does not divide p - 1", func() {
+				ped, err := New(entry.p, entry.q, entry.g, entry.h)
+				It("should initially construct without error", func(doneT Done) {
+					defer close(doneT)
+
+					Expect(err).To(BeNil())
+				})
+
+				It("should return an error", func(doneT Done) {
+					defer close(doneT)
+					for i := 0; i < TRIALS; i++ {
+						perturbed := new(big.Int).Set(entry.p)
+						perturbInt(ped, perturbed)
+						_, err := New(perturbed, entry.q, entry.g, entry.h)
+
+						Expect(err).ToNot(BeNil())
+					}
+				})
+			})
 		})
 	}
 })
