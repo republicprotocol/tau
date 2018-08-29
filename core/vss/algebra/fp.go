@@ -57,8 +57,12 @@ func (f *Fp) Neg(a, c *big.Int) {
 	if !f.InField(a) {
 		panic("cannot negate an element that is not in the field")
 	}
-	c.Neg(a)
-	c.Add(c, f.prime)
+	if a.Sign() != 0 {
+		c.Neg(a)
+		c.Add(c, f.prime)
+	} else {
+		c.Set(a)
+	}
 }
 
 // Mul sets c = a*b
