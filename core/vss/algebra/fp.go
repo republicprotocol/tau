@@ -1,17 +1,7 @@
 package algebra
 
 import (
-	"errors"
 	"math/big"
-)
-
-var (
-	// ErrInvalidPrime signifies that a given prime was not positive.
-	ErrInvalidPrime = errors.New("prime must be positive")
-
-	// ErrLargeInteger signifies that an element was given that is larger than
-	// the prime modulus for the field.
-	ErrLargeInteger = errors.New("integer is larger than prime modulus")
 )
 
 // Fp represents the field of integers modulo p where p is a prime. This field
@@ -22,16 +12,14 @@ type Fp struct {
 }
 
 // NewField returns a new field object. The field will be the integers modulo
-// the given prime. If the given prime is not a positive number, an error will
-// be returned.
-func NewField(prime *big.Int) (f Fp, err error) {
+// the given prime. If the given prime is not a positive number, the function
+// will panic.
+func NewField(prime *big.Int) Fp {
 	// The prime must be a positive number
 	if prime.Sign() != 1 {
-		err = ErrInvalidPrime
-		return
+		panic("prime must be a positive integer")
 	}
-	f = Fp{prime}
-	return
+	return Fp{prime}
 }
 
 // InField checks whether a given integer is in the field. This will be the case
