@@ -3,7 +3,6 @@ package algebra_test
 import (
 	"crypto/rand"
 	"math/big"
-	mathrand "math/rand"
 
 	. "github.com/onsi/ginkgo/extensions/table"
 
@@ -14,31 +13,6 @@ import (
 
 var _ = Describe("Finite field Fp", func() {
 	const Trials = 100
-
-	// randomBool returns a random boolean with equal probability.
-	randomBool := func() bool {
-		return mathrand.Float32() < 0.5
-	}
-
-	// randomNotInField will create a random integer that is not in the given
-	// field. It will, with equal probability, pick an integer either too large
-	// (between prime and 2*prime) or too small (a negative integer in the range
-	// -prime to -1).
-	randomNotInField := func(field *Fp) (r *big.Int) {
-		r = field.Random()
-
-		if randomBool() {
-			// Make r too small
-			r.Neg(r)
-		} else {
-			// Make r too big
-			addinv := big.NewInt(0).Set(r)
-			field.Neg(addinv, addinv)
-			r.Add(r, big.NewInt(0).Add(r, addinv))
-		}
-
-		return
-	}
 
 	Context("when constructing a field with a prime number", func() {
 		DescribeTable("no panic is expected", func(prime *big.Int) {
@@ -132,11 +106,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the first argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), field.Random(), field.Random()
+				a, b, oldc := RandomNotInField(&field), field.Random(), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Add(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -145,11 +119,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the second argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := field.Random(), randomNotInField(&field), field.Random()
+				a, b, oldc := field.Random(), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Add(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -158,11 +132,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when both arguments are not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), randomNotInField(&field), field.Random()
+				a, b, oldc := RandomNotInField(&field), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Add(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -178,7 +152,7 @@ var _ = Describe("Finite field Fp", func() {
 				expected.Mod(expected, prime)
 				field.Add(a, b, actual)
 
-				Expect(actual).To(Equal(expected))
+				Expect(actual.Cmp(expected)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -190,11 +164,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the element is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, oldc := randomNotInField(&field), field.Random()
+				a, oldc := RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Neg(a, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -220,11 +194,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the first argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), field.Random(), field.Random()
+				a, b, oldc := RandomNotInField(&field), field.Random(), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Mul(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -233,11 +207,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the second argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := field.Random(), randomNotInField(&field), field.Random()
+				a, b, oldc := field.Random(), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Mul(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -246,11 +220,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when both arguments are not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), randomNotInField(&field), field.Random()
+				a, b, oldc := RandomNotInField(&field), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Mul(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -266,7 +240,7 @@ var _ = Describe("Finite field Fp", func() {
 				expected.Mod(expected, prime)
 				field.Mul(a, b, actual)
 
-				Expect(actual).To(Equal(expected))
+				Expect(actual.Cmp(expected)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -277,11 +251,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("i should panic when the element is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, oldc := randomNotInField(&field), field.Random()
+				a, oldc := RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.MulInv(a, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -291,11 +265,15 @@ var _ = Describe("Finite field Fp", func() {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
 				a := field.Random()
-				aneg := big.NewInt(0).Set(a)
-				field.MulInv(a, aneg)
+				if a.Sign() == 0 {
+					// 0 has no multiplicative inverse
+					continue
+				}
+				ainv := big.NewInt(0).Set(a)
+				field.MulInv(a, ainv)
 				res := big.NewInt(0)
 
-				field.Mul(a, aneg, res)
+				field.Mul(a, ainv, res)
 				Expect(res.Cmp(big.NewInt(1))).To(Equal(0))
 			}
 		},
@@ -307,11 +285,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the first argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), field.Random(), field.Random()
+				a, b, oldc := RandomNotInField(&field), field.Random(), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Sub(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -320,11 +298,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the second argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := field.Random(), randomNotInField(&field), field.Random()
+				a, b, oldc := field.Random(), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Sub(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -333,11 +311,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when both arguments are not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), randomNotInField(&field), field.Random()
+				a, b, oldc := RandomNotInField(&field), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Sub(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -350,14 +328,14 @@ var _ = Describe("Finite field Fp", func() {
 				expected, actual := big.NewInt(0), big.NewInt(0)
 
 				expected.Sub(a, b)
-				expected.Mod(expected, prime)
 				if expected.Sign() == -1 {
 					// Make sure that the expected value is positive
 					expected.Add(expected, prime)
 				}
+				expected.Mod(expected, prime)
 				field.Sub(a, b, actual)
 
-				Expect(actual).To(Equal(expected))
+				Expect(actual.Cmp(expected)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -368,11 +346,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the first argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), field.Random(), field.Random()
+				a, b, oldc := RandomNotInField(&field), field.Random(), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Div(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -381,11 +359,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when the second argument is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := field.Random(), randomNotInField(&field), field.Random()
+				a, b, oldc := field.Random(), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Div(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -394,11 +372,11 @@ var _ = Describe("Finite field Fp", func() {
 		DescribeTable("it should panic when both arguments are not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
-				a, b, oldc := randomNotInField(&field), randomNotInField(&field), field.Random()
+				a, b, oldc := RandomNotInField(&field), RandomNotInField(&field), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.Div(a, b, newc) }).To(Panic())
-				Expect(newc).To(Equal(oldc))
+				Expect(newc.Cmp(oldc)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
@@ -415,7 +393,7 @@ var _ = Describe("Finite field Fp", func() {
 				expected.Mod(expected, prime)
 				field.Div(a, b, actual)
 
-				Expect(actual).To(Equal(expected))
+				Expect(actual.Cmp(expected)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
