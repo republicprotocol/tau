@@ -21,10 +21,10 @@ type Fp struct {
 	prime *big.Int
 }
 
-// New returns a new field object. The field will be the integers modulo the
-// given prime. If the given prime is not a positive number, an error will be
-// returned.
-func New(prime *big.Int) (f Fp, err error) {
+// NewField returns a new field object. The field will be the integers modulo
+// the given prime. If the given prime is not a positive number, an error will
+// be returned.
+func NewField(prime *big.Int) (f Fp, err error) {
 	// The prime must be a positive number
 	if prime.Sign() != 1 {
 		err = ErrInvalidPrime
