@@ -13,7 +13,7 @@ import (
 
 var _ = Describe("Pedersen commitments", func() {
 
-	const TRIALS = 50
+	const Trials = 50
 
 	// perturbInt perturbs an element by a random (non-zero) number.
 	perturbInt := func(ped Pedersen, n *big.Int) {
@@ -124,7 +124,7 @@ var _ = Describe("Pedersen commitments", func() {
 				It("should return an error", func(doneT Done) {
 					defer close(doneT)
 
-					for i := 0; i < TRIALS; i++ {
+					for i := 0; i < Trials; i++ {
 						s, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
 						t, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
 						commitment := ped.Commit(s, t)
@@ -142,7 +142,7 @@ var _ = Describe("Pedersen commitments", func() {
 				It("should return a nil error", func(doneT Done) {
 					defer close(doneT)
 
-					for i := 0; i < TRIALS; i++ {
+					for i := 0; i < Trials; i++ {
 						s, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
 						t, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
 						commitment := ped.Commit(s, t)
@@ -185,7 +185,7 @@ var _ = Describe("Pedersen commitments", func() {
 
 				It("should return an error", func(doneT Done) {
 					defer close(doneT)
-					for i := 0; i < TRIALS; i++ {
+					for i := 0; i < Trials; i++ {
 						perturbed := new(big.Int).Set(entry.p)
 						perturbInt(ped, perturbed)
 						_, err := New(perturbed, entry.q, entry.g, entry.h)
