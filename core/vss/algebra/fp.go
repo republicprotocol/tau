@@ -14,83 +14,89 @@ var (
 	ErrLargeInteger = errors.New("integer is larger than prime modulus")
 )
 
-// Fp represents a field element in the field of integers modulo p where p is a
-// prime.
+// Fp represents the field of integers modulo p where p is a prime. This field
+// object takes *big.Ints and performs the modulo arithmetic on them,
+// abstracting the field away from the elements that it operates on.
 type Fp struct {
-	element *big.Int
-	prime   *big.Int
+	prime *big.Int
 }
 
-// New creates a new Fp from an integer and a prime, where the element is in the
-// field of integers modulo that prime. When creating an Fp that is in the same
-// field as a variable that is already accessible, it is recommended to
-// construct the new Fp using NewInSameField. If the prime is not positive then
-// and error will be returned. If the given integer is bigger than the prime,
-// the integer will be appropraitely reduced modulo the prime, and an error will
-// be returned.
-func New(x *big.Int, prime big.Int) (ret Fp, err error) {
-	// Check if the prime is valid
+// New returns a new field object. The field will be the integers modulo the
+// given prime. If the given prime is not a positive number, an error will be
+// returned.
+func New(prime *big.Int) (f Fp, err error) {
+	// The prime must be a positive number
 	if prime.Sign() != 1 {
 		err = ErrInvalidPrime
 		return
 	}
-
-	ret = Fp{x, &prime}
-	if x.Cmp(&prime) == 1 {
-		x.Mod(x, &prime)
-		err = ErrLargeInteger
-	}
+	f = Fp{prime}
 	return
 }
 
-// NewInSameField creates a new Fp from an integer and a pointer to a field
-// element that is in the target field. If the given integer is not in the
-// field, the integer will first be reduced modulo p, where p is the prime
-// defining the field, and an error will also be returned.
-func NewInSameField(f Fp, x *big.Int) (ret Fp, err error) {
-	ret = Fp{x, f.prime}
-	if x.Cmp(f.prime) == 1 {
-		x.Mod(x, f.prime)
-		err = ErrLargeInteger
+// InField checks whether a given integer is in the field. This will be the case
+// when the integer is positive and less than the prime defining the field.
+func (f *Fp) InField(x *big.Int) bool {
+	if x.Cmp(f.prime) != -1 {
+		return false
 	}
-	return
+	return true
 }
 
-// Add implements the FieldElement interface
-func (x *Fp) Add(a, b Fp) {
-	x.element.Add(a.element, b.element)
-	x.element.Mod(x.element, x.prime)
+// Add sets c = a + b
+func (f *Fp) Add(a, b, c *big.Int) {
+	if !f.InField(a) || !f.InField(b) {
+		panic("cannot add elements that are not in the field")
+	}
+	c.Add(a, b)
+	c.Mod(c, f.prime)
 }
 
-// Neg implements the FieldElement interface
-func (x *Fp) Neg(a Fp) {
-	x.element.Neg(x.element)
-	x.element.Add(x.element, x.prime)
+// Neg sets c = -a
+func (f *Fp) Neg(a, c *big.Int) {
+	if !f.InField(a) {
+		panic("cannot negate an element that is not in the field")
+	}
+	c.Neg(a)
+	c.Add(c, f.prime)
 }
 
-// Mul implements the FieldElement interface
-func (x *Fp) Mul(a, b Fp) {
-	x.element.Mul(a.element, b.element)
-	x.element.Mod(x.element, x.prime)
+// Mul sets c = a*b
+func (f *Fp) Mul(a, b, c *big.Int) {
+	if !f.InField(a) || !f.InField(b) {
+		panic("cannot multiply elements that are not in the field")
+	}
+	c.Mul(a, b)
+	c.Mod(c, f.prime)
 }
 
-// MulInv implements the FieldElement interface
-func (x *Fp) MulInv(a Fp) {
-	check := x.element.ModInverse(x.element, x.prime)
+// MulInv sets c = a^-1
+func (f *Fp) MulInv(a, c *big.Int) {
+	if !f.InField(a) {
+		panic("cannot find the inverse of an element that is not in the field")
+	}
+	check := c.ModInverse(a, f.prime)
 	if check == nil {
+		// This will only occurr when f.prime is in fact not a prime
 		panic("field element not relatively prime to field prime")
 	}
 }
 
-// Sub sets x = a - b
-func (x *Fp) Sub(a, b Fp) {
-	x.element.Sub(a.element, b.element)
-	x.element.Mod(x.element, x.prime)
+// Sub sets c = a - b
+func (f *Fp) Sub(a, b, c *big.Int) {
+	if !f.InField(a) || !f.InField(b) {
+		panic("cannot subtract elements that are not in the field")
+	}
+	c.Sub(a, b)
+	c.Mod(c, f.prime)
 }
 
-// Div sets x = a*b = a*(b^-1)
-func (x *Fp) Div(a, b Fp) {
-	binv, _ := NewInSameField(b, big.NewInt(0))
-	binv.MulInv(binv)
-	x.Mul(a, binv)
+// Div sets c = a/b = a*(b^-1)
+func (f *Fp) Div(a, b, c *big.Int) {
+	if !f.InField(a) || !f.InField(b) {
+		panic("cannot subtract elements that are not in the field")
+	}
+	binv := big.NewInt(0)
+	f.MulInv(b, binv)
+	f.Mul(a, binv, c)
 }
