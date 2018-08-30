@@ -1,7 +1,6 @@
 package algebra
 
 import (
-	"crypto/rand"
 	"math/big"
 )
 
@@ -9,6 +8,13 @@ import (
 type Polynomial struct {
 	field        *Fp
 	coefficients []*big.Int
+}
+
+// Coefficients returns the coefficients of the polynomial. This provides direct
+// access to the struct field, and so modifications here will directly modify
+// the polynomial object itself.
+func (p *Polynomial) Coefficients() []*big.Int {
+	return p.coefficients
 }
 
 // NewPolynomial creates a new polynomial over the given field with the given
@@ -28,46 +34,41 @@ func NewPolynomial(field *Fp, coefficients []*big.Int) Polynomial {
 // term to be that secret. If more than one argument for secret is given, the
 // function will panic. The coefficient for the x^degree term is gauranteed to
 // be non-zero, so that the polynomial is always of the given degree.
-func NewRandomPolynomial(field *Fp, degree int, secret ...*big.Int) Polynomial {
+func NewRandomPolynomial(field *Fp, degree uint, secret ...*big.Int) Polynomial {
 	if len(secret) > 1 {
 		panic("maximum of one secret")
 	}
-	var err error
 
 	coefficients := make([]*big.Int, degree+1)
-	if len(secret) != 0 {
-		coefficients[0] = secret[0]
-	}
-	for i := 1; i <= degree; i++ {
-		coefficients[i], err = rand.Int(rand.Reader, field.prime)
-		if err != nil {
-			// This should never occur because it is impossible to construct a
-			// field with a prime that is not positive
-			panic(err)
+	for i := 0; i <= int(degree); i++ {
+		if i == 0 && len(secret) != 0 {
+			coefficients[0] = secret[0]
+			continue
 		}
+		coefficients[i] = field.Random()
 	}
 
 	// Make sure that the leading coefficient is not zero, otherwise the
 	// polynomial would have a smaller degree
 	for coefficients[degree].Sign() == 0 {
-		coefficients[degree], err = rand.Int(rand.Reader, field.prime)
-		if err != nil {
-			// This should never occur because it is impossible to construct a
-			// field with a prime that is not positive
-			panic(err)
+		if degree == 0 {
+			// Allow the zero polynomial when degree 0 is given
+			break
 		}
+		coefficients[degree] = field.Random()
 	}
 
-	return Polynomial{field, coefficients}
+	return NewPolynomial(field, coefficients)
 }
 
-// Degree returns the degree of the polynomial.
-func (p *Polynomial) Degree() (degree int) {
-	degree = len(p.coefficients)
-	for p.coefficients[degree].Sign() == 0 {
+// Degree returns the degree of the polynomial. The zero polynomial is
+// considered to have degree 0.
+func (p *Polynomial) Degree() (degree uint) {
+	degree = uint(len(p.coefficients)) - 1
+	for p.coefficients[degree].Sign() == 0 && degree != 0 {
 		degree--
 	}
-	return
+	return degree
 }
 
 // Evaluate computes the value of the polynomial at the given point. If the
@@ -78,7 +79,7 @@ func (p *Polynomial) Evaluate(x *big.Int) *big.Int {
 	}
 	accum := big.NewInt(0).Set(p.coefficients[p.Degree()])
 
-	for i := p.Degree() - 1; i >= 0; i-- {
+	for i := int(p.Degree()) - 1; i >= 0; i-- {
 		p.field.Mul(accum, x, accum)
 		p.field.Add(accum, p.coefficients[i], accum)
 	}
