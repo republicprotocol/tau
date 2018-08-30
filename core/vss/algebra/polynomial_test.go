@@ -49,6 +49,34 @@ var _ = Describe("Polynomial", func() {
 	})
 
 	Context("when explicitly constructing a polynomial", func() {
+		DescribeTable("it should panic when there are no coefficients", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				coefficients := make([]*big.Int, 0)
+				Expect(func() { NewPolynomial(&field, coefficients) }).To(Panic())
+			}
+		},
+			PrimeEntries...,
+		)
+
+		It("should panic when there are too many coefficients", func(doneT Done) {
+			defer close(doneT)
+			prime := big.NewInt(2)
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				degree := randomDegree(prime)
+				degree += uint(prime.Uint64())
+				coefficients := make([]*big.Int, degree+1)
+				for i := 0; i <= int(degree); i++ {
+					coefficients[i] = field.Random()
+				}
+
+				Expect(func() { NewPolynomial(&field, coefficients) }).To(Panic())
+			}
+		})
+
 		DescribeTable("it should panic when any of the given coefficients are not field elements", func(prime *big.Int) {
 			field := NewField(prime)
 
@@ -94,6 +122,19 @@ var _ = Describe("Polynomial", func() {
 	})
 
 	Context("when constructing a random polynomial", func() {
+		DescribeTable("it should panic when the degree is too large", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				degree := randomDegree(prime)
+				degree += uint(prime.Uint64())
+
+				Expect(func() { NewRandomPolynomial(&field, degree) }).To(Panic())
+			}
+		},
+			PrimeEntries...,
+		)
+
 		DescribeTable("it should panic when secret has length greater than one", func(prime *big.Int) {
 			field := NewField(prime)
 
