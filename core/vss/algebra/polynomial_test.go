@@ -17,8 +17,12 @@ var _ = Describe("Polynomial", func() {
 
 	// randomDegree yields a random degree for constructing a polynomial, in a
 	// small range of values.
-	randomDegree := func() uint {
-		return uint(mathrand.Uint32() % 17)
+	randomDegree := func(prime *big.Int) uint {
+		r := uint64(mathrand.Uint32() % 17)
+		if prime.Cmp(big.NewInt(int64(r))) != 1 {
+			r %= prime.Uint64()
+		}
+		return uint(r)
 	}
 
 	Context("when getting polynomial coefficients", func() {
@@ -26,7 +30,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 				coefficients := make([]*big.Int, degree+1)
 
 				for i := range coefficients {
@@ -49,12 +53,12 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 				var nonFieldIndex uint
 				if degree == 0 {
 					nonFieldIndex = 0
 				} else {
-					nonFieldIndex = randomDegree() % degree
+					nonFieldIndex = randomDegree(prime) % degree
 				}
 
 				coefficients := make([]*big.Int, degree+1)
@@ -76,7 +80,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 				coefficients := make([]*big.Int, degree+1)
 				for i := 0; i <= int(degree); i++ {
 					coefficients[i] = field.Random()
@@ -94,9 +98,9 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 				// Utilise the randomness from randomDegree for picking the length of secret
-				length := randomDegree() + 2
+				length := randomDegree(prime) + 2
 				secret := make([]*big.Int, length)
 				for i := 0; i < int(length); i++ {
 					secret[i] = field.Random()
@@ -112,7 +116,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 
 				if RandomBool() {
 					Expect(func() { NewRandomPolynomial(&field, degree) }).ToNot(Panic())
@@ -138,7 +142,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
+				degree := randomDegree(prime)
 				poly := NewRandomPolynomial(&field, degree)
 
 				Expect(poly.Degree()).To(Equal(degree))
@@ -151,8 +155,14 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				degree := randomDegree()
-				zeros := make([]*big.Int, randomDegree())
+				degree := randomDegree(prime)
+				pad := randomDegree(prime)
+				if uint64(degree+pad+1) >= prime.Uint64() {
+					// Ignore the case where the padded coefficient list is too
+					// long
+					continue
+				}
+				zeros := make([]*big.Int, randomDegree(prime))
 				poly := NewRandomPolynomial(&field, degree)
 				paddedCoefficients := make([]*big.Int, int(degree)+len(zeros)+1)
 
@@ -176,7 +186,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				poly := NewRandomPolynomial(&field, randomDegree())
+				poly := NewRandomPolynomial(&field, randomDegree(prime))
 				x := RandomNotInField(&field)
 
 				Expect(func() { poly.Evaluate(x) }).To(Panic())
@@ -189,7 +199,7 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				poly := NewRandomPolynomial(&field, randomDegree())
+				poly := NewRandomPolynomial(&field, randomDegree(prime))
 				x := field.Random()
 
 				coefficients := poly.Coefficients()
