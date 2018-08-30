@@ -21,6 +21,7 @@ type Shares []Share
 // corresponds to the secret itself, and so if this is given in the list of
 // indices the function will panic.
 func Split(poly *algebra.Polynomial, indices []uint64) Shares {
+	// TODO: what if there are duplicate indices?
 	shares := make(Shares, len(indices))
 	x := big.NewInt(0)
 
@@ -46,26 +47,28 @@ func Join(field *algebra.Fp, shares Shares) *big.Int {
 		indices[i] = big.NewInt(0).SetUint64(s.Index)
 	}
 
-	accum := big.NewInt(0)
-	lagrangeEval := big.NewInt(0)
-	numerator := big.NewInt(0)
-	denominator := big.NewInt(0)
-	for _, s := range shares {
-		lagrangeEval.SetUint64(1)
-		for _, index := range indices {
-			if s.Index == index.Uint64() {
+	secret := big.NewInt(0)
+	diff := new(big.Int)
+	numerator := new(big.Int)
+	denominator := new(big.Int)
+	for i, s := range shares {
+		numerator.SetUint64(1)
+		denominator.SetUint64(1)
+		for j, index := range indices {
+			if j == i {
 				continue
 			}
 
-			field.Neg(index, numerator)
-			field.Sub(s.Value, index, denominator)
-			field.Div(numerator, denominator, numerator)
-
-			field.Mul(lagrangeEval, numerator, lagrangeEval)
+			field.Neg(index, diff)
+			field.Mul(numerator, diff, numerator)     // numerator *= -index
+			field.Add(indices[i], diff, diff)         // diff = indices[i] - index
+			field.Mul(denominator, diff, denominator) // denominator *= diff
 		}
 
-		field.Add(accum, lagrangeEval, accum)
+		field.Mul(numerator, s.Value, numerator)     // numerator *= s.Value
+		field.Div(numerator, denominator, numerator) // numerator /= denominator
+		field.Add(secret, numerator, secret)         // secret += numerator
 	}
 
-	return accum
+	return secret
 }
