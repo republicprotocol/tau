@@ -21,6 +21,13 @@ func (p *Polynomial) Coefficients() []*big.Int {
 // coefficients. If any of the coefficients are not in the field, then the
 // function will panic.
 func NewPolynomial(field *Fp, coefficients []*big.Int) Polynomial {
+	if len(coefficients) == 0 {
+		panic("cannot construct a polynomial without coefficients")
+	}
+	if !field.InField(big.NewInt(int64(len(coefficients)) - 1)) {
+		panic("polynomial cannot have degree greater than the order of the field")
+	}
+
 	for _, c := range coefficients {
 		if !field.InField(c) {
 			panic("coefficient must be a field element")
@@ -35,6 +42,9 @@ func NewPolynomial(field *Fp, coefficients []*big.Int) Polynomial {
 // function will panic. The coefficient for the x^degree term is gauranteed to
 // be non-zero, so that the polynomial is always of the given degree.
 func NewRandomPolynomial(field *Fp, degree uint, secret ...*big.Int) Polynomial {
+	if !field.InField(big.NewInt(int64(degree))) {
+		panic("polynomial cannot have degree greater than the order of the field")
+	}
 	if len(secret) > 1 {
 		panic("maximum of one secret")
 	}
