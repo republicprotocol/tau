@@ -3,7 +3,7 @@ package algebra_test
 import (
 	"log"
 	"math/big"
-	mathrand "math/rand"
+	"math/rand"
 
 	. "github.com/onsi/ginkgo/extensions/table"
 
@@ -18,7 +18,7 @@ var _ = Describe("Polynomial", func() {
 	// randomDegree yields a random degree for constructing a polynomial, in a
 	// small range of values.
 	randomDegree := func(prime *big.Int) uint {
-		r := uint64(mathrand.Uint32() % 17)
+		r := uint64(rand.Uint32() % 17)
 		if prime.Cmp(big.NewInt(int64(r))) != 1 {
 			r %= prime.Uint64()
 		}
