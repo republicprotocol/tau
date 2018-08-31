@@ -93,8 +93,9 @@ func (f *Fp) Sub(a, b, c *big.Int) {
 	if !f.InField(a) || !f.InField(b) {
 		panic("cannot subtract elements that are not in the field")
 	}
-	f.Neg(b, c)
-	f.Add(a, c, c)
+	neg := big.NewInt(0)
+	f.Neg(b, neg)
+	f.Add(a, neg, c)
 }
 
 // Div sets c = a/b = a*(b^-1)
@@ -102,6 +103,7 @@ func (f *Fp) Div(a, b, c *big.Int) {
 	if !f.InField(a) || !f.InField(b) {
 		panic("cannot subtract elements that are not in the field")
 	}
-	f.MulInv(b, c)
-	f.Mul(a, c, c)
+	inv := big.NewInt(0)
+	f.MulInv(b, inv)
+	f.Mul(a, inv, c)
 }
