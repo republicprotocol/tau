@@ -36,10 +36,10 @@ func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
 		return
 	}
 
-	check := new(big.Int).Set(p)
+	check := big.NewInt(0).Set(p)
 	check.Sub(check, big.NewInt(1))
 	check.Mod(check, q)
-	if check.Cmp(big.NewInt(0)) != 0 {
+	if check.Sign() != 0 {
 		err = errors.New("q does not divide p - 1")
 		return
 	}
@@ -52,7 +52,7 @@ func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
 	return
 }
 
-// GroupOrder returns q, the order of the subgroup of the multiplicative group Zp.
+// GroupOrder returns p, the order of the multiplicative group Zp.
 func (ped *Pedersen) GroupOrder() *big.Int {
 	return ped.p
 }
