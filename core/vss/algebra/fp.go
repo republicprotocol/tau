@@ -79,6 +79,9 @@ func (f *Fp) MulInv(a, c *big.Int) {
 	if !f.InField(a) {
 		panic("cannot find the inverse of an element that is not in the field")
 	}
+	if a.Sign() == 0 {
+		panic("zero has no multiplicative inverse")
+	}
 
 	// This should never fail because it is not possible to construct a field
 	// with a non-prime (with high probability)
