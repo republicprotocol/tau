@@ -48,9 +48,9 @@ func Join(field *algebra.Fp, shares Shares) *big.Int {
 	}
 
 	secret := big.NewInt(0)
-	diff := new(big.Int)
-	numerator := new(big.Int)
-	denominator := new(big.Int)
+	diff := big.NewInt(0)
+	numerator := big.NewInt(0)
+	denominator := big.NewInt(0)
 	for i, s := range shares {
 		numerator.SetUint64(1)
 		denominator.SetUint64(1)
