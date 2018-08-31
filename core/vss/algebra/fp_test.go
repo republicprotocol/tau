@@ -248,10 +248,23 @@ var _ = Describe("Finite field Fp", func() {
 	})
 
 	Context("when computing the multiplicative inverse of an element", func() {
-		DescribeTable("i should panic when the element is not in the field", func(prime *big.Int) {
+		DescribeTable("it should panic when the element is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
 				a, oldc := RandomNotInField(&field), field.Random()
+				newc := big.NewInt(0).Set(oldc)
+
+				Expect(func() { field.MulInv(a, newc) }).To(Panic())
+				Expect(newc.Cmp(oldc)).To(Equal(0))
+			}
+		},
+			PrimeEntries...,
+		)
+
+		DescribeTable("it should panic when the element is zero", func(prime *big.Int) {
+			field := NewField(prime)
+			for i := 0; i < Trials; i++ {
+				a, oldc := big.NewInt(0), field.Random()
 				newc := big.NewInt(0).Set(oldc)
 
 				Expect(func() { field.MulInv(a, newc) }).To(Panic())
@@ -369,6 +382,19 @@ var _ = Describe("Finite field Fp", func() {
 			PrimeEntries...,
 		)
 
+		DescribeTable("it should panic when the second argument is zero", func(prime *big.Int) {
+			field := NewField(prime)
+			for i := 0; i < Trials; i++ {
+				a, b, oldc := field.Random(), big.NewInt(0), field.Random()
+				newc := big.NewInt(0).Set(oldc)
+
+				Expect(func() { field.Div(a, b, newc) }).To(Panic())
+				Expect(newc.Cmp(oldc)).To(Equal(0))
+			}
+		},
+			PrimeEntries...,
+		)
+
 		DescribeTable("it should panic when both arguments are not in the field", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
@@ -382,10 +408,13 @@ var _ = Describe("Finite field Fp", func() {
 			PrimeEntries...,
 		)
 
-		DescribeTable("it should succeed when both arguments are in the field", func(prime *big.Int) {
+		DescribeTable("it should succeed when both arguments are in the field and the second is not zero", func(prime *big.Int) {
 			field := NewField(prime)
 			for i := 0; i < Trials; i++ {
 				a, b := field.Random(), field.Random()
+				for b.Sign() == 0 {
+					b = field.Random()
+				}
 				binv := big.NewInt(0).ModInverse(b, prime)
 				expected, actual := big.NewInt(0), big.NewInt(0)
 
