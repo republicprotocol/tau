@@ -39,6 +39,8 @@ var _ = Describe("Polynomial", func() {
 				poly := NewPolynomial(&field, coefficients)
 				actualCoefficients := poly.Coefficients()
 
+				Expect(len(coefficients)).To(Equal(len(actualCoefficients)))
+
 				for i := range coefficients {
 					Expect(coefficients[i].Cmp(actualCoefficients[i])).To(Equal(0))
 				}
@@ -256,6 +258,14 @@ var _ = Describe("Polynomial", func() {
 				}
 
 				Expect(poly.Evaluate(x).Cmp(accum)).To(Equal(0))
+
+				// Sum of coefficients should equal f(1)
+				accum.SetUint64(0)
+				for _, c := range poly.Coefficients() {
+					field.Add(accum, c, accum)
+				}
+
+				Expect(poly.Evaluate(big.NewInt(1)).Cmp(accum)).To(Equal(0))
 			}
 		},
 			PrimeEntries...,
