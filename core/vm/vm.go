@@ -148,17 +148,36 @@ func (vm *VM) execStep(prog program.Program) bool {
 }
 
 func (vm *VM) execPush(prog *program.Program, push program.Push) bool {
+	prog.Stack = append(prog.Stack, prog.Args[push.Argument])
 	return true
 }
 
 func (vm *VM) execAdd(prog *program.Program, add program.Add) bool {
+	end := len(prog.Stack)
+	lhs := prog.Stack[end-2]
+	rhs := prog.Stack[end-1]
+
+	// FIXME: How do we add?
+
 	return true
 }
 
 func (vm *VM) execMul(prog *program.Program, mul program.Multiply) bool {
+	end := len(prog.Stack)
+	lhs := prog.Stack[end-2]
+	rhs := prog.Stack[end-1]
+
+	// FIXME: How do we generate random numbers?
+	// FIXME: How do we multiply?
+
 	return true
 }
 
 func (vm *VM) execOpen(prog *program.Program, open program.Open) bool {
+	end := len(prog.Stack)
+	val := prog.Stack[end-1]
+
+	// FIXME: How do we open?
+
 	return true
 }
