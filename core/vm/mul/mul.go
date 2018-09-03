@@ -87,6 +87,8 @@ func (multer *multiplier) multiply(message Multiply) {
 		Value: message.x.Value*message.y.Value + message.ρ.Value,
 	}
 
+	multer.multipliers[message.Nonce] = message
+
 	for _, addr := range multer.addrs {
 		multer.sendMessage(NewOpenMessage(message.Nonce, addr, multer.addr, open))
 	}
