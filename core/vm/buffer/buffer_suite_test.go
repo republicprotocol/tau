@@ -1,4 +1,4 @@
-package message_test
+package buffer_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestMessage(t *testing.T) {
+func TestBuffer(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Message Suite")
+	RunSpecs(t, "Buffer Suite")
 }

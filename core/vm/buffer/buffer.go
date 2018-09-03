@@ -1,4 +1,4 @@
-package message
+package buffer
 
 type Message interface {
 	IsMessage()
@@ -11,7 +11,7 @@ type Buffer struct {
 	messages []Message
 }
 
-func NewBuffer(cap int) Buffer {
+func New(cap int) Buffer {
 	return Buffer{
 		top:      0,
 		free:     0,
@@ -32,26 +32,26 @@ func (buffer *Buffer) Push(message Message) bool {
 	return true
 }
 
-func (buffer *Buffer) Pop() (Message, bool) {
+func (buffer *Buffer) Pop() bool {
 	if buffer.IsEmpty() {
-		return nil, false
+		return false
 	}
 
-	message := buffer.messages[buffer.top]
 	buffer.top = (buffer.top + 1) % len(buffer.messages)
 	buffer.empty = buffer.top == buffer.free
 
-	return message, true
+	return true
 }
 
-func (buffer *Buffer) Peek() (Message, bool) {
+func (buffer *Buffer) Peek() <-chan Message {
 	if buffer.IsEmpty() {
-		return nil, false
+		return nil
 	}
 
-	message := buffer.messages[buffer.top]
+	peek := make(chan Message, 1)
+	peek <- buffer.messages[buffer.top]
 
-	return message, true
+	return peek
 }
 
 func (buffer *Buffer) IsFull() bool {

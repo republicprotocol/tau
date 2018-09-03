@@ -1,54 +1,60 @@
 package mul
 
-import shamir "github.com/republicprotocol/shamir-go"
+import (
+	shamir "github.com/republicprotocol/shamir-go"
+)
 
 type Nonce [32]byte
 
-type InputMessage interface {
+type Addr uint64
 
-	// IsInputMessage is a marker used to restrict InputMessages to types that
-	// have been explicitly marked. It is never called.
-	IsInputMessage()
-}
-
-type OutputMessage interface {
-
-	// IsOutputMessage is a marker used to restrict OutputMessages to types that
-	// have been explicitly marked. It is never called.
-	IsOutputMessage()
-}
-
-type Nominate struct {
-	Leader uint
-}
-
-// IsInputMessage implements the InputMessage interface.
-func (message Nominate) IsInputMessage() {
-}
-
-type Mul struct {
+type Multiply struct {
 	Nonce
 
 	x, y shamir.Share
 	ρ, σ shamir.Share
 }
 
-func NewMul(nonce Nonce, x, y, ρ, σ shamir.Share) Mul {
-	return Mul{
+func NewMultiplyMessage(nonce Nonce, x, y, ρ, σ shamir.Share) Multiply {
+	return Multiply{
 		nonce, x, y, ρ, σ,
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message Mul) IsInputMessage() {
+// IsMessage implements the Message interface.
+func (message Multiply) IsMessage() {
 }
 
 type Open struct {
 	Nonce
 
+	To    Addr
+	From  Addr
 	Value shamir.Share
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message Open) IsInputMessage() {
+func NewOpenMessage(nonce Nonce, to, from Addr, value shamir.Share) Open {
+	return Open{
+		nonce, to, from, value,
+	}
+}
+
+// IsMessage implements the Message interface.
+func (message Open) IsMessage() {
+}
+
+type Result struct {
+	Nonce
+
+	Value shamir.Share
+}
+
+func NewResultMessage(nonce Nonce, value shamir.Share) Result {
+	return Result{
+		nonce, value,
+	}
+}
+
+// IsMessage implements the Message interface.
+func (message Result) IsMessage() {
 }
