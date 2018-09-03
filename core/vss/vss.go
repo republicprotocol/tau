@@ -1,7 +1,6 @@
 package vss
 
 import (
-	"log"
 	"math/big"
 
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
@@ -43,9 +42,6 @@ func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) Ve
 func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
 	expected := ped.Commit(share.sShare.Value, share.tShare.Value)
 	actual := evaluate(ped, share.broadcast, share.sShare.Index)
-
-	log.Printf("[debug] expected: %v", expected)
-	log.Printf("[debug] actual:   %v", actual)
 
 	return expected.Cmp(actual) == 0
 }
