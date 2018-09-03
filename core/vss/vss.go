@@ -8,14 +8,23 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
+// A VerifiableShare struct contains the shares and broadcast message required to
+// verify a Shamir sharing. sShare is the actual share that is to be used, and
+// tShare is the obscuring share used for the Pedersen commitment.
 type VerifiableShare struct {
 	broadcast []*big.Int
 	sShare    shamir.Share
 	tShare    shamir.Share
 }
 
+// VerifiableShares is a list of VerifiableShare structs.
 type VerifiableShares []VerifiableShare
 
+// Share creates verifiable shares for a given secret. The Pedersen commitment
+// scheme that will be used is given by ped, and the threshold for the secret
+// sharing is given by k. The indicies for the secret sharing are given by
+// indices. If the inputs are malformed (e.g. the secret is not in the field,
+// the pedersen scheme is not correct) then the sharing will not work.
 func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) VerifiableShares {
 	field := algebra.NewField(ped.SubgroupOrder())
 	polyF := algebra.NewRandomPolynomial(&field, k-1, secret)
@@ -39,6 +48,7 @@ func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) Ve
 	return shares
 }
 
+// Verify takes a verifiable share and confirms or denies whether it is correct.
 func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
 	expected := ped.Commit(share.sShare.Value, share.tShare.Value)
 	actual := evaluate(ped, share.broadcast, share.sShare.Index)
@@ -46,6 +56,8 @@ func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
 	return expected.Cmp(actual) == 0
 }
 
+// evaluate performs the polynomial evaluation in the exponents of the
+// commitments in the broadcast field of a verifiable share.
 func evaluate(ped *pedersen.Pedersen, broadcast []*big.Int, index uint64) *big.Int {
 	field := algebra.NewField(ped.GroupOrder())
 	subfield := algebra.NewField(ped.SubgroupOrder())
