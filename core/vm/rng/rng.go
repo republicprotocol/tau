@@ -1,11 +1,14 @@
 package rng
 
 import (
+	"crypto/rand"
 	"errors"
-	"math/rand"
+	"math/big"
 	"time"
 
-	shamir "github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/vss"
+	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 // A Nonce is used to uniquely identify the generation of a secure random
@@ -68,6 +71,7 @@ type rnger struct {
 	timeout      time.Duration
 	addr, leader Address
 	n, k, t      uint
+	ped          pedersen.Pedersen
 
 	sendBuffer    []OutputMessage
 	sendBufferCap int
@@ -75,13 +79,19 @@ type rnger struct {
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
 	localRnShares map[Nonce](map[Address]ShareMap)
+	addresses     []uint64
 }
 
 // NewRnger returns an Rnger that is identified as the i-th player in a network
 // with n players and k threshold. The Rnger will allocate a buffer for its
 // output messages and this buffer will grow indefinitely if the messages output
 // from the Rnger are not consumed.
-func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, bufferCap int) Rnger {
+func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, bufferCap int) Rnger {
+	addresses := make([]uint64, n)
+	for i := range addresses {
+		addresses[i] = uint64(i + 1)
+	}
+
 	return &rnger{
 		timeout: timeout,
 		addr:    addr,
@@ -89,6 +99,7 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, bufferC
 		n:       n,
 		k:       k,
 		t:       t,
+		ped:     ped,
 
 		sendBuffer:    make([]OutputMessage, 0, bufferCap),
 		sendBufferCap: bufferCap,
@@ -96,6 +107,7 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, bufferC
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
 		localRnShares: map[Nonce](map[Address]ShareMap){},
+		addresses:     addresses,
 	}
 }
 
@@ -248,15 +260,15 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 		return
 	}
 
-	rn := rand.Uint64() % shamir.Prime
-	rnShares, err := shamir.Split(int64(rnger.n), int64(rnger.k), rn)
+	rn, err := rand.Int(rand.Reader, rnger.ped.SubgroupOrder())
 	if err != nil {
-		rnger.sendMessage(NewErr(message.Nonce, err))
-		return
+		panic(err)
 	}
+	rnShares := vss.Share(&rnger.ped, rn, rnger.k, rnger.addresses)
 
 	shares := ShareMap{}
 	for i, share := range rnShares {
+		// log.Printf("[debug] <replica %v>: sending share %v", rnger.addr, share.SShare)
 		shares[Address(i)] = share
 	}
 
@@ -280,13 +292,27 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 		Nonce: message.Nonce,
 		Share: shamir.Share{
 			Index: uint64(rnger.addr) + 1,
-			Value: 0,
+			Value: big.NewInt(0),
 		},
 		From: rnger.addr,
 	}
 	for _, share := range message.Shares {
-		globalRnShare.Share = globalRnShare.Share.Add(&share)
+		// log.Printf("[debug] <replica %v>: received share %v", rnger.addr, share.SShare)
+
+		// Check that the share is correct
+		if !vss.Verify(&rnger.ped, share) {
+			// log.Println("[debug] replica received a malformed share")
+			rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept incorrect share")))
+			return
+		}
+
+		if globalRnShare.Share.Index != share.SShare.Index {
+			panic("share indices are not the same")
+		}
+		globalRnShare.Share.Value.Add(globalRnShare.Share.Value, share.SShare.Value)
+		globalRnShare.Share.Value.Mod(globalRnShare.Share.Value, rnger.ped.SubgroupOrder())
 	}
+	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
 
 	rnger.sendMessage(globalRnShare)
 

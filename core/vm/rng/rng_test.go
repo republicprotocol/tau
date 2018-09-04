@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	mathRand "math/rand"
 	"time"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -17,6 +20,14 @@ import (
 )
 
 var _ = Describe("Random number generators", func() {
+
+	P := big.NewInt(8589934583)
+	Q := big.NewInt(4294967291)
+	G := big.NewInt(592772542)
+	H := big.NewInt(4799487786)
+	PedersenScheme, _ := pedersen.New(P, Q, G, H)
+	// CommitField := algebra.NewField(P)
+	SecretField := algebra.NewField(Q)
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
@@ -26,7 +37,7 @@ var _ = Describe("Random number generators", func() {
 		inputs := make([]chan InputMessage, n)
 		outputs := make([]chan OutputMessage, n)
 		for i := uint(0); i < n; i++ {
-			rngers[i] = NewRnger(timeout, Address(i), Address(0), n, k, t, bufferCap)
+			rngers[i] = NewRnger(timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
 			inputs[i] = make(chan InputMessage, bufferCap)
 			outputs[i] = make(chan OutputMessage, bufferCap)
 		}
@@ -86,10 +97,10 @@ var _ = Describe("Random number generators", func() {
 	// k sized subsets of shares are used to reconstruct a secret and an error
 	// is returned if the secrets are not equal.
 	verifyShares := func(shares shamir.Shares, n, k int64) error {
-		secret := shamir.Join(shares)
+		secret := shamir.Join(&SecretField, shares)
 		for i := int64(0); i < n-k; i++ {
-			kSecret := shamir.Join(shares[i : i+k])
-			if secret != kSecret {
+			kSecret := shamir.Join(&SecretField, shares[i:i+k])
+			if secret.Cmp(kSecret) != 0 {
 				return errors.New("malformed secret sharing")
 			}
 		}
@@ -175,7 +186,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, 1)
+			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 			input := make(chan InputMessage)
 			output := make(chan OutputMessage)
 
@@ -194,7 +205,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, 1)
+			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 			input := make(chan InputMessage)
 			output := make(chan OutputMessage)
 
