@@ -28,13 +28,13 @@ func (inst InstAdd) IsInst() {
 }
 
 type InstRand struct {
-	SigmaReady bool
-	SigmaCh    <-chan shamir.Share
-	Sigma      shamir.Share
-
 	RhoReady bool
 	RhoCh    <-chan shamir.Share
 	Rho      shamir.Share
+
+	SigmaReady bool
+	SigmaCh    <-chan shamir.Share
+	Sigma      shamir.Share
 }
 
 func (inst InstRand) IsInst() {

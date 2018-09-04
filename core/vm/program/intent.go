@@ -29,7 +29,8 @@ func (intent IntentToGenRn) IsIntent() {
 type IntentToMultiply struct {
 	X, Y       shamir.Share
 	Rho, Sigma shamir.Share
-	Ret        chan<- shamir.Share
+
+	Ret chan<- shamir.Share
 }
 
 func Multiply(x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultiply {
@@ -47,12 +48,13 @@ func (intent IntentToMultiply) IsIntent() {
 
 type IntentToOpen struct {
 	Value shamir.Share
-	Ret   chan<- *big.Int
+
+	Ret chan<- *big.Int
 }
 
-func Open(v shamir.Share, ret chan<- *big.Int) IntentToOpen {
+func Open(value shamir.Share, ret chan<- *big.Int) IntentToOpen {
 	return IntentToOpen{
-		Value: v,
+		Value: value,
 		Ret:   ret,
 	}
 }

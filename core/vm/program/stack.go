@@ -40,8 +40,8 @@ func (stack *Stack) Pop() (Value, error) {
 		return nil, ErrStackUnderflow
 	}
 
-	value := stack.values[stack.top]
-	stack.top = (stack.top + 1) % len(stack.values)
+	value := stack.values[stack.free]
+	stack.free = (stack.free - 1) % len(stack.values)
 	stack.empty = stack.top == stack.free
 
 	return value, nil

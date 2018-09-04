@@ -106,7 +106,7 @@ func (prog *Program) execInstAdd(inst InstAdd) Return {
 	case ValuePrivate:
 		ret = lhs.Add(rhs)
 	default:
-		panic("unimplemented")
+		return NotReady(ErrorUnexpectedValue(lhs, nil, prog.PC))
 	}
 	if err := prog.Stack.Push(ret); err != nil {
 		return NotReady(ErrorExecution(err, prog.PC))
