@@ -220,7 +220,7 @@ var _ = Describe("Random number generators", func() {
 		})
 	})
 
-	Context("when running the secure random number generation algorithm in a fully connected network", func() {
+	FContext("when running the secure random number generation algorithm in a fully connected network", func() {
 
 		table := []struct {
 			n, k      uint
@@ -309,7 +309,7 @@ var _ = Describe("Random number generators", func() {
 		}
 	})
 
-	FContext("when running the secure random number generation algorithm in a partially connected network", func() {
+	Context("when running the secure random number generation algorithm in a partially connected network", func() {
 
 		table := []struct {
 			n, k, t                uint

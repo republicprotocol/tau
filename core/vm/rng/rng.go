@@ -217,7 +217,7 @@ func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 		return
 	}
 	if rnger.states[message.Nonce] != StateWaitingForLocalRnShares {
-		//rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
+		// rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
 		return
 	}
 
