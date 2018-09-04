@@ -7,7 +7,7 @@ import (
 )
 
 type Value interface {
-	Add(Value) Value
+	IsValue()
 }
 
 type ValuePublic struct {
@@ -38,6 +38,9 @@ func (lhs ValuePublic) Add(rhs Value) (ret Value) {
 		panic("unimplemented")
 	}
 	return
+}
+
+func (lhs ValuePublic) IsValue() {
 }
 
 type ValuePrivate struct {
@@ -71,4 +74,15 @@ func (lhs ValuePrivate) Add(rhs Value) (ret Value) {
 		panic("unimplemented")
 	}
 	return
+}
+
+func (lhs ValuePrivate) IsValue() {
+}
+
+type ValuePrivateRn struct {
+	Rho   shamir.Share
+	Sigma shamir.Share
+}
+
+func (lhs ValuePrivateRn) IsValue() {
 }
