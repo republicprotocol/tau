@@ -104,6 +104,27 @@ var _ = Describe("Verifiable secret sharing", func() {
 					}
 				}
 			})
+
+			It("should catch incorrect shares", func() {
+				field := algebra.NewField(entry.q)
+
+				for i := 0; i < Trials; i++ {
+					secret := field.Random()
+					indices := []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
+					k := uint(16)
+
+					verifiableShares := Share(&ped, secret, k, indices)
+					for _, share := range verifiableShares {
+						r := field.Random()
+						field.Add(share.SShare.Value, r, share.SShare.Value)
+						if r.Sign() == 0 {
+							Expect(Verify(&ped, share)).To(BeTrue())
+						} else {
+							Expect(Verify(&ped, share)).To(BeFalse())
+						}
+					}
+				}
+			})
 		})
 	}
 })
