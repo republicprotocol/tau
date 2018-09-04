@@ -55,18 +55,23 @@ var _ = Describe("Shamir secret sharing", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				secret := field.Random()
-				poly := algebra.NewRandomPolynomial(&field, randomDegree(prime), secret)
-				var indices []uint64
 				if prime.Uint64() == 2 {
 					// Not possible to share correctly
 					continue
 				}
+				secret := field.Random()
+				k := randomDegree(prime) + 1
+				poly := algebra.NewRandomPolynomial(&field, k-1, secret)
+				var indices []uint64
 
-				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
+				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
 				shares := Split(&poly, indices)
 
 				Expect(Join(&field, shares).Cmp(secret)).To(Equal(0))
+
+				for i := uint(0); i < 24-k; i++ {
+					Expect(Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+				}
 			}
 		},
 			PrimeEntries...,
