@@ -4,7 +4,6 @@ import (
 	"log"
 
 	"github.com/republicprotocol/co-go"
-
 	"github.com/republicprotocol/smpc-go/core/vm/buffer"
 	"github.com/republicprotocol/smpc-go/core/vm/mul"
 	"github.com/republicprotocol/smpc-go/core/vm/program"
@@ -121,63 +120,35 @@ func (vm *VM) recvMessage(message buffer.Message) {
 }
 
 func (vm *VM) exec(message Exec) {
-	vm.progs[message.prog.ID] = message.prog
+	prog := message.prog
+	vm.progs[prog.ID] = prog
 
-	for vm.execStep(vm.progs[message.prog.ID]) {
-	}
-}
-
-func (vm *VM) execStep(prog program.Program) bool {
-	defer func() {
+	for {
+		ret := prog.Exec()
 		vm.progs[prog.ID] = prog
-	}()
 
-	switch code := prog.Code[prog.PC].(type) {
-	case program.Push:
-		return vm.execPush(&prog, code)
-	case program.Add:
-		return vm.execAdd(&prog, code)
-	case program.Multiply:
-		return vm.execMul(&prog, code)
-	case program.Open:
-		return vm.execOpen(&prog, code)
-	default:
-		log.Printf("[error] (vm) unexpected code type %T", code)
-		return true
+		if ret.IsReady() {
+			continue
+		}
+		if ret.Intent() == nil {
+			break
+		}
+
+		switch ret.Intent().(type) {
+		case program.IntentToGenRn:
+			panic("unimplemented")
+
+		case program.IntentToMultiply:
+			panic("unimplemented")
+
+		case program.IntentToOpen:
+			panic("unimplemented")
+
+		case program.IntentToError:
+			panic("unimplemented")
+
+		default:
+			panic("unimplemented")
+		}
 	}
-}
-
-func (vm *VM) execPush(prog *program.Program, push program.Push) bool {
-	prog.Stack = append(prog.Stack, prog.Args[push.Argument])
-	return true
-}
-
-func (vm *VM) execAdd(prog *program.Program, add program.Add) bool {
-	end := len(prog.Stack)
-	lhs := prog.Stack[end-2]
-	rhs := prog.Stack[end-1]
-
-	// FIXME: How do we add?
-
-	return true
-}
-
-func (vm *VM) execMul(prog *program.Program, mul program.Multiply) bool {
-	end := len(prog.Stack)
-	lhs := prog.Stack[end-2]
-	rhs := prog.Stack[end-1]
-
-	// FIXME: How do we generate random numbers?
-	// FIXME: How do we multiply?
-
-	return true
-}
-
-func (vm *VM) execOpen(prog *program.Program, open program.Open) bool {
-	end := len(prog.Stack)
-	val := prog.Stack[end-1]
-
-	// FIXME: How do we open?
-
-	return true
 }
