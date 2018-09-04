@@ -6,6 +6,7 @@ import (
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/smpc-go/core/vm/buffer"
 	"github.com/republicprotocol/smpc-go/core/vm/mul"
+	"github.com/republicprotocol/smpc-go/core/vm/open"
 	"github.com/republicprotocol/smpc-go/core/vm/program"
 	"github.com/republicprotocol/smpc-go/core/vm/rng"
 )
@@ -14,13 +15,17 @@ type VM struct {
 	buffer   buffer.Buffer
 	receiver chan buffer.Message
 
-	rng       rng.Rnger
-	rngSender chan buffer.Message
-	rngBuffer buffer.Buffer
+	rnger       rng.Rnger
+	rngerSender chan buffer.Message
+	rngerBuffer buffer.Buffer
 
-	mul       mul.Multiplier
-	mulSender chan buffer.Message
-	mulBuffer buffer.Buffer
+	multer       mul.Multiplier
+	multerSender chan buffer.Message
+	multerBuffer buffer.Buffer
+
+	opener       open.Opener
+	openerSender chan buffer.Message
+	openerBuffer buffer.Buffer
 
 	progs map[program.ID]program.Program
 }
@@ -57,24 +62,34 @@ func (vm *VM) Run(done <-chan struct{}, sender <-chan buffer.Message, receiver c
 			case receiver <- message:
 			}
 
-		case message := <-vm.rngBuffer.Peek():
+		case message := <-vm.rngerBuffer.Peek():
 			if !vm.buffer.Pop() {
 				log.Printf("[error] (vm) buffer underflow")
 			}
 			select {
 			case <-done:
 				return
-			case receiver <- message:
+			case vm.rngerSender <- message:
 			}
 
-		case message := <-vm.mulBuffer.Peek():
+		case message := <-vm.multerBuffer.Peek():
 			if !vm.buffer.Pop() {
 				log.Printf("[error] (vm) buffer underflow")
 			}
 			select {
 			case <-done:
 				return
-			case receiver <- message:
+			case vm.multerSender <- message:
+			}
+
+		case message := <-vm.openerBuffer.Peek():
+			if !vm.buffer.Pop() {
+				log.Printf("[error] (vm) buffer underflow")
+			}
+			select {
+			case <-done:
+				return
+			case vm.openerSender <- message:
 			}
 		}
 	}
@@ -83,10 +98,13 @@ func (vm *VM) Run(done <-chan struct{}, sender <-chan buffer.Message, receiver c
 func (vm *VM) runWorkers(done <-chan struct{}) {
 	co.ParBegin(
 		func() {
-			vm.rng.Run(done, vm.rngSender, vm.receiver)
+			vm.rnger.Run(done, vm.rngerSender, vm.receiver)
 		},
 		func() {
-			vm.mul.Run(done, vm.mulSender, vm.receiver)
+			vm.multer.Run(done, vm.multerSender, vm.receiver)
+		},
+		func() {
+			vm.opener.Run(done, vm.openerSender, vm.receiver)
 		})
 }
 
@@ -96,14 +114,20 @@ func (vm *VM) sendMessage(message buffer.Message) {
 	}
 }
 
-func (vm *VM) sendMessageToRng(message buffer.Message) {
-	if !vm.rngBuffer.Push(message) {
+func (vm *VM) sendMessageToRnger(message buffer.Message) {
+	if !vm.rngerBuffer.Push(message) {
 		log.Printf("[error] (vm) buffer overflow")
 	}
 }
 
-func (vm *VM) sendMessageToMul(message buffer.Message) {
-	if !vm.mulBuffer.Push(message) {
+func (vm *VM) sendMessageToMulter(message buffer.Message) {
+	if !vm.multerBuffer.Push(message) {
+		log.Printf("[error] (vm) buffer overflow")
+	}
+}
+
+func (vm *VM) sendMessageToOpener(message buffer.Message) {
+	if !vm.openerBuffer.Push(message) {
 		log.Printf("[error] (vm) buffer overflow")
 	}
 }
@@ -123,6 +147,7 @@ func (vm *VM) exec(message Exec) {
 	prog := message.prog
 	vm.progs[prog.ID] = prog
 
+Terminate:
 	for {
 		ret := prog.Exec()
 		vm.progs[prog.ID] = prog
@@ -134,7 +159,7 @@ func (vm *VM) exec(message Exec) {
 			break
 		}
 
-		switch ret.Intent().(type) {
+		switch intent := ret.Intent().(type) {
 		case program.IntentToGenRn:
 			panic("unimplemented")
 
@@ -145,7 +170,8 @@ func (vm *VM) exec(message Exec) {
 			panic("unimplemented")
 
 		case program.IntentToError:
-			panic("unimplemented")
+			log.Printf("[error] (vm) %v", intent.Error())
+			break Terminate
 
 		default:
 			panic("unimplemented")
