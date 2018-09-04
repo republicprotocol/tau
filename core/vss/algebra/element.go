@@ -13,8 +13,19 @@ func NewFpElement(prime, value *big.Int) FpElement {
 	}
 }
 
-func (a FpElement) NewInField(value *big.Int) FpElement {
-	if value.Sign() == -1 || value.Cmp(a.prime) != -1 {
+func (a FpElement) Copy() FpElement {
+	return FpElement{
+		a.prime,
+		big.NewInt(0).Set(a.value),
+	}
+}
+
+func (a FpElement) FieldContains(value *big.Int) bool {
+	return value.Sign() != -1 && value.Cmp(a.prime) == -1
+}
+
+func (a FpElement) NewInSameField(value *big.Int) FpElement {
+	if !a.FieldContains(value) {
 		panic("cannot create field element from value outside of [0, p)")
 	}
 	return FpElement{
@@ -31,8 +42,27 @@ func (a FpElement) Eq(b FpElement) bool {
 	return a.prime.Cmp(b.prime) == 0 && a.value.Cmp(b.value) == 0
 }
 
+func SliceFieldEq(s []FpElement) bool {
+	if len(s) < 2 {
+		return true
+	}
+	prime := s[0].prime
+
+	for _, a := range s[1:] {
+		if a.prime.Cmp(prime) != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (a FpElement) IsZero() bool {
 	return a.value.Sign() == 0
+}
+
+func (a FpElement) InField(f Fp) bool {
+	return f.InField(a.value)
 }
 
 func (lhs FpElement) Add(rhs FpElement) FpElement {
@@ -83,6 +113,14 @@ func (lhs FpElement) Div(rhs FpElement) FpElement {
 	value := big.NewInt(0).ModInverse(rhs.value, lhs.prime)
 	value = value.Mul(value, lhs.value)
 	value = value.Mod(value, lhs.prime)
+	return FpElement{
+		lhs.prime,
+		value,
+	}
+}
+
+func (lhs FpElement) Exp(rhs FpElement) FpElement {
+	value := big.NewInt(0).Exp(lhs.value, rhs.value, lhs.prime)
 	return FpElement{
 		lhs.prime,
 		value,
