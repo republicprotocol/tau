@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	. "github.com/republicprotocol/smpc-go/core/vm/buffer"
+	. "github.com/republicprotocol/smpc-go/core/buffer"
 )
 
 var _ = Describe("Buffer", func() {
