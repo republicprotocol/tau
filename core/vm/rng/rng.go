@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/republicprotocol/smpc-go/core/vm/buffer"
 	"github.com/republicprotocol/smpc-go/core/vss"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
@@ -57,7 +58,7 @@ type Rnger interface {
 	// messages to the output channel. Depending on the type of output message,
 	// the user must route the message to the appropriate Rnger in the network.
 	// Closing the done channel will stop the Rnger.
-	Run(done <-chan (struct{}), input <-chan InputMessage, output chan<- OutputMessage)
+	Run(done <-chan (struct{}), input <-chan buffer.Message, output chan<- buffer.Message)
 }
 
 // A VoteTable stores all votes received for a nonce and the timestamp at which
@@ -73,7 +74,7 @@ type rnger struct {
 	n, k, t      uint
 	ped          pedersen.Pedersen
 
-	sendBuffer    []OutputMessage
+	sendBuffer    []buffer.Message
 	sendBufferCap int
 
 	states        map[Nonce]State
@@ -101,7 +102,7 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped ped
 		t:       t,
 		ped:     ped,
 
-		sendBuffer:    make([]OutputMessage, 0, bufferCap),
+		sendBuffer:    make([]buffer.Message, 0, bufferCap),
 		sendBufferCap: bufferCap,
 
 		states:        map[Nonce]State{},
@@ -114,10 +115,10 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped ped
 // Run implements the Rnger interface. Calls to Rnger.Run are blocking and
 // should be run in a background goroutine. It is recommended that the input and
 // output channels are buffered, however it is not required.
-func (rnger *rnger) Run(done <-chan (struct{}), input <-chan InputMessage, output chan<- OutputMessage) {
+func (rnger *rnger) Run(done <-chan (struct{}), input <-chan buffer.Message, output chan<- buffer.Message) {
 	for {
-		var outputMessage OutputMessage
-		var outputMaybe chan<- OutputMessage
+		var outputMessage buffer.Message
+		var outputMaybe chan<- buffer.Message
 		if len(rnger.sendBuffer) > 0 {
 			outputMessage = rnger.sendBuffer[0]
 			outputMaybe = output
@@ -143,11 +144,11 @@ func (rnger *rnger) isLeader(nonce Nonce) bool {
 	return rnger.leaders[nonce] == rnger.addr
 }
 
-func (rnger *rnger) sendMessage(message OutputMessage) {
+func (rnger *rnger) sendMessage(message buffer.Message) {
 	rnger.sendBuffer = append(rnger.sendBuffer, message)
 }
 
-func (rnger *rnger) recvMessage(message InputMessage) {
+func (rnger *rnger) recvMessage(message buffer.Message) {
 	switch message := message.(type) {
 	case Nominate:
 		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
