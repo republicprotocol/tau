@@ -1,4 +1,4 @@
-package program_test
+package process_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestProgram(t *testing.T) {
+func TestProcess(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Program Suite")
+	RunSpecs(t, "Process Suite")
 }

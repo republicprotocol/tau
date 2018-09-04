@@ -1,4 +1,4 @@
-package program
+package process
 
 type Addr uint64
 

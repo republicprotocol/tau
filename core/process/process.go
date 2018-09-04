@@ -1,4 +1,4 @@
-package program
+package process
 
 import (
 	"math/big"
@@ -35,7 +35,7 @@ func (ret Return) IsReady() bool {
 
 type ID [32]byte
 
-type Program struct {
+type Process struct {
 	ID
 	Stack
 	Memory
@@ -43,8 +43,8 @@ type Program struct {
 	PC
 }
 
-func New(id ID, stack Stack, mem Memory, code Code) Program {
-	return Program{
+func New(id ID, stack Stack, mem Memory, code Code) Process {
+	return Process{
 		ID:     id,
 		Stack:  stack,
 		Memory: mem,
@@ -53,50 +53,50 @@ func New(id ID, stack Stack, mem Memory, code Code) Program {
 	}
 }
 
-func (prog *Program) Exec() Return {
-	if prog.PC >= PC(len(prog.Code)) {
-		return NotReady(ErrorCodeOverflow(prog.PC))
+func (proc *Process) Exec() Return {
+	if proc.PC >= PC(len(proc.Code)) {
+		return NotReady(ErrorCodeOverflow(proc.PC))
 	}
 
-	switch inst := prog.Code[prog.PC].(type) {
+	switch inst := proc.Code[proc.PC].(type) {
 
 	case InstPush:
-		return prog.execInstPush(inst)
+		return proc.execInstPush(inst)
 
 	case InstAdd:
-		return prog.execInstAdd(inst)
+		return proc.execInstAdd(inst)
 
 	case InstRand:
-		return prog.execInstRand(inst)
+		return proc.execInstRand(inst)
 
 	case InstMul:
-		return prog.execInstMul(inst)
+		return proc.execInstMul(inst)
 
 	case InstOpen:
-		return prog.execInstOpen(inst)
+		return proc.execInstOpen(inst)
 
 	default:
-		return NotReady(ErrorUnexpectedInst(inst, prog.PC))
+		return NotReady(ErrorUnexpectedInst(inst, proc.PC))
 	}
 }
 
-func (prog *Program) execInstPush(inst InstPush) Return {
-	if err := prog.Stack.Push(inst.Value); err != nil {
-		return NotReady(ErrorExecution(err, prog.PC))
+func (proc *Process) execInstPush(inst InstPush) Return {
+	if err := proc.Stack.Push(inst.Value); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
 	}
 
-	prog.PC++
+	proc.PC++
 	return Ready()
 }
 
-func (prog *Program) execInstAdd(inst InstAdd) Return {
-	rhs, err := prog.Stack.Pop()
+func (proc *Process) execInstAdd(inst InstAdd) Return {
+	rhs, err := proc.Stack.Pop()
 	if err != nil {
-		return NotReady(ErrorExecution(err, prog.PC))
+		return NotReady(ErrorExecution(err, proc.PC))
 	}
-	lhs, err := prog.Stack.Pop()
+	lhs, err := proc.Stack.Pop()
 	if err != nil {
-		return NotReady(ErrorExecution(err, prog.PC))
+		return NotReady(ErrorExecution(err, proc.PC))
 	}
 
 	ret := Value(nil)
@@ -106,23 +106,23 @@ func (prog *Program) execInstAdd(inst InstAdd) Return {
 	case ValuePrivate:
 		ret = lhs.Add(rhs)
 	default:
-		return NotReady(ErrorUnexpectedValue(lhs, nil, prog.PC))
+		return NotReady(ErrorUnexpectedValue(lhs, nil, proc.PC))
 	}
-	if err := prog.Stack.Push(ret); err != nil {
-		return NotReady(ErrorExecution(err, prog.PC))
+	if err := proc.Stack.Push(ret); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
 	}
 
-	prog.PC++
+	proc.PC++
 	return Ready()
 }
 
-func (prog *Program) execInstRand(inst InstRand) Return {
+func (proc *Process) execInstRand(inst InstRand) Return {
 	if inst.RhoCh == nil || inst.SigmaCh == nil {
 		ρCh := make(chan shamir.Share, 1)
 		σCh := make(chan shamir.Share, 1)
 		inst.RhoCh = ρCh
 		inst.SigmaCh = σCh
-		prog.Code[prog.PC] = inst
+		proc.Code[proc.PC] = inst
 		return NotReady(GenRn(ρCh, σCh))
 	}
 
@@ -131,7 +131,7 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 		case ρ := <-inst.RhoCh:
 			inst.RhoReady = true
 			inst.Rho = ρ
-			prog.Code[prog.PC] = inst
+			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
@@ -142,54 +142,54 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 		case σ := <-inst.SigmaCh:
 			inst.SigmaReady = true
 			inst.Sigma = σ
-			prog.Code[prog.PC] = inst
+			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	prog.Push(ValuePrivateRn{
+	proc.Push(ValuePrivateRn{
 		Rho:   inst.Rho,
 		Sigma: inst.Sigma,
 	})
 
-	prog.PC++
+	proc.PC++
 	return Ready()
 }
 
-func (prog *Program) execInstMul(inst InstMul) Return {
+func (proc *Process) execInstMul(inst InstMul) Return {
 	if inst.RetCh == nil {
 
-		rnValue, err := prog.Stack.Pop()
+		rnValue, err := proc.Stack.Pop()
 		if err != nil {
-			return NotReady(ErrorExecution(err, prog.PC))
+			return NotReady(ErrorExecution(err, proc.PC))
 		}
 		rn, ok := rnValue.(ValuePrivateRn)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(rnValue, ValuePrivateRn{}, prog.PC))
+			return NotReady(ErrorUnexpectedValue(rnValue, ValuePrivateRn{}, proc.PC))
 		}
 
-		yValue, err := prog.Stack.Pop()
+		yValue, err := proc.Stack.Pop()
 		if err != nil {
-			return NotReady(ErrorExecution(err, prog.PC))
+			return NotReady(ErrorExecution(err, proc.PC))
 		}
 		y, ok := yValue.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(yValue, ValuePrivate{}, prog.PC))
+			return NotReady(ErrorUnexpectedValue(yValue, ValuePrivate{}, proc.PC))
 		}
 
-		xValue, err := prog.Stack.Pop()
+		xValue, err := proc.Stack.Pop()
 		if err != nil {
-			return NotReady(ErrorExecution(err, prog.PC))
+			return NotReady(ErrorExecution(err, proc.PC))
 		}
 		x, ok := xValue.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(xValue, ValuePrivate{}, prog.PC))
+			return NotReady(ErrorUnexpectedValue(xValue, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan shamir.Share, 1)
 		inst.RetCh = retCh
-		prog.Code[prog.PC] = inst
+		proc.Code[proc.PC] = inst
 		return NotReady(Multiply(x.Share, y.Share, rn.Rho, rn.Sigma, retCh))
 	}
 
@@ -198,35 +198,35 @@ func (prog *Program) execInstMul(inst InstMul) Return {
 		case ret := <-inst.RetCh:
 			inst.RetReady = true
 			inst.Ret = ret
-			prog.Code[prog.PC] = inst
+			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	prog.Push(ValuePrivate{
+	proc.Push(ValuePrivate{
 		Share: inst.Ret,
 	})
 
-	prog.PC++
+	proc.PC++
 	return Ready()
 }
 
-func (prog *Program) execInstOpen(inst InstOpen) Return {
+func (proc *Process) execInstOpen(inst InstOpen) Return {
 	if inst.RetCh == nil {
 
-		value, err := prog.Stack.Pop()
+		value, err := proc.Stack.Pop()
 		if err != nil {
-			return NotReady(ErrorExecution(err, prog.PC))
+			return NotReady(ErrorExecution(err, proc.PC))
 		}
 		v, ok := value.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(value, ValuePrivate{}, prog.PC))
+			return NotReady(ErrorUnexpectedValue(value, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan *big.Int, 1)
 		inst.RetCh = retCh
-		prog.Code[prog.PC] = inst
+		proc.Code[proc.PC] = inst
 		return NotReady(Open(v.Share, retCh))
 	}
 
@@ -235,16 +235,16 @@ func (prog *Program) execInstOpen(inst InstOpen) Return {
 		case ret := <-inst.RetCh:
 			inst.RetReady = true
 			inst.Ret = ret
-			prog.Code[prog.PC] = inst
+			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	prog.Push(ValuePublic{
+	proc.Push(ValuePublic{
 		Int: inst.Ret,
 	})
 
-	prog.PC++
+	proc.PC++
 	return Ready()
 }

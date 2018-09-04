@@ -1,4 +1,4 @@
-package program
+package process
 
 import (
 	"math/big"
