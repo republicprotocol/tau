@@ -97,9 +97,10 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 
 	if !inst.RhoReady {
 		select {
-		case rho := <-inst.RhoCh:
+		case ρ := <-inst.RhoCh:
 			inst.RhoReady = true
-			inst.Rho = rho
+			inst.Rho = ρ
+			prog.Code[prog.PC] = inst
 		default:
 			return NotReady(nil)
 		}
@@ -107,9 +108,10 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 
 	if !inst.SigmaReady {
 		select {
-		case sigma := <-inst.SigmaCh:
+		case σ := <-inst.SigmaCh:
 			inst.SigmaReady = true
-			inst.Sigma = sigma
+			inst.Sigma = σ
+			prog.Code[prog.PC] = inst
 		default:
 			return NotReady(nil)
 		}
@@ -118,6 +120,60 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 	prog.Push(ValuePrivateRn{
 		Rho:   inst.Rho,
 		Sigma: inst.Sigma,
+	})
+
+	prog.PC++
+	return Ready()
+}
+
+func (prog *Program) execInstMul(inst InstMul) Return {
+	if inst.RetCh == nil {
+		inst.RetCh = make(chan shamir.Share, 1)
+		prog.Code[prog.PC] = inst
+
+		rnValue, err := prog.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, prog.PC))
+		}
+		rn, ok := rnValue.(ValuePrivateRn)
+		if !ok {
+			return NotReady(ErrorUnexpectedValue(rnValue, ValuePrivateRn{}, prog.PC))
+		}
+
+		yValue, err := prog.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, prog.PC))
+		}
+		y, ok := yValue.(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedValue(yValue, ValuePrivate{}, prog.PC))
+		}
+
+		xValue, err := prog.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, prog.PC))
+		}
+		x, ok := xValue.(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedValue(xValue, ValuePrivate{}, prog.PC))
+		}
+
+		return NotReady(Multiply(x.Share, y.Share, rn.Rho, rn.Sigma, inst.RetCh))
+	}
+
+	if !inst.RetReady {
+		select {
+		case ret := <-inst.RetCh:
+			inst.RetReady = true
+			inst.Ret = ret
+			prog.Code[prog.PC] = inst
+		default:
+			return NotReady(nil)
+		}
+	}
+
+	prog.Push(ValuePrivate{
+		Share: inst.Ret,
 	})
 
 	prog.PC++
@@ -160,14 +216,33 @@ type IntentToGenRn struct {
 	Sigma chan<- shamir.Share
 }
 
-func GenRn(rho chan<- shamir.Share, sigma chan<- shamir.Share) IntentToGenRn {
+func GenRn(ρ, σ chan<- shamir.Share) IntentToGenRn {
 	return IntentToGenRn{
-		Rho:   rho,
-		Sigma: sigma,
+		Rho:   ρ,
+		Sigma: σ,
 	}
 }
 
 func (intent IntentToGenRn) IsIntent() {
+}
+
+type IntentToMultiply struct {
+	X, Y       shamir.Share
+	Rho, Sigma shamir.Share
+	Ret        chan<- shamir.Share
+}
+
+func Multiply(x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultiply {
+	return IntentToMultiply{
+		X:     x,
+		Y:     y,
+		Rho:   ρ,
+		Sigma: σ,
+		Ret:   ret,
+	}
+}
+
+func (intent IntentToMultiply) IsIntent() {
 }
 
 type IntentToError struct {
@@ -190,6 +265,13 @@ func ErrorUnexpectedInst(inst Inst, pc PC) IntentToError {
 func ErrorCodeOverflow(pc PC) IntentToError {
 	return ErrorExecution(
 		fmt.Errorf("code overflow"),
+		pc,
+	)
+}
+
+func ErrorUnexpectedValue(got, expected Value, pc PC) IntentToError {
+	return ErrorExecution(
+		fmt.Errorf("unexpected value type %T expected %T", got, expected),
 		pc,
 	)
 }

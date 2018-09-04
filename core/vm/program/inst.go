@@ -35,3 +35,13 @@ type InstRand struct {
 
 func (inst InstRand) IsInst() {
 }
+
+type InstMul struct {
+	RetReady bool
+	RetCh    chan shamir.Share
+	Ret      shamir.Share
+}
+
+func (inst InstMul) IsInst() {
+}
+
