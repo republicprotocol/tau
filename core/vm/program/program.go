@@ -2,6 +2,7 @@ package program
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
@@ -46,6 +47,12 @@ func (prog *Program) Exec() Return {
 	case InstRand:
 		return prog.execInstRand(inst)
 
+	case InstMul:
+		return prog.execInstMul(inst)
+
+	case InstOpen:
+		return prog.execInstOpen(inst)
+
 	default:
 		return NotReady(ErrorUnexpectedInst(inst, prog.PC))
 	}
@@ -89,10 +96,12 @@ func (prog *Program) execInstAdd(inst InstAdd) Return {
 
 func (prog *Program) execInstRand(inst InstRand) Return {
 	if inst.RhoCh == nil || inst.SigmaCh == nil {
-		inst.RhoCh = make(chan shamir.Share, 1)
-		inst.SigmaCh = make(chan shamir.Share, 1)
+		ρCh := make(chan shamir.Share, 1)
+		σCh := make(chan shamir.Share, 1)
+		inst.RhoCh = ρCh
+		inst.SigmaCh = σCh
 		prog.Code[prog.PC] = inst
-		return NotReady(GenRn(inst.RhoCh, inst.SigmaCh))
+		return NotReady(GenRn(ρCh, σCh))
 	}
 
 	if !inst.RhoReady {
@@ -128,8 +137,6 @@ func (prog *Program) execInstRand(inst InstRand) Return {
 
 func (prog *Program) execInstMul(inst InstMul) Return {
 	if inst.RetCh == nil {
-		inst.RetCh = make(chan shamir.Share, 1)
-		prog.Code[prog.PC] = inst
 
 		rnValue, err := prog.Stack.Pop()
 		if err != nil {
@@ -158,7 +165,10 @@ func (prog *Program) execInstMul(inst InstMul) Return {
 			return NotReady(ErrorUnexpectedValue(xValue, ValuePrivate{}, prog.PC))
 		}
 
-		return NotReady(Multiply(x.Share, y.Share, rn.Rho, rn.Sigma, inst.RetCh))
+		retCh := make(chan shamir.Share, 1)
+		inst.RetCh = retCh
+		prog.Code[prog.PC] = inst
+		return NotReady(Multiply(x.Share, y.Share, rn.Rho, rn.Sigma, retCh))
 	}
 
 	if !inst.RetReady {
@@ -174,6 +184,43 @@ func (prog *Program) execInstMul(inst InstMul) Return {
 
 	prog.Push(ValuePrivate{
 		Share: inst.Ret,
+	})
+
+	prog.PC++
+	return Ready()
+}
+
+func (prog *Program) execInstOpen(inst InstOpen) Return {
+	if inst.RetCh == nil {
+
+		value, err := prog.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, prog.PC))
+		}
+		v, ok := value.(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedValue(value, ValuePrivate{}, prog.PC))
+		}
+
+		retCh := make(chan *big.Int, 1)
+		inst.RetCh = retCh
+		prog.Code[prog.PC] = inst
+		return NotReady(Open(v.Share, retCh))
+	}
+
+	if !inst.RetReady {
+		select {
+		case ret := <-inst.RetCh:
+			inst.RetReady = true
+			inst.Ret = ret
+			prog.Code[prog.PC] = inst
+		default:
+			return NotReady(nil)
+		}
+	}
+
+	prog.Push(ValuePublic{
+		Int: inst.Ret,
 	})
 
 	prog.PC++
@@ -243,6 +290,21 @@ func Multiply(x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultip
 }
 
 func (intent IntentToMultiply) IsIntent() {
+}
+
+type IntentToOpen struct {
+	Value shamir.Share
+	Ret   chan<- *big.Int
+}
+
+func Open(v shamir.Share, ret chan<- *big.Int) IntentToOpen {
+	return IntentToOpen{
+		Value: v,
+		Ret:   ret,
+	}
+}
+
+func (intent IntentToOpen) IsIntent() {
 }
 
 type IntentToError struct {

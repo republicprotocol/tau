@@ -1,6 +1,10 @@
 package program
 
-import "github.com/republicprotocol/smpc-go/core/vss/shamir"
+import (
+	"math/big"
+
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+)
 
 type PC uint64
 
@@ -25,11 +29,11 @@ func (inst InstAdd) IsInst() {
 
 type InstRand struct {
 	SigmaReady bool
-	SigmaCh    chan shamir.Share
+	SigmaCh    <-chan shamir.Share
 	Sigma      shamir.Share
 
 	RhoReady bool
-	RhoCh    chan shamir.Share
+	RhoCh    <-chan shamir.Share
 	Rho      shamir.Share
 }
 
@@ -38,10 +42,18 @@ func (inst InstRand) IsInst() {
 
 type InstMul struct {
 	RetReady bool
-	RetCh    chan shamir.Share
+	RetCh    <-chan shamir.Share
 	Ret      shamir.Share
 }
 
 func (inst InstMul) IsInst() {
 }
 
+type InstOpen struct {
+	RetReady bool
+	RetCh    <-chan *big.Int
+	Ret      *big.Int
+}
+
+func (inst InstOpen) IsInst() {
+}
