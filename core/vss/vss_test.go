@@ -8,6 +8,7 @@ import (
 	. "github.com/republicprotocol/smpc-go/core/vss"
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 var _ = Describe("Verifiable secret sharing", func() {
@@ -85,10 +86,21 @@ var _ = Describe("Verifiable secret sharing", func() {
 				for i := 0; i < Trials; i++ {
 					secret := field.Random()
 					indices := []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
+					k := uint(16)
 
-					shares := Share(&ped, secret, 17, indices)
-					for _, share := range shares {
+					verifiableShares := Share(&ped, secret, k, indices)
+					for _, share := range verifiableShares {
 						Expect(Verify(&ped, share)).To(BeTrue())
+					}
+
+					// Check that the secret can be correctly reconstructed
+					shares := make(shamir.Shares, 24)
+					for i := range shares {
+						shares[i] = verifiableShares[i].SShare
+					}
+
+					for i := uint(0); i < 24-k; i++ {
+						Expect(shamir.Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
 					}
 				}
 			})
