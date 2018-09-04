@@ -13,7 +13,7 @@ import (
 // tShare is the obscuring share used for the Pedersen commitment.
 type VerifiableShare struct {
 	broadcast []*big.Int
-	sShare    shamir.Share
+	SShare    shamir.Share
 	tShare    shamir.Share
 }
 
@@ -50,14 +50,12 @@ func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) Ve
 
 // Verify takes a verifiable share and confirms or denies whether it is correct.
 func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
-	expected := ped.Commit(share.sShare.Value, share.tShare.Value)
-	actual := evaluate(ped, share.broadcast, share.sShare.Index)
+	expected := ped.Commit(share.SShare.Value, share.tShare.Value)
+	actual := evaluate(ped, share.broadcast, share.SShare.Index)
 
 	return expected.Cmp(actual) == 0
 }
 
-// evaluate performs the polynomial evaluation in the exponents of the
-// commitments in the broadcast field of a verifiable share.
 func evaluate(ped *pedersen.Pedersen, broadcast []*big.Int, index uint64) *big.Int {
 	field := algebra.NewField(ped.GroupOrder())
 	subfield := algebra.NewField(ped.SubgroupOrder())

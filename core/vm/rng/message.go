@@ -3,11 +3,12 @@ package rng
 import (
 	"time"
 
-	shamir "github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/vss"
+	shamir "github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 // ShareMap is a convenience type that associates addresses with shares.
-type ShareMap map[Address]shamir.Share
+type ShareMap map[Address]vss.VerifiableShare
 
 // An InputMessage can be passed to the Rnger as an input. It will be processed
 // by the Rnger and an error will be output if the message is an unexpected
@@ -113,7 +114,7 @@ type LocalRnShares struct {
 }
 
 // NewLocalRnShares creates a new LocalRnShares message.
-func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]shamir.Share) LocalRnShares {
+func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) LocalRnShares {
 	return LocalRnShares{
 		nonce,
 
@@ -144,7 +145,7 @@ type ProposeGlobalRnShare struct {
 }
 
 // NewProposeGlobalRnShare creates a new ProposeGlobalRnShare message.
-func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]shamir.Share) ProposeGlobalRnShare {
+func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) ProposeGlobalRnShare {
 	return ProposeGlobalRnShare{
 		nonce,
 		to,
