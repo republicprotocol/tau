@@ -3,8 +3,8 @@ package mul
 import (
 	"log"
 
-	"github.com/republicprotocol/shamir-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 type Multiplier interface {
@@ -78,10 +78,9 @@ func (multiplier *multiplier) recvMessage(message buffer.Message) {
 }
 
 func (multiplier *multiplier) multiply(message Multiply) {
-	// FIXME: Use proper field multiplication / addition.
 	share := shamir.Share{
 		Index: message.x.Index,
-		Value: message.x.Value*message.y.Value + message.ρ.Value,
+		Value: message.x.Value.Mul(message.y.Value).Add(message.ρ.Value),
 	}
 
 	multiplier.pendings[message.Nonce] = message
@@ -108,12 +107,14 @@ func (multiplier *multiplier) open(message Open) {
 		multiplier.shares[n] = opening.Share
 		n++
 	}
-	value := shamir.Join(multiplier.shares[:n])
+	value, err := shamir.Join(multiplier.shares[:n])
+	if err != nil {
+		return
+	}
 
-	// FIXME: Use proper field addition.
 	result := shamir.Share{
 		Index: multiplier.pendings[message.Nonce].σ.Index,
-		Value: value - multiplier.pendings[message.Nonce].σ.Value,
+		Value: value.Sub(multiplier.pendings[message.Nonce].σ.Value),
 	}
 	multiplier.sendMessage(NewResult(message.Nonce, result))
 }
