@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/republicprotocol/co-go"
+	"github.com/republicprotocol/smpc-go/core/buffer"
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/republicprotocol/smpc-go/core/vm/buffer"
 	. "github.com/republicprotocol/smpc-go/core/vm/rng"
 )
 
@@ -29,6 +29,7 @@ var _ = Describe("Random number generators", func() {
 	PedersenScheme, _ := pedersen.New(P, Q, G, H)
 	// CommitField := algebra.NewField(P)
 	SecretField := algebra.NewField(Q)
+	BufferLimit := 64
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
@@ -38,7 +39,7 @@ var _ = Describe("Random number generators", func() {
 		inputs := make([]chan buffer.Message, n)
 		outputs := make([]chan buffer.Message, n)
 		for i := uint(0); i < n; i++ {
-			rngers[i] = NewRnger(timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
+			rngers[i] = New(timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
 			inputs[i] = make(chan buffer.Message, bufferCap)
 			outputs[i] = make(chan buffer.Message, bufferCap)
 		}
@@ -187,7 +188,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
+			rnger := New(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 			input := make(chan buffer.Message)
 			output := make(chan buffer.Message)
 
@@ -206,7 +207,7 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := NewRnger(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
+			rnger := New(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 			input := make(chan buffer.Message)
 			output := make(chan buffer.Message)
 
@@ -227,10 +228,10 @@ var _ = Describe("Random number generators", func() {
 			n, k      uint
 			bufferCap int
 		}{
-			{3, 2, 0}, {3, 2, 1}, {3, 2, 2}, {3, 2, 4},
-			{6, 4, 0}, {6, 4, 1}, {6, 4, 2}, {6, 4, 4},
-			{12, 8, 0}, {12, 8, 1}, {12, 8, 2}, {12, 8, 4},
-			{24, 16, 0}, {24, 16, 1}, {24, 16, 2}, {24, 16, 4},
+			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, {3, 2, BufferLimit * 4},
+			{6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
+			{12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
+			{24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
 		}
 
 		for _, entry := range table {
@@ -317,29 +318,29 @@ var _ = Describe("Random number generators", func() {
 			bufferCap, failureRate int
 		}{
 			// Failure rate = 1%
-			{12, 8, 4, 0, 1}, {12, 8, 4, 1, 1}, {12, 8, 4, 2, 1}, {12, 8, 4, 4, 1},
-			{24, 16, 8, 0, 1}, {24, 16, 8, 1, 1}, {24, 16, 8, 2, 1}, {24, 16, 8, 4, 1},
-			{48, 32, 16, 0, 1}, {48, 32, 16, 1, 1}, {48, 32, 16, 2, 1}, {48, 32, 16, 4, 1},
+			{12, 8, 4, BufferLimit, 1}, {12, 8, 4, BufferLimit * 2, 1}, {12, 8, 4, BufferLimit * 3, 1}, {12, 8, 4, BufferLimit * 4, 1},
+			{24, 16, 8, BufferLimit, 1}, {24, 16, 8, BufferLimit * 2, 1}, {24, 16, 8, BufferLimit * 3, 1}, {24, 16, 8, BufferLimit * 4, 1},
+			{48, 32, 16, BufferLimit, 1}, {48, 32, 16, BufferLimit * 2, 1}, {48, 32, 16, BufferLimit * 3, 1}, {48, 32, 16, BufferLimit * 4, 1},
 
 			// Failure rate = 5%
-			{12, 8, 4, 0, 5}, {12, 8, 4, 1, 5}, {12, 8, 4, 2, 5}, {12, 8, 4, 4, 5},
-			{24, 16, 8, 0, 5}, {24, 16, 8, 1, 5}, {24, 16, 8, 2, 5}, {24, 16, 8, 4, 5},
-			{48, 32, 16, 0, 5}, {48, 32, 16, 1, 5}, {48, 32, 16, 2, 5}, {48, 32, 16, 4, 5},
+			{12, 8, 4, BufferLimit, 5}, {12, 8, 4, BufferLimit * 2, 5}, {12, 8, 4, BufferLimit * 3, 5}, {12, 8, 4, BufferLimit * 4, 5},
+			{24, 16, 8, BufferLimit, 5}, {24, 16, 8, BufferLimit * 2, 5}, {24, 16, 8, BufferLimit * 3, 5}, {24, 16, 8, BufferLimit * 4, 5},
+			{48, 32, 16, BufferLimit, 5}, {48, 32, 16, BufferLimit * 2, 5}, {48, 32, 16, BufferLimit * 3, 5}, {48, 32, 16, BufferLimit * 4, 5},
 
 			// Failure rate = 10%
-			{12, 8, 4, 0, 10}, {12, 8, 4, 1, 10}, {12, 8, 4, 2, 10}, {12, 8, 4, 4, 10},
-			{24, 16, 8, 0, 10}, {24, 16, 8, 1, 10}, {24, 16, 8, 2, 10}, {24, 16, 8, 4, 10},
-			{48, 32, 16, 0, 10}, {48, 32, 16, 1, 10}, {48, 32, 16, 2, 10}, {48, 32, 16, 4, 10},
+			{12, 8, 4, BufferLimit, 10}, {12, 8, 4, BufferLimit * 2, 10}, {12, 8, 4, BufferLimit * 3, 10}, {12, 8, 4, BufferLimit * 4, 10},
+			{24, 16, 8, BufferLimit, 10}, {24, 16, 8, BufferLimit * 2, 10}, {24, 16, 8, BufferLimit * 3, 10}, {24, 16, 8, BufferLimit * 4, 10},
+			{48, 32, 16, BufferLimit, 10}, {48, 32, 16, BufferLimit * 2, 10}, {48, 32, 16, BufferLimit * 3, 10}, {48, 32, 16, BufferLimit * 4, 10},
 
 			// Failure rate = 15%
-			{12, 8, 4, 0, 15}, {12, 8, 4, 1, 15}, {12, 8, 4, 2, 15}, {12, 8, 4, 4, 15},
-			{24, 16, 8, 0, 15}, {24, 16, 8, 1, 15}, {24, 16, 8, 2, 15}, {24, 16, 8, 4, 15},
-			{48, 32, 16, 0, 15}, {48, 32, 16, 1, 15}, {48, 32, 16, 2, 15}, {48, 32, 16, 4, 15},
+			{12, 8, 4, BufferLimit, 15}, {12, 8, 4, BufferLimit * 2, 15}, {12, 8, 4, BufferLimit * 3, 15}, {12, 8, 4, BufferLimit * 4, 15},
+			{24, 16, 8, BufferLimit, 15}, {24, 16, 8, BufferLimit * 2, 15}, {24, 16, 8, BufferLimit * 3, 15}, {24, 16, 8, BufferLimit * 4, 15},
+			{48, 32, 16, BufferLimit, 15}, {48, 32, 16, BufferLimit * 2, 15}, {48, 32, 16, BufferLimit * 3, 15}, {48, 32, 16, BufferLimit * 4, 15},
 
 			// Failure rate = 20%
-			{12, 8, 4, 0, 20}, {12, 8, 4, 1, 20}, {12, 8, 4, 2, 20}, {12, 8, 4, 4, 20},
-			{24, 16, 8, 0, 20}, {24, 16, 8, 1, 20}, {24, 16, 8, 2, 20}, {24, 16, 8, 4, 20},
-			{48, 32, 16, 0, 20}, {48, 32, 16, 1, 20}, {48, 32, 16, 2, 20}, {48, 32, 16, 4, 20},
+			{12, 8, 4, BufferLimit, 20}, {12, 8, 4, BufferLimit * 2, 20}, {12, 8, 4, BufferLimit * 3, 20}, {12, 8, 4, BufferLimit * 4, 20},
+			{24, 16, 8, BufferLimit, 20}, {24, 16, 8, BufferLimit * 2, 20}, {24, 16, 8, BufferLimit * 3, 20}, {24, 16, 8, BufferLimit * 4, 20},
+			{48, 32, 16, BufferLimit, 20}, {48, 32, 16, BufferLimit * 2, 20}, {48, 32, 16, BufferLimit * 3, 20}, {48, 32, 16, BufferLimit * 4, 20},
 		}
 
 		for _, entry := range table {
