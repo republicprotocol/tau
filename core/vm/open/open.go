@@ -6,61 +6,45 @@ import (
 
 	"github.com/republicprotocol/shamir-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/smpc-go/core/vm/task"
 )
 
-// An Opener receives `shamir.Shares` with different indices and, once it has
-// enough, opens the secret into a public value.
-type Opener interface {
-	Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer)
-}
-
 type opener struct {
-	n, k uint
+	io         task.IO
+	ioExternal task.IO
 
-	buffer   buffer.Buffer
+	n, k     uint
 	openings map[Nonce](map[uint64]Open)
 	shares   shamir.Shares
 }
 
-func New(n, k uint, cap int) Opener {
+func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
 	return &opener{
-		n: n, k: k,
+		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
+		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 
-		buffer:   buffer.New(cap),
+		n: n, k: k,
 		openings: map[Nonce](map[uint64]Open){},
 		shares:   make(shamir.Shares, n),
 	}
 }
 
-func (opener *opener) Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer) {
+func (opener *opener) IO() task.IO {
+	return opener.ioExternal
+}
+
+func (opener *opener) Run(done <-chan struct{}) {
 	defer log.Printf("[info] (open) terminating")
 
 	for {
-		select {
-		case <-done:
+		ok := task.Select(
+			done,
+			opener.recvMessage,
+			opener.io,
+		)
+		if !ok {
 			return
-
-		case message, ok := <-reader:
-			if !ok {
-				return
-			}
-			opener.recvMessage(message)
-
-		case message := <-opener.buffer.Peek():
-			if !opener.buffer.Pop() {
-				log.Printf("[error] (open) buffer underflow")
-			}
-			select {
-			case <-done:
-			case writer <- message:
-			}
 		}
-	}
-}
-
-func (opener *opener) sendMessage(message buffer.Message) {
-	if !opener.buffer.Push(message) {
-		log.Printf("[error] (open) buffer overflow")
 	}
 }
 
@@ -96,5 +80,5 @@ func (opener *opener) open(message Open) {
 	}
 	result := shamir.Join(opener.shares[:n])
 
-	opener.sendMessage(NewResult(message.Nonce, big.NewInt(0).SetUint64(result)))
+	opener.io.Send(NewResult(message.Nonce, big.NewInt(0).SetUint64(result)))
 }

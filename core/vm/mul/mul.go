@@ -4,62 +4,48 @@ import (
 	"log"
 
 	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/smpc-go/core/vm/task"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
-type Multiplier interface {
-	Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer)
-}
-
 type multiplier struct {
-	n, k uint
+	io         task.IO
+	ioExternal task.IO
 
-	buffer   buffer.Buffer
+	n, k     uint
 	pendings map[Nonce]Multiply
 	openings map[Nonce](map[uint64]Open)
 	shares   shamir.Shares
 }
 
-func New(n, k uint, cap int) Multiplier {
+func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
 	return &multiplier{
-		n: n, k: k,
+		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
+		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 
-		buffer:   buffer.New(cap),
+		n: n, k: k,
 		pendings: map[Nonce]Multiply{},
 		openings: map[Nonce](map[uint64]Open){},
 		shares:   make(shamir.Shares, n),
 	}
 }
 
-func (multiplier *multiplier) Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer) {
+func (multiplier *multiplier) IO() task.IO {
+	return multiplier.ioExternal
+}
+
+func (multiplier *multiplier) Run(done <-chan struct{}) {
 	defer log.Printf("[info] (mul) terminating")
 
 	for {
-		select {
-		case <-done:
+		ok := task.Select(
+			done,
+			multiplier.recvMessage,
+			multiplier.io,
+		)
+		if !ok {
 			return
-
-		case message, ok := <-reader:
-			if !ok {
-				return
-			}
-			multiplier.recvMessage(message)
-
-		case message := <-multiplier.buffer.Peek():
-			if !multiplier.buffer.Pop() {
-				log.Printf("[error] (mul) buffer underflow")
-			}
-			select {
-			case <-done:
-			case writer <- message:
-			}
 		}
-	}
-}
-
-func (multiplier *multiplier) sendMessage(message buffer.Message) {
-	if !multiplier.buffer.Push(message) {
-		log.Printf("[error] (mul) buffer overflow")
 	}
 }
 
@@ -84,7 +70,7 @@ func (multiplier *multiplier) multiply(message Multiply) {
 	}
 
 	multiplier.pendings[message.Nonce] = message
-	multiplier.sendMessage(NewOpen(message.Nonce, share))
+	multiplier.io.Send(NewOpen(message.Nonce, share))
 	multiplier.recvMessage(NewOpen(message.Nonce, share))
 }
 
@@ -116,5 +102,5 @@ func (multiplier *multiplier) open(message Open) {
 		Index: multiplier.pendings[message.Nonce].σ.Index,
 		Value: value.Sub(multiplier.pendings[message.Nonce].σ.Value),
 	}
-	multiplier.sendMessage(NewResult(message.Nonce, result))
+	multiplier.io.Send(NewResult(message.Nonce, result))
 }
