@@ -16,6 +16,7 @@ type Share struct {
 	value algebra.FpElement
 }
 
+// New returns a new share constructed from the given index and field element.
 func New(index uint64, value algebra.FpElement) Share {
 	return Share{index, value}
 }
@@ -23,6 +24,10 @@ func New(index uint64, value algebra.FpElement) Share {
 // Shares is a slice of Share structs.
 type Shares []Share
 
+// Split returns a list of n shares determined by the polynomial poly. The
+// secret for this sharing will be the constant term in the polynomial. The
+// indices that the polynomial will be evaluated at to create the shares will be
+// sequence 1, 2, ..., n.
 func Split(poly algebra.Polynomial, n uint64) Shares {
 	if uint(n) <= poly.Degree() {
 		panic("n is not large enough to allow reconstruction")
@@ -37,6 +42,10 @@ func Split(poly algebra.Polynomial, n uint64) Shares {
 	return shares
 }
 
+// Join returns the secret defined by the given shares. If given an empty list
+// of shares, it will panic. The reconstruction algorithm is agnostic to whether
+// or not a set of shares are consistent and so if they are inconsistent then
+// Join will produce different values for different subsets of shares.
 func Join(shares Shares) (algebra.FpElement, error) {
 	if len(shares) == 0 {
 		panic("cannot join empty list of shares")
@@ -73,6 +82,8 @@ func (share *Share) indexEq(other Share) bool {
 	return share.index == other.index
 }
 
+// Add computes the share corresponding to the addition of the two secrets. If
+// the indices of the two shares are different, it panics.
 func (share *Share) Add(other Share) Share {
 	if !share.indexEq(other) {
 		panic("cannot add shares with different indices")
@@ -80,12 +91,17 @@ func (share *Share) Add(other Share) Share {
 	return New(share.index, share.value.Add(other.value))
 }
 
+// Sub computes the share corresponding to the addition of the two secrets. If
+// the indices of the two shares are different, it panics.
 func (share *Share) Sub(other Share) Share {
 	if !share.indexEq(other) {
 		panic("cannot subtract shares with different indices")
 	}
 	return New(share.index, share.value.Sub(other.value))
 }
+
+// Mul computes the share corresponding to the addition of the two secrets. If
+// the indices of the two shares are different, it panics.
 func (share *Share) Mul(other Share) Share {
 	if !share.indexEq(other) {
 		panic("cannot multiply shares with different indices")
