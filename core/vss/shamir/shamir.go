@@ -68,3 +68,27 @@ func Join(shares Shares) (algebra.FpElement, error) {
 
 	return secret, nil
 }
+
+func (share *Share) indexEq(other Share) bool {
+	return share.index == other.index
+}
+
+func (share *Share) Add(other Share) Share {
+	if !share.indexEq(other) {
+		panic("cannot add shares with different indices")
+	}
+	return New(share.index, share.value.Add(other.value))
+}
+
+func (share *Share) Sub(other Share) Share {
+	if !share.indexEq(other) {
+		panic("cannot subtract shares with different indices")
+	}
+	return New(share.index, share.value.Sub(other.value))
+}
+func (share *Share) Mul(other Share) Share {
+	if !share.indexEq(other) {
+		panic("cannot multiply shares with different indices")
+	}
+	return New(share.index, share.value.Mul(other.value))
+}
