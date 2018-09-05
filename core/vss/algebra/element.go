@@ -1,6 +1,9 @@
 package algebra
 
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+)
 
 // An FpElement represents an element of a finite field Fp defined by a prime p.
 // Different FpElements, while the same type, can be in different fields as
@@ -8,6 +11,14 @@ import "math/big"
 // more than one field.
 type FpElement struct {
 	prime, value *big.Int
+}
+
+func (lhs FpElement) String() string {
+	return fmt.Sprintf("{p: %v, v: %v}", lhs.prime, lhs.value)
+}
+
+func (lhs FpElement) Field() Fp {
+	return NewField(lhs.prime)
 }
 
 // NewFpElement creates a new field element directly from a value and a prime.

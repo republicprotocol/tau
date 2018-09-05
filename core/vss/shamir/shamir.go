@@ -1,16 +1,19 @@
 package shamir
 
 import (
+	"errors"
 	"math/big"
 
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 )
 
+var ErrDifferentFields = errors.New("expected shares to all be in the same field")
+
 // Share represents a share of a secret that has been shared using Shamir secret
 // sharing.
 type Share struct {
 	Index uint64
-	Value *big.Int
+	Value algebra.FpElement
 }
 
 // Shares is a slice of Share structs.
@@ -20,10 +23,9 @@ type Shares []Share
 // that is being split is the constant term of the polynomial. The zero index
 // corresponds to the secret itself, and so if this is given in the list of
 // indices the function will panic.
-func Split(poly *algebra.Polynomial, indices []uint64) Shares {
+func Split(poly algebra.Polynomial, indices []uint64) Shares {
 	// TODO: what if there are duplicate indices?
 	shares := make(Shares, len(indices))
-	x := big.NewInt(0)
 
 	for i := range shares {
 		index := indices[i]
@@ -31,44 +33,42 @@ func Split(poly *algebra.Polynomial, indices []uint64) Shares {
 			panic("a share cannot be the secret itself")
 		}
 
-		x.SetUint64(index)
-		shares[i] = Share{index, poly.Evaluate(x)}
+		shares[i] = Share{index, poly.EvaluateUint64(index)}
 	}
 
 	return shares
 }
 
-// Join reconstructs a secret from a set of shares. it is assumed that the given
-// field is the same as the one that was used when constructing the shares. If
-// not then the result, if successfully computed, will be undefined.
-func Join(field *algebra.Fp, shares Shares) *big.Int {
-	indices := make([]*big.Int, len(shares))
+func Join(shares Shares) (algebra.FpElement, error) {
+	if len(shares) == 0 {
+		panic("cannot join empty list of shares")
+	}
+	field := shares[0].Value.Field()
+	for _, share := range shares {
+		if !share.Value.InField(field) {
+			return field.NewInField(big.NewInt(0)), ErrDifferentFields
+		}
+	}
+	indices := make([]algebra.FpElement, len(shares))
 	for i, s := range shares {
-		indices[i] = big.NewInt(0).SetUint64(s.Index)
+		indices[i] = field.NewInField(big.NewInt(0).SetUint64(s.Index))
 	}
 
-	secret := big.NewInt(0)
-	diff := big.NewInt(0)
-	numerator := big.NewInt(0)
-	denominator := big.NewInt(0)
+	secret := field.NewInField(big.NewInt(0))
 	for i, s := range shares {
-		numerator.SetUint64(1)
-		denominator.SetUint64(1)
+		numerator := field.NewInField(big.NewInt(1))
+		denominator := field.NewInField(big.NewInt(1))
 		for j, index := range indices {
 			if j == i {
 				continue
 			}
 
-			field.Neg(index, diff)
-			field.Mul(numerator, diff, numerator)     // numerator *= -index
-			field.Add(indices[i], diff, diff)         // diff = indices[i] - index
-			field.Mul(denominator, diff, denominator) // denominator *= diff
+			numerator = numerator.Mul(index)
+			denominator = denominator.Mul(index.Sub(indices[i]))
 		}
 
-		field.Mul(numerator, s.Value, numerator)     // numerator *= s.Value
-		field.Div(numerator, denominator, numerator) // numerator /= denominator
-		field.Add(secret, numerator, secret)         // secret += numerator
+		secret = secret.Add(s.Value.Mul(numerator.Div(denominator)))
 	}
 
-	return secret
+	return secret, nil
 }

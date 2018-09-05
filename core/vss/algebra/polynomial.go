@@ -92,3 +92,8 @@ func (p Polynomial) Evaluate(x FpElement) FpElement {
 
 	return accum
 }
+
+func (p Polynomial) EvaluateUint64(x uint64) FpElement {
+	a := p.coefficients[0].NewInSameField(big.NewInt(0).SetUint64(x))
+	return p.Evaluate(a)
+}

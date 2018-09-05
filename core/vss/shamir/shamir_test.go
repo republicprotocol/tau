@@ -15,7 +15,7 @@ import (
 )
 
 var _ = Describe("Shamir secret sharing", func() {
-	const Trials = 100
+	const Trials = 10
 
 	// randomDegree yields a random degree for constructing a polynomial, in a
 	// small range of values.
@@ -43,9 +43,9 @@ var _ = Describe("Shamir secret sharing", func() {
 					}
 				}
 
-				poly := algebra.NewRandomPolynomial(&field, randomDegree(prime))
+				poly := algebra.NewRandomPolynomial(field, randomDegree(prime))
 
-				Expect(func() { Split(&poly, indices) }).To(Panic())
+				Expect(func() { Split(poly, indices) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
@@ -61,16 +61,18 @@ var _ = Describe("Shamir secret sharing", func() {
 				}
 				secret := field.Random()
 				k := randomDegree(prime) + 1
-				poly := algebra.NewRandomPolynomial(&field, k-1, secret)
+				poly := algebra.NewRandomPolynomial(field, k-1, secret)
 				var indices []uint64
 
 				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				shares := Split(&poly, indices)
+				shares := Split(poly, indices)
 
-				Expect(Join(&field, shares).Cmp(secret)).To(Equal(0))
+				actual, _ := Join(shares)
+				Expect(actual.Eq(secret)).To(BeTrue())
 
 				for i := uint(0); i < 24-k; i++ {
-					Expect(Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+					actual, _ := Join(shares[i : i+k])
+					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}
 		},
@@ -88,28 +90,28 @@ var _ = Describe("Shamir secret sharing", func() {
 				secretA := field.Random()
 				secretB := field.Random()
 				k := randomDegree(prime) + 1
-				polyA := algebra.NewRandomPolynomial(&field, k-1, secretA)
-				polyB := algebra.NewRandomPolynomial(&field, k-1, secretB)
+				polyA := algebra.NewRandomPolynomial(field, k-1, secretA)
+				polyB := algebra.NewRandomPolynomial(field, k-1, secretB)
 				var indices []uint64
 
 				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				sharesA := Split(&polyA, indices)
-				sharesB := Split(&polyB, indices)
+				sharesA := Split(polyA, indices)
+				sharesB := Split(polyB, indices)
 
-				secret := big.NewInt(0)
-				field.Add(secretA, secretB, secret)
+				secret := secretA.Add(secretB)
 
 				shares := make(Shares, 24)
 				for i := range shares {
 					shares[i].Index = uint64(i + 1)
-					shares[i].Value = big.NewInt(0)
-					field.Add(sharesA[i].Value, sharesB[i].Value, shares[i].Value)
+					shares[i].Value = sharesA[i].Value.Add(sharesB[i].Value)
 				}
 
-				Expect(Join(&field, shares).Cmp(secret)).To(Equal(0))
+				actual, _ := Join(shares)
+				Expect(actual.Eq(secret)).To(BeTrue())
 
 				for i := uint(0); i < 24-k; i++ {
-					Expect(Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+					actual, _ := Join(shares[i : i+k])
+					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}
 		},
