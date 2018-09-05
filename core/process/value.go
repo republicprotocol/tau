@@ -6,10 +6,12 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
+// Value is the interface of any struct that can be pushed on to the stack.
 type Value interface {
 	IsValue()
 }
 
+// ValuePublic is a public constant, that can be pushed on to the stack.
 type ValuePublic struct {
 	Int *big.Int
 }
