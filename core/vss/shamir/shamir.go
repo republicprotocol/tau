@@ -12,8 +12,12 @@ var ErrDifferentFields = errors.New("expected shares to all be in the same field
 // Share represents a share of a secret that has been shared using Shamir secret
 // sharing.
 type Share struct {
-	Index uint64
-	Value algebra.FpElement
+	index uint64
+	value algebra.FpElement
+}
+
+func New(index uint64, value algebra.FpElement) Share {
+	return Share{index, value}
 }
 
 // Shares is a slice of Share structs.
@@ -37,13 +41,13 @@ func Join(shares Shares) (algebra.FpElement, error) {
 	if len(shares) == 0 {
 		panic("cannot join empty list of shares")
 	}
-	field := shares[0].Value.Field()
+	field := shares[0].value.Field()
 	indices := make([]algebra.FpElement, len(shares))
 	for i, share := range shares {
-		if !share.Value.InField(field) {
+		if !share.value.InField(field) {
 			return field.NewInField(big.NewInt(0)), ErrDifferentFields
 		}
-		indices[i] = field.NewInField(big.NewInt(0).SetUint64(share.Index))
+		indices[i] = field.NewInField(big.NewInt(0).SetUint64(share.index))
 	}
 
 	secret := field.NewInField(big.NewInt(0))
@@ -59,7 +63,7 @@ func Join(shares Shares) (algebra.FpElement, error) {
 			denominator = denominator.Mul(index.Sub(indices[i]))
 		}
 
-		secret = secret.Add(s.Value.Mul(numerator.Div(denominator)))
+		secret = secret.Add(s.value.Mul(numerator.Div(denominator)))
 	}
 
 	return secret, nil
