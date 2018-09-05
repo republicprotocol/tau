@@ -9,7 +9,7 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
-var _ = FDescribe("Values", func() {
+var _ = Describe("Values", func() {
 	buildValuePublic := func(i *big.Int) ValuePublic {
 		return ValuePublic{
 			Int: i,
