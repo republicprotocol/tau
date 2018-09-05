@@ -22,49 +22,49 @@ type VM struct {
 	nodeSender   buffer.Writer
 	nodeReceiver buffer.Reader
 
-	rng       rng.Rnger
-	rngBuffer buffer.Buffer
-	rngWriter buffer.ReaderWriter
+	rng             rng.Rnger
+	rngBuffer       buffer.Buffer
+	rngReaderWriter buffer.ReaderWriter
 
-	mul       mul.Multiplier
-	mulBuffer buffer.Buffer
-	mulWriter buffer.ReaderWriter
+	mul             mul.Multiplier
+	mulBuffer       buffer.Buffer
+	mulReaderWriter buffer.ReaderWriter
 
-	open       open.Opener
-	openBuffer buffer.Buffer
-	openWriter buffer.ReaderWriter
+	open             open.Opener
+	openBuffer       buffer.Buffer
+	openReaderWriter buffer.ReaderWriter
 
-	internalBuffer buffer.Buffer
-	internalReader buffer.ReaderWriter
-	processes      map[process.ID]process.Process
-	processIntents map[process.ID]process.Intent
+	internalBuffer       buffer.Buffer
+	internalReaderWriter buffer.ReaderWriter
+	processes            map[process.ID]process.Process
+	processIntents       map[process.ID]process.Intent
 }
 
-func New(self node.Addr, peers node.Addrs, nodeSender buffer.Writer, nodeReceiver buffer.Reader) VM {
+func New(self node.Addr, peers node.Addrs, nodeSender buffer.Writer, nodeReceiver buffer.Reader, n, k uint, cap int) VM {
 	return VM{
 		self:  self,
 		peers: peers,
 
-		nodeBuffer:   buffer.New(BufferLimit),
+		nodeBuffer:   buffer.New(cap),
 		nodeSender:   nodeSender,
 		nodeReceiver: nodeReceiver,
 
-		rng:       rng.New(),
-		rngBuffer: buffer.New(BufferLimit),
-		rngWriter: buffer.NewReaderWriter(BufferLimit),
+		rng:             rng.New(),
+		rngBuffer:       buffer.New(cap),
+		rngReaderWriter: buffer.NewReaderWriter(cap),
 
-		mul:       mul.New(),
-		mulBuffer: buffer.New(BufferLimit),
-		mulWriter: buffer.NewReaderWriter(BufferLimit),
+		mul:             mul.New(n, k, cap),
+		mulBuffer:       buffer.New(cap),
+		mulReaderWriter: buffer.NewReaderWriter(cap),
 
-		open:       open.New(),
-		openBuffer: buffer.New(BufferLimit),
-		openWriter: buffer.NewReaderWriter(BufferLimit),
+		open:             open.New(n, k, cap),
+		openBuffer:       buffer.New(cap),
+		openReaderWriter: buffer.NewReaderWriter(cap),
 
-		internalBuffer: buffer.New(BufferLimit),
-		internalReader: buffer.NewReaderWriter(BufferLimit),
-		processes:      map[process.ID]process.Process{},
-		processIntents: map[process.ID]process.Intent{},
+		internalBuffer:       buffer.New(cap),
+		internalReaderWriter: buffer.NewReaderWriter(cap),
+		processes:            map[process.ID]process.Process{},
+		processIntents:       map[process.ID]process.Intent{},
 	}
 }
 
@@ -112,7 +112,7 @@ func (vm *VM) Run(done <-chan struct{}, reader buffer.Reader, writer buffer.Writ
 					}
 					select {
 					case <-done:
-					case vm.rngWriter <- message:
+					case vm.rngReaderWriter.Writer() <- message:
 					}
 
 				// Send messages to the `mul.Multiplier`
@@ -122,7 +122,7 @@ func (vm *VM) Run(done <-chan struct{}, reader buffer.Reader, writer buffer.Writ
 					}
 					select {
 					case <-done:
-					case vm.mulWriter <- message:
+					case vm.mulReaderWriter.Writer() <- message:
 					}
 
 				// Send messages to the `open.Opener`
@@ -132,7 +132,7 @@ func (vm *VM) Run(done <-chan struct{}, reader buffer.Reader, writer buffer.Writ
 					}
 					select {
 					case <-done:
-					case vm.openWriter <- message:
+					case vm.openReaderWriter.Writer() <- message:
 					}
 
 				// Send message to an external actor
@@ -147,7 +147,7 @@ func (vm *VM) Run(done <-chan struct{}, reader buffer.Reader, writer buffer.Writ
 
 				// Receive messages from the `rng.Rnger`, `mul.Multiplier`, and
 				// the `open.Opener`
-				case message := <-vm.internalReader:
+				case message := <-vm.internalReaderWriter.Reader():
 					vm.recvMessage(message)
 				}
 			}
@@ -157,13 +157,13 @@ func (vm *VM) Run(done <-chan struct{}, reader buffer.Reader, writer buffer.Writ
 func (vm *VM) runBackgroundGoroutines(done <-chan struct{}) {
 	co.ParBegin(
 		func() {
-			vm.rng.Run(done, vm.rngWriter, vm.internalReader)
+			vm.rng.Run(done, vm.rngReaderWriter.Reader(), vm.internalReaderWriter.Writer())
 		},
 		func() {
-			vm.mul.Run(done, vm.mulWriter, vm.internalReader)
+			vm.mul.Run(done, vm.mulReaderWriter.Reader(), vm.internalReaderWriter.Writer())
 		},
 		func() {
-			vm.open.Run(done, vm.openWriter, vm.internalReader)
+			vm.open.Run(done, vm.openReaderWriter.Reader(), vm.internalReaderWriter.Writer())
 		})
 }
 
