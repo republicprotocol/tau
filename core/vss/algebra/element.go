@@ -45,6 +45,13 @@ func (lhs FpElement) NewInSameField(value *big.Int) FpElement {
 	}
 }
 
+func (lhs FpElement) AsField(field Fp) FpElement {
+	if !field.Contains(lhs.prime) {
+		panic("cannot cast down to a smaller field")
+	}
+	return field.NewInField(lhs.value)
+}
+
 // Copy creates a copy of the field element lhs.
 func (lhs FpElement) Copy() FpElement {
 	return FpElement{
