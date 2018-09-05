@@ -7,21 +7,32 @@ import (
 )
 
 type Return struct {
-	intent Intent
-	ready  bool
+	intent     Intent
+	ready      bool
+	terminated bool
 }
 
 func Ready() Return {
 	return Return{
-		intent: nil,
-		ready:  true,
+		intent:     nil,
+		ready:      true,
+		terminated: false,
 	}
 }
 
 func NotReady(intent Intent) Return {
 	return Return{
-		intent: intent,
-		ready:  false,
+		intent:     intent,
+		ready:      false,
+		terminated: false,
+	}
+}
+
+func Terminated() Return {
+	return Return{
+		intent:     nil,
+		ready:      false,
+		terminated: true,
 	}
 }
 
@@ -31,6 +42,10 @@ func (ret Return) Intent() Intent {
 
 func (ret Return) IsReady() bool {
 	return ret.ready
+}
+
+func (ret Return) IsTerminated() bool {
+	return ret.terminated
 }
 
 type ID [32]byte
@@ -54,30 +69,30 @@ func New(id ID, stack Stack, mem Memory, code Code) Process {
 }
 
 func (proc *Process) Exec() Return {
-	if proc.PC >= PC(len(proc.Code)) {
-		return NotReady(ErrorCodeOverflow(proc.PC))
+	ret := Ready()
+
+	for ret.IsReady() {
+		if proc.PC == PC(len(proc.Code)) {
+			return Terminated()
+		}
+
+		switch inst := proc.Code[proc.PC].(type) {
+		case InstPush:
+			ret = proc.execInstPush(inst)
+		case InstAdd:
+			ret = proc.execInstAdd(inst)
+		case InstRand:
+			ret = proc.execInstRand(inst)
+		case InstMul:
+			ret = proc.execInstMul(inst)
+		case InstOpen:
+			ret = proc.execInstOpen(inst)
+		default:
+			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
+		}
 	}
 
-	switch inst := proc.Code[proc.PC].(type) {
-
-	case InstPush:
-		return proc.execInstPush(inst)
-
-	case InstAdd:
-		return proc.execInstAdd(inst)
-
-	case InstRand:
-		return proc.execInstRand(inst)
-
-	case InstMul:
-		return proc.execInstMul(inst)
-
-	case InstOpen:
-		return proc.execInstOpen(inst)
-
-	default:
-		return NotReady(ErrorUnexpectedInst(inst, proc.PC))
-	}
+	return ret
 }
 
 func (proc *Process) execInstPush(inst InstPush) Return {
@@ -94,9 +109,18 @@ func (proc *Process) execInstAdd(inst InstAdd) Return {
 	if err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
 	}
+
 	lhs, err := proc.Stack.Pop()
 	if err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	if lhs == nil {
+		panic("lhs nil value")
+	}
+
+	if rhs == nil {
+		panic("rhs nil value")
 	}
 
 	ret := Value(nil)
