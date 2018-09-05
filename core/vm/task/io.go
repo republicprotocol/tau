@@ -7,6 +7,11 @@ import (
 	"github.com/republicprotocol/smpc-go/core/buffer"
 )
 
+// IO is used to couple a `buffer.Reader` and `buffer.Writer`. It also provides
+// buffered writing to the `buffer.Writer`. Generally, a Task will involve two
+// IOs (1) to use internally to consume and produce messages for an external
+// user, and (2) to expose to the external user so that the external user can
+// consume and produce messages for the Task.
 type IO struct {
 	buf *buffer.Buffer
 	r   buffer.Reader
@@ -22,10 +27,10 @@ type IO struct {
 // the IO output. To produce a message on the IO output, use the Send method. To
 // consume a message from the IO input, use the Select function.
 //
-// The following example writes and reads messages to and from an IO. The
-// read-only direction of the `input` is passed to the IO (since the IO will
-// read input messages from it), and the write-only direction of the `output` is
-// passed to the IO (since the IO will write output message to it).
+// In the following example, the read-only direction of `input` is passed to the
+// IO (since the IO will read input messages from it), and the write-only
+// direction of `output` is passed to the IO (since the IO will write output
+// message to it).
 //
 // ```go
 // buf := buffer.New(cap)
@@ -40,7 +45,8 @@ func NewIO(buf *buffer.Buffer, r buffer.Reader, w buffer.Writer) IO {
 }
 
 // Send a `buffer.Message` to the output of the IO. The message will be buffered
-// and will not be produced immediately.
+// and will not be written until the message is flushed. The Select function can
+// be used to flush an IO.
 func (io IO) Send(message buffer.Message) {
 	if !io.buf.Push(message) {
 		log.Printf("[error] (io) buffer overflow")
@@ -48,7 +54,7 @@ func (io IO) Send(message buffer.Message) {
 }
 
 // Select an available read or write action from different IOs. A read action is
-// available whenever one of the IOs has message that can be read from its input
+// available whenever an IO has message that can be read from its input
 // `buffer.Reader`. A write action is available whenever an IO has a message
 // buffered, waiting to be written to its output `buffer.Writer`. If a read
 // action is selected, the IO will consume a `buffer.Message` from its input and
