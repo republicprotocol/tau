@@ -11,19 +11,19 @@ type Intent interface {
 	IsIntent()
 }
 
-type IntentToGenRn struct {
+type IntentToGenerateRn struct {
 	Rho   chan<- shamir.Share
 	Sigma chan<- shamir.Share
 }
 
-func GenRn(ρ, σ chan<- shamir.Share) IntentToGenRn {
-	return IntentToGenRn{
+func GenerateRn(ρ, σ chan<- shamir.Share) IntentToGenerateRn {
+	return IntentToGenerateRn{
 		Rho:   ρ,
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenRn) IsIntent() {
+func (intent IntentToGenerateRn) IsIntent() {
 }
 
 type IntentToMultiply struct {

@@ -1,22 +1,21 @@
 package open
 
-import shamir "github.com/republicprotocol/shamir-go"
+import (
+	"math/big"
+
+	shamir "github.com/republicprotocol/shamir-go"
+)
 
 type Nonce [32]byte
 
-type Addr uint64
-
 type Open struct {
 	Nonce
-
-	To    Addr
-	From  Addr
-	Value shamir.Share
+	shamir.Share
 }
 
-func NewOpenMessage(nonce Nonce, to, from Addr, value shamir.Share) Open {
+func NewOpen(nonce Nonce, share shamir.Share) Open {
 	return Open{
-		nonce, to, from, value,
+		nonce, share,
 	}
 }
 
@@ -27,10 +26,10 @@ func (message Open) IsMessage() {
 type Result struct {
 	Nonce
 
-	Value shamir.Share
+	Value *big.Int
 }
 
-func NewResultMessage(nonce Nonce, value shamir.Share) Result {
+func NewResult(nonce Nonce, value *big.Int) Result {
 	return Result{
 		nonce, value,
 	}

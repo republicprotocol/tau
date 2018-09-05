@@ -147,7 +147,7 @@ func (proc *Process) execInstRand(inst InstRand) Return {
 		inst.RhoCh = ρCh
 		inst.SigmaCh = σCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenRn(ρCh, σCh))
+		return NotReady(GenerateRn(ρCh, σCh))
 	}
 
 	if !inst.RhoReady {

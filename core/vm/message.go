@@ -1,16 +1,16 @@
 package vm
 
 import (
-	"github.com/republicprotocol/smpc-go/core/vm/program"
+	"github.com/republicprotocol/smpc-go/core/process"
 )
 
 type Exec struct {
-	prog program.Program
+	proc process.Process
 }
 
-func NewExecMessage(prog program.Program) Exec {
+func NewExecMessage(proc process.Process) Exec {
 	return Exec{
-		prog,
+		proc,
 	}
 }
 
