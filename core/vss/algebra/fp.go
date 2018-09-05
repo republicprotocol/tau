@@ -12,10 +12,6 @@ type Fp struct {
 	prime *big.Int
 }
 
-func (f Fp) Eq(g Fp) bool {
-	return f.prime.Cmp(g.prime) == 0
-}
-
 // NewField returns a new field object. The field will be the integers modulo
 // the given prime. If the given prime is probably not a prime, as determined by
 // big.ProbablyPrime, then the function panics. If the prime is in fact a prime,
@@ -29,13 +25,17 @@ func NewField(prime *big.Int) Fp {
 }
 
 func (f Fp) NewInField(value *big.Int) FpElement {
-	if value.Sign() == -1 || value.Cmp(f.prime) != -1 {
+	if !f.Contains(value) {
 		panic("cannot create field element from value outside of [0, p)")
 	}
 	return FpElement{
 		f.prime,
 		value,
 	}
+}
+
+func (f Fp) Eq(g Fp) bool {
+	return f.prime.Cmp(g.prime) == 0
 }
 
 // Contains checks whether a given integer is in the field. This will be the case

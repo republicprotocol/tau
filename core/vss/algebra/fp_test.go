@@ -44,6 +44,46 @@ var _ = Describe("Finite field Fp", func() {
 		})
 	})
 
+	Context("when creating a field element from a field and a value", func() {
+		DescribeTable("it should panic when the value is not in the field", func(prime *big.Int) {
+			field := NewField(prime)
+			for i := 0; i < Trials; i++ {
+				value := RandomNotInField(prime)
+				Expect(func() { field.NewInField(value) }).To(Panic())
+			}
+		},
+			PrimeEntries...,
+		)
+
+		DescribeTable("it should succeed when the value is in the field", func(prime *big.Int) {
+			field := NewField(prime)
+			for i := 0; i < Trials; i++ {
+				value, _ := rand.Int(rand.Reader, prime)
+				Expect(func() { field.NewInField(value) }).ToNot(Panic())
+			}
+		},
+			PrimeEntries...,
+		)
+	})
+
+	Context("when comparing two fields", func() {
+		DescribeTable("it should return false when the fields are defined by different primes", func(prime *big.Int) {
+			field := NewField(prime)
+			otherField := NewField(big.NewInt(7))
+			Expect(field.Eq(otherField)).To(BeFalse())
+		},
+			PrimeEntries...,
+		)
+
+		DescribeTable("it should return true when the fields are defined by the same prime", func(prime *big.Int) {
+			field := NewField(prime)
+			otherField := NewField(prime)
+			Expect(field.Eq(otherField)).To(BeTrue())
+		},
+			PrimeEntries...,
+		)
+	})
+
 	Context("when checking if an integer is an element of the field", func() {
 		prime, _ := big.NewInt(0).SetString("11415648579556416673", 10)
 		field := NewField(prime)
