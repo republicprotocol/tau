@@ -1,12 +1,11 @@
 package algebra_test
 
 import (
+	crand "crypto/rand"
 	"math/big"
 	"math/rand"
 
 	. "github.com/onsi/ginkgo/extensions/table"
-
-	. "github.com/republicprotocol/smpc-go/core/vss/algebra"
 )
 
 // RandomBool returns a random boolean with equal probability.
@@ -14,31 +13,27 @@ func RandomBool() bool {
 	return rand.Float32() < 0.5
 }
 
-// RandomNotInField will create a random integer that is not in the given
-// field. It will, with equal probability, pick an integer either too large
-// (between prime and 2*prime) or too small (a negative integer in the range
-// -prime to -1).
-func RandomNotInField(field *Fp) (r *big.Int) {
-	r = field.Random()
-
+// RandomNotInField returns a random number that is not in the field defined by
+// the given prime. It will with equal probability either pick a number that is
+// too small (negative) or too large.
+func RandomNotInField(prime *big.Int) *big.Int {
 	if RandomBool() {
-		// Make r too small
-		r.Neg(r)
-
-		// Subtract 1 in case r was 0
-		r.Sub(r, big.NewInt(1))
+		return randomNegative(prime)
 	} else {
-		// Make r too big
-		if r.Sign() == 0 {
-			// Ensure that r is not 0
-			r.Add(r, big.NewInt(1))
-		}
-		addinv := big.NewInt(0).Set(r)
-		field.Neg(addinv, addinv)
-		r.Add(r, big.NewInt(0).Add(r, addinv))
+		return randomLarge(prime)
 	}
+}
 
-	return
+func randomNegative(prime *big.Int) *big.Int {
+	value, _ := crand.Int(crand.Reader, prime)
+	value.Sub(value, prime)
+	return value
+}
+
+func randomLarge(prime *big.Int) *big.Int {
+	value, _ := crand.Int(crand.Reader, prime)
+	value.Add(value, prime)
+	return value
 }
 
 // PrimeEntries is a list of table entries of random prime numbers less than
