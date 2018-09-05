@@ -32,11 +32,12 @@ func Split(poly algebra.Polynomial, n uint64) Shares {
 	if uint(n) <= poly.Degree() {
 		panic("n is not large enough to allow reconstruction")
 	}
+	field := poly.Coefficients()[0].Field()
 	shares := make(Shares, n)
 
 	for i := range shares {
 		index := uint64(i) + 1
-		shares[i] = Share{index, poly.EvaluateUint64(index)}
+		shares[i] = Share{index, poly.Evaluate(field.NewInField(big.NewInt(0).SetUint64(index)))}
 	}
 
 	return shares
