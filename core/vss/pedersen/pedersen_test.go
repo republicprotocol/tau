@@ -12,7 +12,7 @@ import (
 
 var _ = Describe("Pedersen commitments", func() {
 
-	const Trials = 1
+	const Trials = 50
 
 	// For each entry, q is chosen to be the largest prime less than 2^b for
 	// various bit lengths b, and p is chosen to be the least prime such that q
