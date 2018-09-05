@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/republicprotocol/smpc-go/core/vm/buffer"
+	"github.com/republicprotocol/smpc-go/core/buffer"
 	"github.com/republicprotocol/smpc-go/core/vss"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"

@@ -2,10 +2,10 @@ package open
 
 import (
 	"log"
+	"math/big"
 
 	"github.com/republicprotocol/shamir-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/node"
 )
 
 // An Opener receives `shamir.Shares` with different indices and, once it has
@@ -18,7 +18,7 @@ type opener struct {
 	n, k uint
 
 	buffer   buffer.Buffer
-	openings map[Nonce](map[node.Addr]Open)
+	openings map[Nonce](map[uint64]Open)
 	shares   shamir.Shares
 }
 
@@ -27,7 +27,7 @@ func New(n, k uint, cap int) Opener {
 		n: n, k: k,
 
 		buffer:   buffer.New(cap),
-		openings: map[Nonce](map[node.Addr]Open){},
+		openings: map[Nonce](map[uint64]Open){},
 		shares:   make(shamir.Shares, n),
 	}
 }
@@ -81,9 +81,9 @@ func (opener *opener) recvMessage(message buffer.Message) {
 // * Do we produce duplicate results when we receive more than `k` openings?
 func (opener *opener) open(message Open) {
 	if _, ok := opener.openings[message.Nonce]; !ok {
-		opener.openings[message.Nonce] = map[node.Addr]Open{}
+		opener.openings[message.Nonce] = map[uint64]Open{}
 	}
-	opener.openings[message.Nonce][message.From] = message
+	opener.openings[message.Nonce][message.Index] = message
 
 	if uint(len(opener.openings[message.Nonce])) < opener.k {
 		return
@@ -91,16 +91,10 @@ func (opener *opener) open(message Open) {
 
 	n := 0
 	for _, opening := range opener.openings[message.Nonce] {
-		opener.shares[n] = opening.Value
+		opener.shares[n] = opening.Share
 		n++
 	}
-	value := shamir.Join(opener.shares[:n])
+	result := shamir.Join(opener.shares[:n])
 
-	// FIXME:
-	// * Use proper field addition.
-	result := shamir.Share{
-		Index: message.Value.Index,
-		Value: value,
-	}
-	opener.sendMessage(NewResult(message.Nonce, result))
+	opener.sendMessage(NewResult(message.Nonce, big.NewInt(0).SetUint64(result)))
 }

@@ -3,36 +3,35 @@ package mul
 import (
 	"log"
 
-	shamir "github.com/republicprotocol/shamir-go"
-	"github.com/republicprotocol/smpc-go/core/vm/buffer"
+	"github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/buffer"
 )
 
 type Multiplier interface {
-	Run(done <-chan (struct{}), sender <-chan buffer.Message, receiver chan<- buffer.Message)
+	Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer)
 }
 
 type multiplier struct {
-	n, k, t uint
+	n, k uint
 
-	addr   Addr
-	addrs  []Addr
-	buffer buffer.Buffer
-
-	multipliers map[Nonce]Multiply
-	openings    map[Nonce](map[Addr]Open)
-	cache       shamir.Shares
+	buffer   buffer.Buffer
+	pendings map[Nonce]Multiply
+	openings map[Nonce](map[uint64]Open)
+	shares   shamir.Shares
 }
 
-func NewMultiplier(n, k, t uint, cap int) Multiplier {
+func New(n, k uint, cap int) Multiplier {
 	return &multiplier{
-		n: n, k: k, t: t,
+		n: n, k: k,
 
-		buffer: buffer.New(cap),
-		cache:  make(shamir.Shares, n),
+		buffer:   buffer.New(cap),
+		pendings: map[Nonce]Multiply{},
+		openings: map[Nonce](map[uint64]Open){},
+		shares:   make(shamir.Shares, n),
 	}
 }
 
-func (multer *multiplier) Run(done <-chan (struct{}), sender <-chan buffer.Message, receiver chan<- buffer.Message) {
+func (multiplier *multiplier) Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer) {
 	defer log.Printf("[info] (mul) terminating")
 
 	for {
@@ -40,81 +39,81 @@ func (multer *multiplier) Run(done <-chan (struct{}), sender <-chan buffer.Messa
 		case <-done:
 			return
 
-		case message, ok := <-sender:
+		case message, ok := <-reader:
 			if !ok {
 				return
 			}
-			multer.recvMessage(message)
+			multiplier.recvMessage(message)
 
-		case message := <-multer.buffer.Peek():
-			if !multer.buffer.Pop() {
+		case message := <-multiplier.buffer.Peek():
+			if !multiplier.buffer.Pop() {
 				log.Printf("[error] (mul) buffer underflow")
 			}
-
 			select {
 			case <-done:
-				return
-			case receiver <- message:
+			case writer <- message:
 			}
 		}
 	}
 }
 
-func (multer *multiplier) sendMessage(message buffer.Message) {
-	if !multer.buffer.Push(message) {
+func (multiplier *multiplier) sendMessage(message buffer.Message) {
+	if !multiplier.buffer.Push(message) {
 		log.Printf("[error] (mul) buffer overflow")
 	}
 }
 
-func (multer *multiplier) recvMessage(message buffer.Message) {
+func (multiplier *multiplier) recvMessage(message buffer.Message) {
 	switch message := message.(type) {
 
 	case Multiply:
-		multer.multiply(message)
+		multiplier.multiply(message)
 
 	case Open:
-		multer.open(message)
+		multiplier.open(message)
 
 	default:
 		log.Printf("[error] unexpected message type %T", message)
 	}
 }
 
-func (multer *multiplier) multiply(message Multiply) {
+func (multiplier *multiplier) multiply(message Multiply) {
 	// FIXME: Use proper field multiplication / addition.
-	open := shamir.Share{
+	share := shamir.Share{
 		Index: message.x.Index,
 		Value: message.x.Value*message.y.Value + message.ρ.Value,
 	}
 
-	multer.multipliers[message.Nonce] = message
-
-	for _, addr := range multer.addrs {
-		multer.sendMessage(NewOpenMessage(message.Nonce, addr, multer.addr, open))
-	}
+	multiplier.pendings[message.Nonce] = message
+	multiplier.sendMessage(NewOpen(message.Nonce, share))
+	multiplier.recvMessage(NewOpen(message.Nonce, share))
 }
 
-func (multer *multiplier) open(message Open) {
-	if _, ok := multer.openings[message.Nonce]; !ok {
-		multer.openings[message.Nonce] = map[Addr]Open{}
+// TODO:
+// * Do we delete the pendings/openings from memory once we have received
+//   enough to open the secret?
+// * Do we produce duplicate results when we receive more than `k` openings?
+func (multiplier *multiplier) open(message Open) {
+	if _, ok := multiplier.openings[message.Nonce]; !ok {
+		multiplier.openings[message.Nonce] = map[uint64]Open{}
 	}
-	multer.openings[message.Nonce][message.From] = message
+	multiplier.openings[message.Nonce][message.Index] = message
 
-	if uint(len(multer.openings[message.Nonce])) < multer.k {
+	if uint(len(multiplier.openings[message.Nonce])) < multiplier.k {
 		return
 	}
 
-	i := 0
-	for _, opening := range multer.openings[message.Nonce] {
-		multer.cache[i] = opening.Value
-		i++
+	n := 0
+	for _, opening := range multiplier.openings[message.Nonce] {
+		multiplier.shares[n] = opening.Share
+		n++
 	}
-	value := shamir.Join(multer.cache[:i])
+	value := shamir.Join(multiplier.shares[:n])
 
 	// FIXME: Use proper field addition.
 	result := shamir.Share{
-		Index: multer.multipliers[message.Nonce].σ.Index,
-		Value: value - multer.multipliers[message.Nonce].σ.Value,
+		Index: multiplier.pendings[message.Nonce].σ.Index,
+		Value: value - multiplier.pendings[message.Nonce].σ.Value,
 	}
-	multer.sendMessage(NewResultMessage(message.Nonce, result))
+	multiplier.sendMessage(NewResult(message.Nonce, result))
 }

@@ -1,22 +1,21 @@
 package open
 
 import (
+	"math/big"
+
 	shamir "github.com/republicprotocol/shamir-go"
-	"github.com/republicprotocol/smpc-go/core/node"
 )
 
 type Nonce [32]byte
 
 type Open struct {
 	Nonce
-
-	From  node.Addr
-	Value shamir.Share
+	shamir.Share
 }
 
-func NewOpen(nonce Nonce, from node.Addr, value shamir.Share) Open {
+func NewOpen(nonce Nonce, share shamir.Share) Open {
 	return Open{
-		nonce, from, value,
+		nonce, share,
 	}
 }
 
@@ -27,10 +26,10 @@ func (message Open) IsMessage() {
 type Result struct {
 	Nonce
 
-	Value shamir.Share
+	Value *big.Int
 }
 
-func NewResult(nonce Nonce, value shamir.Share) Result {
+func NewResult(nonce Nonce, value *big.Int) Result {
 	return Result{
 		nonce, value,
 	}
