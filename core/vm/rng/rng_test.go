@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/republicprotocol/smpc-go/core/vm/rng"
+	"github.com/republicprotocol/smpc-go/core/vm/task"
 )
 
 var _ = Describe("Random number generators", func() {
@@ -33,15 +34,15 @@ var _ = Describe("Random number generators", func() {
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
-	initPlayers := func(timeout time.Duration, n, k, t uint, bufferCap int) ([]Rnger, [](chan buffer.Message), [](chan buffer.Message)) {
+	initPlayers := func(timeout time.Duration, n, k, t uint, bufferCap int) ([]task.Task, []buffer.ReaderWriter, []buffer.ReaderWriter) {
 		// Initialis the players
-		rngers := make([]Rnger, n)
-		inputs := make([]chan buffer.Message, n)
-		outputs := make([]chan buffer.Message, n)
+		rngers := make([]task.Task, n)
+		inputs := make([]buffer.ReaderWriter, n)
+		outputs := make([]buffer.ReaderWriter, n)
 		for i := uint(0); i < n; i++ {
-			rngers[i] = New(timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
-			inputs[i] = make(chan buffer.Message, bufferCap)
-			outputs[i] = make(chan buffer.Message, bufferCap)
+			inputs[i] = buffer.NewReaderWriter(bufferCap)
+			outputs[i] = buffer.NewReaderWriter(bufferCap)
+			rngers[i] = New(inputs[i], outputs[i], timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
 		}
 		return rngers, inputs, outputs
 	}
@@ -49,16 +50,16 @@ var _ = Describe("Random number generators", func() {
 	// runPlayers unless the done channel is closed. The number of players,
 	// input channels, and output channels must match. The Address of a player
 	// must match the position of their channels.
-	runPlayers := func(done <-chan (struct{}), rngers []Rnger, inputs [](chan buffer.Message), outputs [](chan buffer.Message)) {
+	runPlayers := func(done <-chan struct{}, rngers []task.Task) {
 		co.ParForAll(rngers, func(i int) {
-			rngers[i].Run(done, inputs[i], outputs[i])
+			rngers[i].Run(done)
 		})
 	}
 
 	// runTicker will send a CheckDeadline message, once per tick duration, to
 	// all input channels. The ticker will stop after the done channel is
 	// closed.
-	runTicker := func(done <-chan (struct{}), inputs [](chan buffer.Message), duration time.Duration) {
+	runTicker := func(done <-chan struct{}, inputs []buffer.ReaderWriter, duration time.Duration) {
 		ticker := time.NewTicker(duration)
 		defer ticker.Stop()
 		for {
@@ -71,7 +72,7 @@ var _ = Describe("Random number generators", func() {
 					select {
 					case <-done:
 						return
-					case inputs[i] <- CheckDeadline{Time: now}:
+					case inputs[i].Writer() <- CheckDeadline{Time: now}:
 					}
 				})
 			}
@@ -81,15 +82,15 @@ var _ = Describe("Random number generators", func() {
 	// genLeader will send a Nominate message to all input channels for the
 	// given leader. This will initiate the generation of a secure random number
 	// for all players associated with one of the input channels.
-	genLeader := func(done <-chan (struct{}), leader Address, inputs [](chan buffer.Message), nonce Nonce) {
+	genLeader := func(done <-chan struct{}, leader Address, inputs []buffer.ReaderWriter, nonce Nonce) {
 		co.ParForAll(inputs, func(i int) {
 			select {
 			case <-done:
 				return
-			case inputs[i] <- Nominate{Leader: leader}:
+			case inputs[i].Writer() <- Nominate{Leader: leader}:
 				if leader == Address(i) {
 					// The leader starts the random number generation
-					inputs[i] <- GenerateRn{Nonce: nonce}
+					inputs[i].Writer() <- GenerateRn{Nonce: nonce}
 				}
 			}
 		})
@@ -109,7 +110,7 @@ var _ = Describe("Random number generators", func() {
 		return nil
 	}
 
-	routeMessage := func(done <-chan (struct{}), input chan buffer.Message, message buffer.Message, failureRate int) {
+	routeMessage := func(done <-chan (struct{}), input buffer.ReaderWriter, message buffer.Message, failureRate int) {
 		if mathRand.Intn(100) < failureRate {
 			// Simluate an unstable network connection and randomly drop
 			// messages
@@ -119,11 +120,11 @@ var _ = Describe("Random number generators", func() {
 		select {
 		case <-done:
 			return
-		case input <- message:
+		case input.Writer() <- message:
 		}
 	}
 
-	routeMessages := func(done <-chan (struct{}), inputs [](chan buffer.Message), outputs [](chan buffer.Message), failureRate int) (<-chan GlobalRnShare, <-chan Err) {
+	routeMessages := func(done <-chan struct{}, inputs []buffer.ReaderWriter, outputs []buffer.ReaderWriter, failureRate int) (<-chan GlobalRnShare, <-chan Err) {
 		results := make(chan GlobalRnShare, len(outputs))
 		errs := make(chan Err, len(outputs))
 
@@ -139,7 +140,7 @@ var _ = Describe("Random number generators", func() {
 					select {
 					case <-done:
 						return
-					case message, ok = <-outputs[i]:
+					case message, ok = <-outputs[i].Reader():
 						if !ok {
 							return
 						}
@@ -188,14 +189,14 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := New(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
-			input := make(chan buffer.Message)
-			output := make(chan buffer.Message)
+			input := buffer.NewReaderWriter(BufferLimit)
+			output := buffer.NewReaderWriter(BufferLimit)
+			rnger := New(input, output, time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
 				func() {
-					rnger.Run(done, input, output)
+					rnger.Run(done)
 				},
 				func() {
 					close(done)
@@ -207,14 +208,14 @@ var _ = Describe("Random number generators", func() {
 		It("should clean up and shutdown", func(doneT Done) {
 			defer close(doneT)
 
-			rnger := New(time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
-			input := make(chan buffer.Message)
-			output := make(chan buffer.Message)
+			input := buffer.NewReaderWriter(BufferLimit)
+			output := buffer.NewReaderWriter(BufferLimit)
+			rnger := New(input, output, time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
 				func() {
-					rnger.Run(done, input, output)
+					rnger.Run(done)
 				},
 				func() {
 					close(input)
@@ -256,7 +257,7 @@ var _ = Describe("Random number generators", func() {
 					co.ParBegin(
 						func() {
 							// Run the players until the done channel is closed
-							runPlayers(done, rngers, inputs, outputs)
+							runPlayers(done, rngers)
 						},
 						func() {
 							// Run a globally timer for all players
@@ -366,7 +367,7 @@ var _ = Describe("Random number generators", func() {
 						co.ParBegin(
 							func() {
 								// Run the players until the done channel is closed
-								runPlayers(done, rngers, inputs, outputs)
+								runPlayers(done, rngers)
 							},
 							func() {
 								// Run a globally timer for all players
