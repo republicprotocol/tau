@@ -28,6 +28,44 @@ var _ = Describe("Shamir secret sharing", func() {
 	}
 
 	Context("when splitting a secret into shares", func() {
+		DescribeTable("it should panic if n is too small", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				if prime.Uint64() == 2 {
+					// Not possible to share correctly
+					continue
+				}
+				secret := field.Random()
+				k := randomDegree(prime) + 1
+				n := rand.Uint64() % uint64(k)
+				poly := algebra.NewRandomPolynomial(field, k-1, secret)
+
+				Expect(func() { Split(poly, n) }).To(Panic())
+			}
+		},
+			PrimeEntries...,
+		)
+	})
+
+	Context("when reconstructing secrets", func() {
+		DescribeTable("it should panic if the list of shares is empty", func(prime *big.Int) {
+			emptyShares := make(Shares, 0)
+			Expect(func() { Join(emptyShares) }).To(Panic())
+		},
+			PrimeEntries...,
+		)
+
+		It("should return an error if shares are in different fields", func() {
+			field := NewField(big.NewInt(2))
+			otherField := NewField(big.NewInt(3))
+			shares := make(Shares, 2)
+			shares[0] = New(1, field.Random())
+			shares[1] = New(2, otherField.Random())
+			_, err := Join(shares)
+			Expect(err).To(HaveOccurred())
+		})
+
 		DescribeTable("the shares should join back into the original secret", func(prime *big.Int) {
 			field := NewField(prime)
 
