@@ -24,6 +24,8 @@ func NewField(prime *big.Int) Fp {
 	return Fp{prime}
 }
 
+// NewInField creates a new field element from a value and a field. It will
+// panic if the value is not in the field.
 func (f Fp) NewInField(value *big.Int) FpElement {
 	if !f.Contains(value) {
 		panic("cannot create field element from value outside of [0, p)")
@@ -34,6 +36,8 @@ func (f Fp) NewInField(value *big.Int) FpElement {
 	}
 }
 
+// Eq returns true if two fields are equal and false if they are not. Equality
+// is determined by the equality of the primes that define the fields.
 func (f Fp) Eq(g Fp) bool {
 	return f.prime.Cmp(g.prime) == 0
 }
