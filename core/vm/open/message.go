@@ -1,22 +1,22 @@
 package open
 
-import shamir "github.com/republicprotocol/shamir-go"
+import (
+	shamir "github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/node"
+)
 
 type Nonce [32]byte
-
-type Addr uint64
 
 type Open struct {
 	Nonce
 
-	To    Addr
-	From  Addr
+	From  node.Addr
 	Value shamir.Share
 }
 
-func NewOpenMessage(nonce Nonce, to, from Addr, value shamir.Share) Open {
+func NewOpen(nonce Nonce, from node.Addr, value shamir.Share) Open {
 	return Open{
-		nonce, to, from, value,
+		nonce, from, value,
 	}
 }
 
@@ -30,7 +30,7 @@ type Result struct {
 	Value shamir.Share
 }
 
-func NewResultMessage(nonce Nonce, value shamir.Share) Result {
+func NewResult(nonce Nonce, value shamir.Share) Result {
 	return Result{
 		nonce, value,
 	}
