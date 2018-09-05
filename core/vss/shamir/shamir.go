@@ -19,20 +19,14 @@ type Share struct {
 // Shares is a slice of Share structs.
 type Shares []Share
 
-// Split takes a polynomial over a field and splits it into shares. The secret
-// that is being split is the constant term of the polynomial. The zero index
-// corresponds to the secret itself, and so if this is given in the list of
-// indices the function will panic.
-func Split(poly algebra.Polynomial, indices []uint64) Shares {
-	// TODO: what if there are duplicate indices?
-	shares := make(Shares, len(indices))
+func Split(poly algebra.Polynomial, n uint64) Shares {
+	if uint(n) <= poly.Degree() {
+		panic("n is not large enough to allow reconstruction")
+	}
+	shares := make(Shares, n)
 
 	for i := range shares {
-		index := indices[i]
-		if index == 0 {
-			panic("a share cannot be the secret itself")
-		}
-
+		index := uint64(i) + 1
 		shares[i] = Share{index, poly.EvaluateUint64(index)}
 	}
 
@@ -44,14 +38,12 @@ func Join(shares Shares) (algebra.FpElement, error) {
 		panic("cannot join empty list of shares")
 	}
 	field := shares[0].Value.Field()
-	for _, share := range shares {
+	indices := make([]algebra.FpElement, len(shares))
+	for i, share := range shares {
 		if !share.Value.InField(field) {
 			return field.NewInField(big.NewInt(0)), ErrDifferentFields
 		}
-	}
-	indices := make([]algebra.FpElement, len(shares))
-	for i, s := range shares {
-		indices[i] = field.NewInField(big.NewInt(0).SetUint64(s.Index))
+		indices[i] = field.NewInField(big.NewInt(0).SetUint64(share.Index))
 	}
 
 	secret := field.NewInField(big.NewInt(0))

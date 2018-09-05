@@ -28,29 +28,6 @@ var _ = Describe("Shamir secret sharing", func() {
 	}
 
 	Context("when splitting a secret into shares", func() {
-		DescribeTable("it should panic if one of the indices is 0", func(prime *big.Int) {
-			field := NewField(prime)
-
-			for i := 0; i < Trials; i++ {
-				indices := make([]uint64, (rand.Uint32()%20)+1)
-				zero := rand.Uint32() % uint32(len(indices))
-
-				for j := range indices {
-					if j == int(zero) {
-						indices[j] = 0
-					} else {
-						indices[j] = uint64(j)
-					}
-				}
-
-				poly := algebra.NewRandomPolynomial(field, randomDegree(prime))
-
-				Expect(func() { Split(poly, indices) }).To(Panic())
-			}
-		},
-			PrimeEntries...,
-		)
-
 		DescribeTable("the shares should join back into the original secret", func(prime *big.Int) {
 			field := NewField(prime)
 
@@ -60,18 +37,17 @@ var _ = Describe("Shamir secret sharing", func() {
 					continue
 				}
 				secret := field.Random()
+				n := uint64(24)
 				k := randomDegree(prime) + 1
 				poly := algebra.NewRandomPolynomial(field, k-1, secret)
-				var indices []uint64
 
-				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				shares := Split(poly, indices)
+				shares := Split(poly, n)
 
 				actual, _ := Join(shares)
 				Expect(actual.Eq(secret)).To(BeTrue())
 
-				for i := uint(0); i < 24-k; i++ {
-					actual, _ := Join(shares[i : i+k])
+				for i := uint64(0); i < n-uint64(k); i++ {
+					actual, _ := Join(shares[i : i+uint64(k)])
 					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}
@@ -89,18 +65,17 @@ var _ = Describe("Shamir secret sharing", func() {
 				}
 				secretA := field.Random()
 				secretB := field.Random()
+				n := uint64(24)
 				k := randomDegree(prime) + 1
 				polyA := algebra.NewRandomPolynomial(field, k-1, secretA)
 				polyB := algebra.NewRandomPolynomial(field, k-1, secretB)
-				var indices []uint64
 
-				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				sharesA := Split(polyA, indices)
-				sharesB := Split(polyB, indices)
+				sharesA := Split(polyA, n)
+				sharesB := Split(polyB, n)
 
 				secret := secretA.Add(secretB)
 
-				shares := make(Shares, 24)
+				shares := make(Shares, n)
 				for i := range shares {
 					shares[i].Index = uint64(i + 1)
 					shares[i].Value = sharesA[i].Value.Add(sharesB[i].Value)
@@ -109,8 +84,8 @@ var _ = Describe("Shamir secret sharing", func() {
 				actual, _ := Join(shares)
 				Expect(actual.Eq(secret)).To(BeTrue())
 
-				for i := uint(0); i < 24-k; i++ {
-					actual, _ := Join(shares[i : i+k])
+				for i := uint64(0); i < n-uint64(k); i++ {
+					actual, _ := Join(shares[i : i+uint64(k)])
 					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}

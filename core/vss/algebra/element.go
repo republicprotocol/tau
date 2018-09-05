@@ -18,7 +18,7 @@ func (lhs FpElement) String() string {
 }
 
 func (lhs FpElement) Field() Fp {
-	return NewField(lhs.prime)
+	return Fp{lhs.prime}
 }
 
 // NewFpElement creates a new field element directly from a value and a prime.
