@@ -38,7 +38,7 @@ func NewPolynomial(coefficients []FpElement) Polynomial {
 // function will panic. The coefficient for the x^degree term is gauranteed to
 // be non-zero, so that the polynomial is always of the given degree.
 func NewRandomPolynomial(field Fp, degree uint, secret ...FpElement) Polynomial {
-	if !field.InField(big.NewInt(int64(degree))) {
+	if !field.Contains(big.NewInt(int64(degree))) {
 		panic("polynomial cannot have degree greater than the order of the field")
 	}
 	if len(secret) > 1 {

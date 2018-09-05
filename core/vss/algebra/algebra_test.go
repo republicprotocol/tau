@@ -1,6 +1,7 @@
 package algebra_test
 
 import (
+	crand "crypto/rand"
 	"math/big"
 	"math/rand"
 
@@ -10,6 +11,29 @@ import (
 // RandomBool returns a random boolean with equal probability.
 func RandomBool() bool {
 	return rand.Float32() < 0.5
+}
+
+// RandomNotInField returns a random number that is not in the field defined by
+// the given prime. It will with equal probability either pick a number that is
+// too small (negative) or too large.
+func RandomNotInField(prime *big.Int) *big.Int {
+	if RandomBool() {
+		return randomNegative(prime)
+	} else {
+		return randomLarge(prime)
+	}
+}
+
+func randomNegative(prime *big.Int) *big.Int {
+	value, _ := crand.Int(crand.Reader, prime)
+	value.Sub(value, prime)
+	return value
+}
+
+func randomLarge(prime *big.Int) *big.Int {
+	value, _ := crand.Int(crand.Reader, prime)
+	value.Add(value, prime)
+	return value
 }
 
 // PrimeEntries is a list of table entries of random prime numbers less than

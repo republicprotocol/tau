@@ -6,9 +6,22 @@ type FpElement struct {
 	prime, value *big.Int
 }
 
-func NewFpElement(prime, value *big.Int) FpElement {
+func NewFpElement(value, prime *big.Int) FpElement {
+	if value.Sign() == -1 || value.Cmp(prime) != -1 {
+		panic("cannot create a field element when the value is not in the field defined by the prime")
+	}
 	return FpElement{
 		prime,
+		value,
+	}
+}
+
+func (a FpElement) NewInSameField(value *big.Int) FpElement {
+	if !a.FieldContains(value) {
+		panic("cannot create field element from value outside of [0, p)")
+	}
+	return FpElement{
+		a.prime,
 		value,
 	}
 }
@@ -24,14 +37,8 @@ func (a FpElement) FieldContains(value *big.Int) bool {
 	return value.Sign() != -1 && value.Cmp(a.prime) == -1
 }
 
-func (a FpElement) NewInSameField(value *big.Int) FpElement {
-	if !a.FieldContains(value) {
-		panic("cannot create field element from value outside of [0, p)")
-	}
-	return FpElement{
-		a.prime,
-		value,
-	}
+func (a FpElement) InField(f Fp) bool {
+	return f.Contains(big.NewInt(0).Sub(a.prime, big.NewInt(1))) && !f.Contains(a.prime)
 }
 
 func (a FpElement) FieldEq(b FpElement) bool {
@@ -61,8 +68,8 @@ func (a FpElement) IsZero() bool {
 	return a.value.Sign() == 0
 }
 
-func (a FpElement) InField(f Fp) bool {
-	return f.InField(a.value)
+func (a FpElement) IsOne() bool {
+	return a.value.Cmp(big.NewInt(1)) == 0
 }
 
 func (lhs FpElement) Add(rhs FpElement) FpElement {
@@ -120,6 +127,9 @@ func (lhs FpElement) Div(rhs FpElement) FpElement {
 }
 
 func (lhs FpElement) Exp(rhs FpElement) FpElement {
+	if !lhs.FieldEq(rhs) {
+		panic("cannot exponentiate two elements from different fields")
+	}
 	value := big.NewInt(0).Exp(lhs.value, rhs.value, lhs.prime)
 	return FpElement{
 		lhs.prime,

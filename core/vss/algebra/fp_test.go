@@ -55,7 +55,7 @@ var _ = Describe("Finite field Fp", func() {
 					Expect(err).To(BeNil())
 
 					toobig.Add(toobig, prime)
-					Expect(field.InField(toobig)).To(BeFalse())
+					Expect(field.Contains(toobig)).To(BeFalse())
 				}
 			})
 		})
@@ -67,7 +67,7 @@ var _ = Describe("Finite field Fp", func() {
 					Expect(err).To(BeNil())
 
 					negative.Neg(negative)
-					Expect(field.InField(negative)).To(BeFalse())
+					Expect(field.Contains(negative)).To(BeFalse())
 				}
 			})
 		})
@@ -78,7 +78,7 @@ var _ = Describe("Finite field Fp", func() {
 					correct, err := rand.Int(rand.Reader, prime)
 					Expect(err).To(BeNil())
 
-					Expect(field.InField(correct)).To(BeTrue())
+					Expect(field.Contains(correct)).To(BeTrue())
 				}
 			})
 		})

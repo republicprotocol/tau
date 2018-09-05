@@ -22,7 +22,6 @@ func (f Fp) Eq(g Fp) bool {
 // then big.ProbablyPrime will always return true, and so for correctly inputs
 // the function will never panic.
 func NewField(prime *big.Int) Fp {
-	// The prime must be a positive number
 	if !prime.ProbablyPrime(32) {
 		panic("given prime is probably not prime")
 	}
@@ -39,9 +38,9 @@ func (f Fp) NewInField(value *big.Int) FpElement {
 	}
 }
 
-// InField checks whether a given integer is in the field. This will be the case
+// Contains checks whether a given integer is in the field. This will be the case
 // when the integer is positive and less than the prime defining the field.
-func (f Fp) InField(x *big.Int) bool {
+func (f Fp) Contains(x *big.Int) bool {
 	return x.Cmp(f.prime) == -1 && x.Sign() != -1
 }
 
