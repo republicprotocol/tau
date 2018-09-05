@@ -3,6 +3,7 @@ package rng
 import (
 	"crypto/rand"
 	"errors"
+	"log"
 	"math/big"
 	"time"
 
@@ -58,7 +59,7 @@ type Rnger interface {
 	// messages to the output channel. Depending on the type of output message,
 	// the user must route the message to the appropriate Rnger in the network.
 	// Closing the done channel will stop the Rnger.
-	Run(done <-chan (struct{}), input <-chan buffer.Message, output chan<- buffer.Message)
+	Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer)
 }
 
 // A VoteTable stores all votes received for a nonce and the timestamp at which
@@ -74,20 +75,18 @@ type rnger struct {
 	n, k, t      uint
 	ped          pedersen.Pedersen
 
-	sendBuffer    []buffer.Message
-	sendBufferCap int
-
+	buffer        buffer.Buffer
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
 	localRnShares map[Nonce](map[Address]ShareMap)
 	addresses     []uint64
 }
 
-// NewRnger returns an Rnger that is identified as the i-th player in a network
-// with n players and k threshold. The Rnger will allocate a buffer for its
-// output messages and this buffer will grow indefinitely if the messages output
-// from the Rnger are not consumed.
-func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, bufferCap int) Rnger {
+// New returns an Rnger that is identified as the i-th player in a network with
+// n players and k threshold. The Rnger will allocate a buffer for its output
+// messages and this buffer will grow indefinitely if the messages output from
+// the Rnger are not consumed.
+func New(timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, bufferCap int) Rnger {
 	addresses := make([]uint64, n)
 	for i := range addresses {
 		addresses[i] = uint64(i + 1)
@@ -102,9 +101,7 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped ped
 		t:       t,
 		ped:     ped,
 
-		sendBuffer:    make([]buffer.Message, 0, bufferCap),
-		sendBufferCap: bufferCap,
-
+		buffer:        buffer.New(bufferCap),
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
 		localRnShares: map[Nonce](map[Address]ShareMap){},
@@ -115,27 +112,28 @@ func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped ped
 // Run implements the Rnger interface. Calls to Rnger.Run are blocking and
 // should be run in a background goroutine. It is recommended that the input and
 // output channels are buffered, however it is not required.
-func (rnger *rnger) Run(done <-chan (struct{}), input <-chan buffer.Message, output chan<- buffer.Message) {
-	for {
-		var outputMessage buffer.Message
-		var outputMaybe chan<- buffer.Message
-		if len(rnger.sendBuffer) > 0 {
-			outputMessage = rnger.sendBuffer[0]
-			outputMaybe = output
-		}
+func (rnger *rnger) Run(done <-chan (struct{}), reader buffer.Reader, writer buffer.Writer) {
+	defer log.Printf("[info] (rng) terminating")
 
+	for {
 		select {
 		case <-done:
 			return
 
-		case message, ok := <-input:
+		case message, ok := <-reader:
 			if !ok {
 				return
 			}
 			rnger.recvMessage(message)
 
-		case outputMaybe <- outputMessage:
-			rnger.sendBuffer = rnger.sendBuffer[1:]
+		case message := <-rnger.buffer.Peek():
+			if !rnger.buffer.Pop() {
+				log.Printf("[error] (rng) buffer underflow")
+			}
+			select {
+			case <-done:
+			case writer <- message:
+			}
 		}
 	}
 }
@@ -145,7 +143,9 @@ func (rnger *rnger) isLeader(nonce Nonce) bool {
 }
 
 func (rnger *rnger) sendMessage(message buffer.Message) {
-	rnger.sendBuffer = append(rnger.sendBuffer, message)
+	if !rnger.buffer.Push(message) {
+		log.Printf("[error] (rng) buffer overflow")
+	}
 }
 
 func (rnger *rnger) recvMessage(message buffer.Message) {
