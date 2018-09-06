@@ -8,8 +8,9 @@ import (
 // pedersen commitments. A particular instance contains the two generators g and
 // h, which are used to create the commitments.
 type Pedersen struct {
-	g algebra.FpElement
-	h algebra.FpElement
+	g           algebra.FpElement
+	h           algebra.FpElement
+	secretField algebra.Fp
 }
 
 // New creates a new Pedersen struct from the generators g and h. No checking is
@@ -17,8 +18,12 @@ type Pedersen struct {
 // of a subgroup of Zp, where this subgroup has order q. Furthermore, p and q
 // need to be prime, and q needs to divide p - 1 (this ensures that a subgroup
 // of order q indeed exists inside Zp).
-func New(g, h algebra.FpElement) Pedersen {
-	return Pedersen{g, h}
+func New(g, h algebra.FpElement, field algebra.Fp) Pedersen {
+	return Pedersen{g, h, field}
+}
+
+func (ped *Pedersen) SecretField() algebra.Fp {
+	return ped.secretField
 }
 
 // Commit creates a Pedersen commitment for the value s and using the

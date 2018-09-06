@@ -77,13 +77,13 @@ var _ = Describe("Pedersen commitments", func() {
 			secretField := algebra.NewField(entry.q)
 			g := algebra.NewFpElement(entry.g, entry.p)
 			h := algebra.NewFpElement(entry.g, entry.p)
-			ped := New(g, h)
+			ped := New(g, h, secretField)
 
 			Context("when verifying an incorrect commitment", func() {
 				It("should return false", func() {
 					for i := 0; i < Trials; i++ {
-						s := secretField.Random()
-						t := secretField.Random()
+						s := ped.SecretField().Random()
+						t := ped.SecretField().Random()
 						commitment := ped.Commit(s, t)
 
 						// Make the commitment incorrect by perturbing it by a
@@ -102,8 +102,8 @@ var _ = Describe("Pedersen commitments", func() {
 			Context("when verifying a correct commitment", func() {
 				It("should return true", func() {
 					for i := 0; i < Trials; i++ {
-						s := secretField.Random()
-						t := secretField.Random()
+						s := ped.SecretField().Random()
+						t := ped.SecretField().Random()
 						commitment := ped.Commit(s, t)
 
 						Expect(ped.Verify(s, t, commitment)).To(BeTrue())
