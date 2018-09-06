@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"github.com/republicprotocol/smpc-go/core/buffer"
 	"github.com/republicprotocol/smpc-go/core/process"
 )
 
@@ -15,4 +16,17 @@ func NewExecMessage(proc process.Process) Exec {
 }
 
 func (message Exec) IsMessage() {
+}
+
+type RemoteProcedureCall struct {
+	Message buffer.Message
+}
+
+func NewRemoteProcedureCall(message buffer.Message) RemoteProcedureCall {
+	return RemoteProcedureCall{
+		message,
+	}
+}
+
+func (message RemoteProcedureCall) IsMessage() {
 }

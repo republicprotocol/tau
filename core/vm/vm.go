@@ -84,6 +84,30 @@ func (vm *VM) recvMessage(message buffer.Message) {
 	case Exec:
 		vm.exec(message)
 
+	case RemoteProcedureCall:
+		vm.invoke(message)
+
+	case rng.ProposeRn:
+		vm.proposeRn(message)
+
+	case rng.LocalRnShares:
+		vm.handleRngLocalRnShares(message)
+
+	case rng.ProposeGlobalRnShare:
+		vm.handleRngProposeGlobalRnShare(message)
+
+	case rng.GlobalRnShare:
+		vm.handleRngResult(message)
+
+	case mul.Open:
+		vm.handleMulOpen(message)
+
+	case mul.Result:
+		vm.handleMulResult(message)
+
+	case open.Result:
+		vm.handleOpenResult(message)
+
 	default:
 		log.Printf("[error] (vm) unexpected message type %T", message)
 	}
@@ -121,6 +145,7 @@ func (vm *VM) exec(exec Exec) {
 	case process.IntentToOpen:
 		vm.processIntents[proc.ID] = intent
 		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.ID), intent.Value))
+		vm.io.Send(open.NewOpen(open.Nonce(proc.ID), intent.Value))
 
 	case process.IntentToError:
 		log.Printf("[error] (vm) %v", intent.Error())
@@ -128,4 +153,98 @@ func (vm *VM) exec(exec Exec) {
 	default:
 		panic("unimplemented")
 	}
+}
+
+func (vm *VM) invoke(message RemoteMessage) {
+	switch message := message.Message.(type) {
+
+	case rng.ProposeRn:
+		vm.rng.IO().Send(message)
+
+	default:
+		panic("unimplemented")
+	}
+}
+
+func (vm *VM) proposeRn(message rng.ProposeRn) {
+	vm.io.Send(NewRemoteProcedureCall(message))
+}
+
+func (vm *VM) handleRngLocalRnShares(message rng.LocalRnShares) {
+	vm.io.Send(NewRemoteProcedureCall(message))
+}
+
+func (vm *VM) handleRngProposeGlobalRnShare(message rng.ProposeGlobalRnShare) {
+	vm.io.Send(NewRemoteProcedureCall(message))
+}
+
+func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
+	intent, ok := vm.processIntents[message.Nonce]
+	if !ok {
+		return
+	}
+
+	switch intent := intent.(type) {
+	case process.IntentToGenerateRn:
+
+		select {
+		case intent.Rho <- message.Share:
+		default:
+			log.Printf("[error] (vm, rng, rho) unavailable intent")
+		}
+
+		select {
+		case intent.Sigma <- message.Share:
+		default:
+			log.Printf("[error] (vm, rng, sigma) unavailable intent")
+		}
+	default:
+		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
+	}
+
+	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
+}
+
+func (vm *VM) handleMulOpen(message mul.Open) {
+	vm.open.IO().Send(open)
+}
+
+func (vm *VM) handleMulResult(message mul.Result) {
+	intent, ok := vm.processIntents[message.Nonce]
+	if !ok {
+		return
+	}
+
+	switch intent := intent.(type) {
+	case process.IntentToMultiply:
+		select {
+		case intent.Ret <- message.Share:
+		default:
+			log.Printf("[error] (vm, mul) unavailable intent")
+		}
+	default:
+		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
+	}
+
+	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
+}
+
+func (vm *VM) handleOpenResult(message open.Result) {
+	intent, ok := vm.processIntents[message.Nonce]
+	if !ok {
+		return
+	}
+
+	switch intent := intent.(type) {
+	case process.IntentToOpen:
+		select {
+		case intent.Ret <- message.Value:
+		default:
+			log.Printf("[error] (vm, open) unavailable intent")
+		}
+	default:
+		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
+	}
+
+	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
 }
