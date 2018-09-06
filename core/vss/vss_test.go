@@ -13,7 +13,7 @@ import (
 
 var _ = Describe("Verifiable secret sharing", func() {
 
-	const Trials = 1
+	const Trials = 10
 
 	// For each entry, q is chosen to be the largest prime less than 2^b for
 	// various bit lengths b, and p is chosen to be the least prime such that q
@@ -75,9 +75,24 @@ var _ = Describe("Verifiable secret sharing", func() {
 		entry := entry
 
 		Context("when creating verifiable shares", func() {
-			ped, err := pedersen.New(entry.p, entry.q, entry.g, entry.h)
-			It("should construct without error", func() {
-				Expect(err).To(BeNil())
+			g := algebra.NewFpElement(entry.g, entry.p)
+			h := algebra.NewFpElement(entry.h, entry.p)
+			ped := pedersen.New(g, h)
+
+			It("should panic when there are no commitments", func() {
+				field := algebra.NewField(entry.q)
+
+				for i := 0; i < Trials; i++ {
+					secret := field.Random()
+					n := uint64(24)
+					k := uint64(16)
+
+					verifiableShares := Share(&ped, secret, n, k)
+					for _, share := range verifiableShares {
+						share.SetCommitments(make([]algebra.FpElement, 0))
+						Expect(func() { Verify(&ped, share) }).To(Panic())
+					}
+				}
 			})
 
 			It("should verify correct shares", func() {
@@ -85,10 +100,10 @@ var _ = Describe("Verifiable secret sharing", func() {
 
 				for i := 0; i < Trials; i++ {
 					secret := field.Random()
-					indices := []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-					k := uint(16)
+					n := uint64(24)
+					k := uint64(16)
 
-					verifiableShares := Share(&ped, secret, k, indices)
+					verifiableShares := Share(&ped, secret, n, k)
 					for _, share := range verifiableShares {
 						Expect(Verify(&ped, share)).To(BeTrue())
 					}
@@ -96,11 +111,12 @@ var _ = Describe("Verifiable secret sharing", func() {
 					// Check that the secret can be correctly reconstructed
 					shares := make(shamir.Shares, 24)
 					for i := range shares {
-						shares[i] = verifiableShares[i].SShare
+						shares[i] = verifiableShares[i].Share()
 					}
 
-					for i := uint(0); i < 24-k; i++ {
-						Expect(shamir.Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+					for i := uint64(0); i < n-k; i++ {
+						val, _ := shamir.Join(shares[i : i+k])
+						Expect(val.Eq(secret)).To(BeTrue())
 					}
 				}
 			})
@@ -110,18 +126,20 @@ var _ = Describe("Verifiable secret sharing", func() {
 
 				for i := 0; i < Trials; i++ {
 					secret := field.Random()
-					indices := []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-					k := uint(16)
+					r := field.Random()
+					if r.IsZero() {
+						continue
+					}
+					n := uint64(24)
+					k := uint64(16)
+					verifiableShares := Share(&ped, secret, n, k)
 
-					verifiableShares := Share(&ped, secret, k, indices)
 					for _, share := range verifiableShares {
-						r := field.Random()
-						field.Add(share.SShare.Value, r, share.SShare.Value)
-						if r.Sign() == 0 {
-							Expect(Verify(&ped, share)).To(BeTrue())
-						} else {
-							Expect(Verify(&ped, share)).To(BeFalse())
-						}
+						innerShare := share.Share()
+						rShare := shamir.New(innerShare.Index(), r)
+						share.SetShare(innerShare.Add(rShare))
+
+						Expect(Verify(&ped, share)).To(BeFalse())
 					}
 				}
 			})
