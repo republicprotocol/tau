@@ -8,69 +8,72 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
-// A VerifiableShare struct contains the shares and broadcast message required to
-// verify a Shamir sharing. sShare is the actual share that is to be used, and
-// tShare is the obscuring share used for the Pedersen commitment.
-type VerifiableShare struct {
-	broadcast []*big.Int
-	SShare    shamir.Share
-	tShare    shamir.Share
+type VShare struct {
+	commitments []algebra.FpElement
+	share, t    shamir.Share
 }
 
-// VerifiableShares is a list of VerifiableShare structs.
-type VerifiableShares []VerifiableShare
+func (vs *VShare) Share() shamir.Share {
+	return vs.share
+}
 
-// Share creates verifiable shares for a given secret. The Pedersen commitment
-// scheme that will be used is given by ped, and the threshold for the secret
-// sharing is given by k. The indicies for the secret sharing are given by
-// indices. If the inputs are malformed (e.g. the secret is not in the field,
-// the pedersen scheme is not correct) then the sharing will not work.
-func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) VerifiableShares {
-	field := algebra.NewField(ped.SubgroupOrder())
-	polyF := algebra.NewRandomPolynomial(&field, k-1, secret)
+func (vs *VShare) SetShare(share shamir.Share) {
+	vs.share = share
+}
+
+func (vs *VShare) SetCommitments(commitments []algebra.FpElement) {
+	vs.commitments = commitments
+}
+
+// VShares is a list of VShare structs.
+type VShares []VShare
+
+func Share(ped *pedersen.Pedersen, secret algebra.FpElement, n, k uint64) VShares {
+	field := secret.Field()
+	polyF := algebra.NewRandomPolynomial(field, uint(k-1), secret)
 	polyFCoeffs := polyF.Coefficients()
-	polyG := algebra.NewRandomPolynomial(&field, k-1)
+	polyG := algebra.NewRandomPolynomial(field, uint(k-1))
 	polyGCoeffs := polyG.Coefficients()
 
-	commitments := make([]*big.Int, k)
+	commitments := make([]algebra.FpElement, k)
 	for i := range commitments {
 		commitments[i] = ped.Commit(polyFCoeffs[i], polyGCoeffs[i])
 	}
 
-	sShares := shamir.Split(&polyF, indices)
-	tShares := shamir.Split(&polyG, indices)
+	sShares := shamir.Split(polyF, n)
+	tShares := shamir.Split(polyG, n)
 
-	shares := make(VerifiableShares, len(indices))
-	for i := range indices {
-		shares[i] = VerifiableShare{commitments, sShares[i], tShares[i]}
+	shares := make(VShares, n)
+	for i := range shares {
+		shares[i] = VShare{commitments, sShares[i], tShares[i]}
 	}
 
 	return shares
 }
 
-// Verify takes a verifiable share and confirms or denies whether it is correct.
-func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
-	expected := ped.Commit(share.SShare.Value, share.tShare.Value)
-	actual := evaluate(ped, share.broadcast, share.SShare.Index)
+func Verify(ped *pedersen.Pedersen, vshare VShare) bool {
+	expected := ped.Commit(vshare.share.Value(), vshare.t.Value())
+	actual := evaluate(ped, vshare.commitments, vshare.share)
 
-	return expected.Cmp(actual) == 0
+	return expected.Eq(actual)
 }
 
-func evaluate(ped *pedersen.Pedersen, broadcast []*big.Int, index uint64) *big.Int {
-	field := algebra.NewField(ped.GroupOrder())
-	subfield := algebra.NewField(ped.SubgroupOrder())
+func evaluate(ped *pedersen.Pedersen, commitments []algebra.FpElement, share shamir.Share) algebra.FpElement {
+	if len(commitments) == 0 {
+		panic("cannot verify against an empty list of commitments")
+	}
+	field := commitments[0].Field()
+	subfield := share.Value().Field()
 
-	value := big.NewInt(0)
-	base := big.NewInt(0).SetUint64(index)
-	power := big.NewInt(1)
-	ret := big.NewInt(1)
-	for j, ej := range broadcast {
+	base := subfield.NewInField(big.NewInt(0).SetUint64(share.Index()))
+	power := subfield.NewInField(big.NewInt(1))
+	ret := field.NewInField(big.NewInt(1))
+	for j, ej := range commitments {
 		if j != 0 {
-			subfield.Mul(power, base, power)
+			power = power.Mul(base)
 		}
 
-		value.Exp(ej, power, ped.GroupOrder())
-		field.Mul(ret, value, ret)
+		ret = ret.Mul(ej.Exp(power.AsField(field)))
 	}
 
 	return ret
