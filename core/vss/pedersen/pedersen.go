@@ -6,7 +6,8 @@ import (
 
 // A Pedersen struct encapsulates the information needed to create and verify
 // pedersen commitments. A particular instance contains the two generators g and
-// h, which are used to create the commitments.
+// h, which are used to create the commitments, along with the field that the
+// values to commit must be in.
 type Pedersen struct {
 	g           algebra.FpElement
 	h           algebra.FpElement
@@ -22,6 +23,7 @@ func New(g, h algebra.FpElement, field algebra.Fp) Pedersen {
 	return Pedersen{g, h, field}
 }
 
+// SecretField returns the field that the values to be commited must be in.
 func (ped *Pedersen) SecretField() algebra.Fp {
 	return ped.secretField
 }
