@@ -21,6 +21,14 @@ func New(index uint64, value algebra.FpElement) Share {
 	return Share{index, value}
 }
 
+func (share *Share) Value() algebra.FpElement {
+	return share.value
+}
+
+func (share *Share) Index() uint64 {
+	return share.index
+}
+
 // Shares is a slice of Share structs.
 type Shares []Share
 
