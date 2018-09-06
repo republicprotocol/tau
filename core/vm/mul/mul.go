@@ -64,10 +64,8 @@ func (multiplier *multiplier) recvMessage(message buffer.Message) {
 }
 
 func (multiplier *multiplier) multiply(message Multiply) {
-	share := shamir.Share{
-		Index: message.x.Index,
-		Value: message.x.Value.Mul(message.y.Value).Add(message.ρ.Value),
-	}
+	share := message.x.Mul(message.y)
+	share = share.Add(message.ρ)
 
 	multiplier.pendings[message.Nonce] = message
 	multiplier.io.Send(NewOpen(message.Nonce, share))
@@ -82,7 +80,7 @@ func (multiplier *multiplier) open(message Open) {
 	if _, ok := multiplier.openings[message.Nonce]; !ok {
 		multiplier.openings[message.Nonce] = map[uint64]Open{}
 	}
-	multiplier.openings[message.Nonce][message.Index] = message
+	multiplier.openings[message.Nonce][message.Index()] = message
 
 	if uint(len(multiplier.openings[message.Nonce])) < multiplier.k {
 		return
@@ -98,9 +96,8 @@ func (multiplier *multiplier) open(message Open) {
 		return
 	}
 
-	result := shamir.Share{
-		Index: multiplier.pendings[message.Nonce].σ.Index,
-		Value: value.Sub(multiplier.pendings[message.Nonce].σ.Value),
-	}
+	σ := multiplier.pendings[message.Nonce].σ
+	result := shamir.New(σ.Index(), value)
+	result = result.Sub(σ)
 	multiplier.io.Send(NewResult(message.Nonce, result))
 }
