@@ -144,6 +144,25 @@ var _ = Describe("Verifiable secret sharing", func() {
 				}
 			})
 
+			It("should panic when adding shares with different numbers of commitments", func() {
+				field := algebra.NewField(entry.q)
+
+				for i := 0; i < Trials; i++ {
+					secretA := field.Random()
+					secretB := field.Random()
+					n := uint64(24)
+					k := uint64(16)
+
+					sharesA := Share(&ped, secretA, n, k)
+					sharesB := Share(&ped, secretB, n, k)
+					addedShares := make(VShares, n)
+					for i := range addedShares {
+						sharesA[i].SetCommitments([]algebra.FpElement{field.Random()})
+						Expect(func() { sharesA[i].Add(&sharesB[i]) }).To(Panic())
+					}
+				}
+			})
+
 			Specify("addition should correspond to addition of the underlying secret", func() {
 				field := algebra.NewField(entry.q)
 
