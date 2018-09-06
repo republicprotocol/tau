@@ -4,11 +4,11 @@ import (
 	"time"
 
 	"github.com/republicprotocol/smpc-go/core/vss"
-	shamir "github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 // ShareMap is a convenience type that associates addresses with shares.
-type ShareMap map[Address]vss.VerifiableShare
+type ShareMap map[Address]vss.VShare
 
 // A Nominate message is used to nominate a computation leader. The Leader
 // Address is the address of the nominated leader.
@@ -88,7 +88,7 @@ type LocalRnShares struct {
 }
 
 // NewLocalRnShares creates a new LocalRnShares message.
-func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) LocalRnShares {
+func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]vss.VShare) LocalRnShares {
 	return LocalRnShares{
 		nonce,
 
@@ -115,7 +115,7 @@ type ProposeGlobalRnShare struct {
 }
 
 // NewProposeGlobalRnShare creates a new ProposeGlobalRnShare message.
-func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) ProposeGlobalRnShare {
+func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]vss.VShare) ProposeGlobalRnShare {
 	return ProposeGlobalRnShare{
 		nonce,
 		to,
