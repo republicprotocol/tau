@@ -15,6 +15,14 @@ type VShare struct {
 	share, t    shamir.Share
 }
 
+func New(commitments []algebra.FpElement, share, t shamir.Share) VShare {
+	return VShare{
+		commitments,
+		share,
+		t,
+	}
+}
+
 // Share is a getter for the share field of a VShare struct.
 func (vs *VShare) Share() shamir.Share {
 	return vs.share
@@ -54,7 +62,7 @@ func Share(ped *pedersen.Pedersen, secret algebra.FpElement, n, k uint64) VShare
 
 	shares := make(VShares, n)
 	for i := range shares {
-		shares[i] = VShare{commitments, sShares[i], tShares[i]}
+		shares[i] = New(commitments, sShares[i], tShares[i])
 	}
 
 	return shares
@@ -68,6 +76,18 @@ func Verify(ped *pedersen.Pedersen, vshare VShare) bool {
 	actual := evaluate(ped, vshare.commitments, vshare.share)
 
 	return expected.Eq(actual)
+}
+
+func (vs *VShare) Add(other *VShare) VShare {
+	if len(vs.commitments) != len(other.commitments) {
+		panic("cannot add shares with different numbers of commitments")
+	}
+	newCommitments := make([]algebra.FpElement, len(vs.commitments))
+	for i := range newCommitments {
+		newCommitments[i] = vs.commitments[i].Mul(other.commitments[i])
+	}
+
+	return New(newCommitments, vs.share.Add(other.share), vs.t.Add(other.t))
 }
 
 // The evaluate is a convenience function that computes the evaluation of the

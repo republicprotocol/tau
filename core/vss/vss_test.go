@@ -143,6 +143,37 @@ var _ = Describe("Verifiable secret sharing", func() {
 					}
 				}
 			})
+
+			Specify("addition should correspond to addition of the underlying secret", func() {
+				field := algebra.NewField(entry.q)
+
+				for i := 0; i < Trials; i++ {
+					secretA := field.Random()
+					secretB := field.Random()
+					n := uint64(24)
+					k := uint64(16)
+
+					sharesA := Share(&ped, secretA, n, k)
+					sharesB := Share(&ped, secretB, n, k)
+					addedShares := make(VShares, n)
+					for i := range addedShares {
+						addedShares[i] = sharesA[i].Add(&sharesB[i])
+						Expect(Verify(&ped, addedShares[i])).To(BeTrue())
+					}
+
+					// Check that the secret can be correctly reconstructed
+					shares := make(shamir.Shares, 24)
+					for i := range shares {
+						shares[i] = addedShares[i].Share()
+
+					}
+
+					for i := uint64(0); i < n-k; i++ {
+						val, _ := shamir.Join(shares[i : i+k])
+						Expect(val.Eq(secretA.Add(secretB))).To(BeTrue())
+					}
+				}
+			})
 		})
 	}
 })
