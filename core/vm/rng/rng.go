@@ -1,7 +1,6 @@
 package rng
 
 import (
-	"crypto/rand"
 	"errors"
 	"log"
 	"math/big"
@@ -68,7 +67,6 @@ type rnger struct {
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
 	localRnShares map[Nonce](map[Address]ShareMap)
-	addresses     []uint64
 }
 
 // New returns an Rnger that is identified as the i-th player in a network with
@@ -76,11 +74,6 @@ type rnger struct {
 // messages and this buffer will grow indefinitely if the messages output from
 // the Rnger are not consumed.
 func New(r, w buffer.ReaderWriter, timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, cap int) task.Task {
-	addresses := make([]uint64, n)
-	for i := range addresses {
-		addresses[i] = uint64(i + 1)
-	}
-
 	return &rnger{
 		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
@@ -96,7 +89,6 @@ func New(r, w buffer.ReaderWriter, timeout time.Duration, addr, leader Address, 
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
 		localRnShares: map[Nonce](map[Address]ShareMap){},
-		addresses:     addresses,
 	}
 }
 
@@ -239,11 +231,8 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 		return
 	}
 
-	rn, err := rand.Int(rand.Reader, rnger.ped.SubgroupOrder())
-	if err != nil {
-		panic(err)
-	}
-	rnShares := vss.Share(&rnger.ped, rn, rnger.k, rnger.addresses)
+	rn := rnger.ped.SecretField().Random()
+	rnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k))
 
 	shares := ShareMap{}
 	for i, share := range rnShares {
@@ -269,11 +258,8 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 
 	globalRnShare := GlobalRnShare{
 		Nonce: message.Nonce,
-		Share: shamir.Share{
-			Index: uint64(rnger.addr) + 1,
-			Value: big.NewInt(0),
-		},
-		From: rnger.addr,
+		Share: shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
+		From:  rnger.addr,
 	}
 	for _, share := range message.Shares {
 		// log.Printf("[debug] <replica %v>: received share %v", rnger.addr, share.SShare)
@@ -285,11 +271,7 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 			return
 		}
 
-		if globalRnShare.Share.Index != share.SShare.Index {
-			panic("share indices are not the same")
-		}
-		globalRnShare.Share.Value.Add(globalRnShare.Share.Value, share.SShare.Value)
-		globalRnShare.Share.Value.Mod(globalRnShare.Share.Value, rnger.ped.SubgroupOrder())
+		globalRnShare.Share = globalRnShare.Share.Add(share.Share())
 	}
 	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
 
