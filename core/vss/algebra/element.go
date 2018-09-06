@@ -17,6 +17,7 @@ func (lhs FpElement) String() string {
 	return fmt.Sprintf("{p: %v, v: %v}", lhs.prime, lhs.value)
 }
 
+// Field returns the field that the element is in.
 func (lhs FpElement) Field() Fp {
 	return Fp{lhs.prime}
 }
@@ -43,6 +44,17 @@ func (lhs FpElement) NewInSameField(value *big.Int) FpElement {
 		lhs.prime,
 		value,
 	}
+}
+
+// AsField casts a field element into another field. The destination field must
+// be at least as big as the source field, otherwise it will panic.
+func (lhs FpElement) AsField(field Fp) FpElement {
+	if field.prime.Cmp(lhs.prime) == 0 {
+		return lhs.Copy()
+	} else if !field.Contains(lhs.prime) {
+		panic("cannot cast down to a smaller field")
+	}
+	return field.NewInField(lhs.value)
 }
 
 // Copy creates a copy of the field element lhs.

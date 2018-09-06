@@ -8,69 +8,112 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
-// A VerifiableShare struct contains the shares and broadcast message required to
-// verify a Shamir sharing. sShare is the actual share that is to be used, and
-// tShare is the obscuring share used for the Pedersen commitment.
-type VerifiableShare struct {
-	broadcast []*big.Int
-	SShare    shamir.Share
-	tShare    shamir.Share
+// A VShare is a Shamir share that can be verified to be correctly shared. The
+// verification is based on Pedersen commitments.
+type VShare struct {
+	commitments []algebra.FpElement
+	share, t    shamir.Share
 }
 
-// VerifiableShares is a list of VerifiableShare structs.
-type VerifiableShares []VerifiableShare
+// New constructs a new VShare from the given commitments and shares.
+func New(commitments []algebra.FpElement, share, t shamir.Share) VShare {
+	return VShare{
+		commitments,
+		share,
+		t,
+	}
+}
 
-// Share creates verifiable shares for a given secret. The Pedersen commitment
-// scheme that will be used is given by ped, and the threshold for the secret
-// sharing is given by k. The indicies for the secret sharing are given by
-// indices. If the inputs are malformed (e.g. the secret is not in the field,
-// the pedersen scheme is not correct) then the sharing will not work.
-func Share(ped *pedersen.Pedersen, secret *big.Int, k uint, indices []uint64) VerifiableShares {
-	field := algebra.NewField(ped.SubgroupOrder())
-	polyF := algebra.NewRandomPolynomial(&field, k-1, secret)
+// Share is a getter for the share field of a VShare struct.
+func (vs *VShare) Share() shamir.Share {
+	return vs.share
+}
+
+// SetShare is a setter for the share field of a VShare struct. The main purpose
+// of this method is for testing malicious behaviour.
+func (vs *VShare) SetShare(share shamir.Share) {
+	vs.share = share
+}
+
+// SetCommitments is a setter for the commitment field of a VShare struct. The
+// main purpose of this method is for testing malicious behaviour.
+func (vs *VShare) SetCommitments(commitments []algebra.FpElement) {
+	vs.commitments = commitments
+}
+
+// VShares is a list of VShare structs.
+type VShares []VShare
+
+// Share creates a list of verifiable shares given a Pedersen scheme, secret,
+// and the n and k that define the threshold sharing scheme.
+func Share(ped *pedersen.Pedersen, secret algebra.FpElement, n, k uint64) VShares {
+	field := secret.Field()
+	polyF := algebra.NewRandomPolynomial(field, uint(k-1), secret)
 	polyFCoeffs := polyF.Coefficients()
-	polyG := algebra.NewRandomPolynomial(&field, k-1)
+	polyG := algebra.NewRandomPolynomial(field, uint(k-1))
 	polyGCoeffs := polyG.Coefficients()
 
-	commitments := make([]*big.Int, k)
+	commitments := make([]algebra.FpElement, k)
 	for i := range commitments {
 		commitments[i] = ped.Commit(polyFCoeffs[i], polyGCoeffs[i])
 	}
 
-	sShares := shamir.Split(&polyF, indices)
-	tShares := shamir.Split(&polyG, indices)
+	sShares := shamir.Split(polyF, n)
+	tShares := shamir.Split(polyG, n)
 
-	shares := make(VerifiableShares, len(indices))
-	for i := range indices {
-		shares[i] = VerifiableShare{commitments, sShares[i], tShares[i]}
+	shares := make(VShares, n)
+	for i := range shares {
+		shares[i] = New(commitments, sShares[i], tShares[i])
 	}
 
 	return shares
 }
 
-// Verify takes a verifiable share and confirms or denies whether it is correct.
-func Verify(ped *pedersen.Pedersen, share VerifiableShare) bool {
-	expected := ped.Commit(share.SShare.Value, share.tShare.Value)
-	actual := evaluate(ped, share.broadcast, share.SShare.Index)
+// Verify returns true if a verifiable share is correct in the Pedersen scheme,
+// and false otherwise. If the list of commitments is empty (this cannot happen
+// in the honest use case) then it will panic indirectly through evaluate().
+func Verify(ped *pedersen.Pedersen, vshare VShare) bool {
+	expected := ped.Commit(vshare.share.Value(), vshare.t.Value())
+	actual := evaluate(ped, vshare.commitments, vshare.share)
 
-	return expected.Cmp(actual) == 0
+	return expected.Eq(actual)
 }
 
-func evaluate(ped *pedersen.Pedersen, broadcast []*big.Int, index uint64) *big.Int {
-	field := algebra.NewField(ped.GroupOrder())
-	subfield := algebra.NewField(ped.SubgroupOrder())
+// Add returns the VShare corresponding to the sharing of the sum of the secrets
+// of the two input VShares. The resulting share has the same verification
+// properties. It will panic if the length of the two commitment sets are
+// different It will panic indirectly through shamir.Share addition if the
+// shamir.Share pairs have different indices.
+func (vs *VShare) Add(other *VShare) VShare {
+	if len(vs.commitments) != len(other.commitments) {
+		panic("cannot add shares with different numbers of commitments")
+	}
+	newCommitments := make([]algebra.FpElement, len(vs.commitments))
+	for i := range newCommitments {
+		newCommitments[i] = vs.commitments[i].Mul(other.commitments[i])
+	}
 
-	value := big.NewInt(0)
-	base := big.NewInt(0).SetUint64(index)
-	power := big.NewInt(1)
-	ret := big.NewInt(1)
-	for j, ej := range broadcast {
+	return New(newCommitments, vs.share.Add(other.share), vs.t.Add(other.t))
+}
+
+// The evaluate is a convenience function that computes the evaluation of the
+// polynomial in the exponents of g and h from the Pedersen scheme.
+func evaluate(ped *pedersen.Pedersen, commitments []algebra.FpElement, share shamir.Share) algebra.FpElement {
+	if len(commitments) == 0 {
+		panic("cannot verify against an empty list of commitments")
+	}
+	field := commitments[0].Field()
+	subfield := share.Value().Field()
+
+	base := subfield.NewInField(big.NewInt(0).SetUint64(share.Index()))
+	power := subfield.NewInField(big.NewInt(1))
+	ret := field.NewInField(big.NewInt(1))
+	for j, ej := range commitments {
 		if j != 0 {
-			subfield.Mul(power, base, power)
+			power = power.Mul(base)
 		}
 
-		value.Exp(ej, power, ped.GroupOrder())
-		field.Mul(ret, value, ret)
+		ret = ret.Mul(ej.Exp(power.AsField(field)))
 	}
 
 	return ret

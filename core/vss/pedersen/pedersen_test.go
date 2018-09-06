@@ -1,10 +1,9 @@
 package pedersen_test
 
 import (
-	"crypto/rand"
 	"math/big"
 
-	. "github.com/onsi/ginkgo/extensions/table"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -14,21 +13,6 @@ import (
 var _ = Describe("Pedersen commitments", func() {
 
 	const Trials = 50
-
-	// perturbInt perturbs an element by a random (non-zero) number.
-	perturbInt := func(ped Pedersen, n *big.Int) {
-		var r *big.Int
-		for {
-			r, _ = rand.Int(rand.Reader, ped.SubgroupOrder())
-			if r.Sign() != 0 {
-				// Make sure that the perturbed element is different by
-				// ensureing that adding the random number will change the
-				// element.
-				break
-			}
-		}
-		n.Add(n, r)
-	}
 
 	// For each entry, q is chosen to be the largest prime less than 2^b for
 	// various bit lengths b, and p is chosen to be the least prime such that q
@@ -90,98 +74,39 @@ var _ = Describe("Pedersen commitments", func() {
 		entry := entry
 
 		Context("when using correctly constructed pedersen schemes", func() {
-			ped, _ := New(entry.p, entry.q, entry.g, entry.h)
-			// It("should construct without error", func(doneT Done) {
-			// 	defer close(doneT)
-
-			// 	Expect(err).To(BeNil())
-			// })
-
-			Context("when passing nil arguments to the verify function", func() {
-				DescribeTable("an error is expected", func(s, t, commitment *big.Int, err error) {
-					Expect(ped.Verify(s, t, commitment)).To(Equal(err))
-				},
-					Entry("when s is nil", nil, big.NewInt(1), big.NewInt(1), ErrNilArguments),
-					Entry("when t is nil", big.NewInt(1), nil, big.NewInt(1), ErrNilArguments),
-					Entry("when commitment is nil", big.NewInt(1), big.NewInt(1), nil, ErrNilArguments),
-					Entry("when s, t are nil", nil, nil, big.NewInt(1), ErrNilArguments),
-					Entry("when s, commitment are nil", nil, big.NewInt(1), nil, ErrNilArguments),
-					Entry("when t, commitment are nil", big.NewInt(1), nil, nil, ErrNilArguments),
-					Entry("when all arguments are nil", nil, nil, nil, ErrNilArguments),
-				)
-			})
-
-			Context("when passing nil arguments to the commit function", func() {
-				DescribeTable("it should return nil", func(s, t *big.Int) {
-					Expect(ped.Commit(s, t)).To(BeNil())
-				},
-					Entry("when s is nil", nil, big.NewInt(1)),
-					Entry("when t is nil", big.NewInt(1), nil),
-					Entry("when all arguments are nil", nil, nil),
-				)
-			})
+			secretField := algebra.NewField(entry.q)
+			g := algebra.NewFpElement(entry.g, entry.p)
+			h := algebra.NewFpElement(entry.g, entry.p)
+			ped := New(g, h)
 
 			Context("when verifying an incorrect commitment", func() {
-				It("should return an error", func() {
+				It("should return false", func() {
 					for i := 0; i < Trials; i++ {
-						s, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
-						t, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
+						s := secretField.Random()
+						t := secretField.Random()
 						commitment := ped.Commit(s, t)
 
 						// Make the commitment incorrect by perturbing it by a
 						// random number.
-						perturbInt(ped, commitment)
+						r := g.Field().Random()
+						for r.IsZero() {
+							r = g.Field().Random()
+						}
+						commitment = commitment.Add(r)
 
-						Expect(ped.Verify(s, t, commitment)).To(Equal(ErrUnacceptableCommitment))
+						Expect(ped.Verify(s, t, commitment)).To(BeFalse())
 					}
 				})
 			})
 
 			Context("when verifying a correct commitment", func() {
-				It("should return a nil error", func() {
+				It("should return true", func() {
 					for i := 0; i < Trials; i++ {
-						s, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
-						t, _ := rand.Int(rand.Reader, ped.SubgroupOrder())
+						s := secretField.Random()
+						t := secretField.Random()
 						commitment := ped.Commit(s, t)
 
-						Expect(ped.Verify(s, t, commitment)).To(BeNil())
-					}
-				})
-			})
-		})
-
-		Context("when using incorrectly constructed pedersen schemes", func() {
-			DescribeTable("an error is expected", func(p, q, g, h *big.Int) {
-				_, err := New(p, q, g, h)
-				Expect(err).ToNot(BeNil())
-			},
-				Entry("when h is nil", entry.p, entry.q, entry.g, nil),
-				Entry("when g is nil", entry.p, entry.q, nil, entry.h),
-				Entry("when h, g are nil", entry.p, entry.q, nil, nil),
-				Entry("when q is nil", entry.p, nil, entry.g, entry.h),
-				Entry("when q, h are nil", entry.p, nil, entry.g, nil),
-				Entry("when q, g are nil", entry.p, nil, nil, entry.h),
-				Entry("when q, g, h are nil", entry.p, nil, nil, nil),
-				Entry("when p is nil", nil, entry.q, entry.g, entry.h),
-				Entry("when p, h are nil", nil, entry.q, entry.g, nil),
-				Entry("when p, g are nil", nil, entry.q, nil, entry.h),
-				Entry("when p, g, h are nil", nil, entry.q, nil, nil),
-				Entry("when p, q are nil", nil, nil, entry.g, entry.h),
-				Entry("when p, q, h are nil", nil, nil, entry.g, nil),
-				Entry("when p, q, g are nil", nil, nil, nil, entry.h),
-				Entry("when all arguments are nil", nil, nil, nil, nil),
-			)
-
-			Context("when picking p and q such that q does not divide p - 1", func() {
-				ped, _ := New(entry.p, entry.q, entry.g, entry.h)
-
-				It("should return an error", func() {
-					for i := 0; i < Trials; i++ {
-						perturbed := new(big.Int).Set(entry.p)
-						perturbInt(ped, perturbed)
-						_, err := New(perturbed, entry.q, entry.g, entry.h)
-
-						Expect(err).ToNot(BeNil())
+						Expect(ped.Verify(s, t, commitment)).To(BeTrue())
 					}
 				})
 			})

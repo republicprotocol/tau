@@ -69,6 +69,45 @@ var _ = Describe("Finite field Elements", func() {
 		})
 	})
 
+	Context("when getting the underlying field", func() {
+		DescribeTable("it should succeed", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				a := field.Random()
+				Expect(a.Field().Eq(field)).To(BeTrue())
+			}
+		},
+			PrimeEntries...,
+		)
+	})
+
+	Context("when casting to a different field", func() {
+		var prevField Fp
+		firstEntry := true
+		DescribeTable("it should succeed when the other field is at least as big, and fail when it is smaller", func(prime *big.Int) {
+			field := NewField(prime)
+			if firstEntry {
+				prevField = field
+				firstEntry = false
+			} else {
+				for i := 0; i < Trials; i++ {
+					a := field.Random()
+					Expect(a.Eq(a.AsField(field))).To(BeTrue())
+					if field.LargerThan(prevField) {
+						Expect(func() { a.AsField(prevField) }).To(Panic())
+					} else {
+						Expect(func() { a.AsField(prevField) }).ToNot(Panic())
+					}
+				}
+
+				prevField = field
+			}
+		},
+			PrimeEntries...,
+		)
+	})
+
 	Context("when copying a field element", func() {
 		DescribeTable("the new element should be equal to the oringal", func(prime *big.Int) {
 			field := NewField(prime)

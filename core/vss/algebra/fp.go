@@ -42,6 +42,12 @@ func (f Fp) Eq(g Fp) bool {
 	return f.prime.Cmp(g.prime) == 0
 }
 
+// LargerThan returns true if the prime defining f is larger than the prime
+// defining g. It returns false otherwise.
+func (f Fp) LargerThan(g Fp) bool {
+	return f.prime.Cmp(g.prime) == 1
+}
+
 // Contains checks whether a given integer is in the field. This will be the case
 // when the integer is positive and less than the prime defining the field.
 func (f Fp) Contains(x *big.Int) bool {

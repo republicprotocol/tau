@@ -1,92 +1,39 @@
 package pedersen
 
 import (
-	"errors"
-	"math/big"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 )
 
-var (
-	// ErrNilArguments can be returned by Verify and signifies that one or more
-	// of the arguments given to Verify were nil.
-	ErrNilArguments = errors.New("nil arguments")
-
-	// ErrUnacceptableCommitment can be returned by Verify and signifies that
-	// the commitment was not accepted.
-	ErrUnacceptableCommitment = errors.New("unacceptable commitment")
-)
-
-// A Pedersen struct provides functionality for creating pedersen commitments.
-// The variables are named as they appear in the paper; q (a prime) is the order
-// of the subgroup of the multiplicative group Zp (where p is a prime such that
-// q divides p - 1), and g and h are elements of this subgroup such that
-// log_g(h) is not known.
+// A Pedersen struct encapsulates the information needed to create and verify
+// pedersen commitments. A particular instance contains the two generators g and
+// h, which are used to create the commitments.
 type Pedersen struct {
-	p *big.Int
-	q *big.Int
-	g *big.Int
-	h *big.Int
+	g algebra.FpElement
+	h algebra.FpElement
 }
 
-// New returns a new Pedersen struct that is used to create pedersen
-// commitments. It performs a basic divisibility check that is required for the
-// primes p and q.
-func New(p, q, g, h *big.Int) (ped Pedersen, err error) {
-	if p == nil || q == nil || g == nil || h == nil {
-		err = errors.New("nil arguments")
-		return
-	}
-
-	check := big.NewInt(0).Set(p)
-	check.Sub(check, big.NewInt(1))
-	check.Mod(check, q)
-	if check.Sign() != 0 {
-		err = errors.New("q does not divide p - 1")
-		return
-	}
-	ped = Pedersen{
-		p,
-		q,
-		g,
-		h,
-	}
-	return
+// New creates a new Pedersen struct from the generators g and h. No checking is
+// done to ensure that these are correctly chosen; g and h need to be generators
+// of a subgroup of Zp, where this subgroup has order q. Furthermore, p and q
+// need to be prime, and q needs to divide p - 1 (this ensures that a subgroup
+// of order q indeed exists inside Zp).
+func New(g, h algebra.FpElement) Pedersen {
+	return Pedersen{g, h}
 }
 
-// GroupOrder returns p, the order of the multiplicative group Zp.
-func (ped *Pedersen) GroupOrder() *big.Int {
-	return ped.p
+// Commit creates a Pedersen commitment for the value s and using the
+// randomising term t. The commitment is (g^s)(h^t), where g and h are
+// determined by the Pedersen scheme. If s and t are not able to be cast up into
+// Zp, then it will panic (indirectly through the panic that will occur in
+// FpElemet.AsField).
+func (ped *Pedersen) Commit(s, t algebra.FpElement) algebra.FpElement {
+	l := ped.g.Exp(s.AsField(ped.g.Field()))
+	r := ped.h.Exp(t.AsField(ped.h.Field()))
+	return l.Mul(r)
 }
 
-// SubgroupOrder returns q, the order of the subgroup of the multiplicative group Zp.
-func (ped *Pedersen) SubgroupOrder() *big.Int {
-	return ped.q
-}
-
-// Commit takes a secret, s, and a randomising, t, number and produces a
-// pedersen commitment (g^s)(h^t). If either of the arguments are nil, the
-// function will return nil.
-func (ped *Pedersen) Commit(s, t *big.Int) *big.Int {
-	if s == nil || t == nil {
-		return nil
-	}
-	l := big.NewInt(0).Exp(ped.g, s, ped.p)
-	r := big.NewInt(0).Exp(ped.h, t, ped.p)
-	l.Mul(l, r)
-	l.Mod(l, ped.p)
-	return l
-}
-
-// Verify checks whether a given commitment correctly corresponds to the secret
-// s and randomising number t. Verify returns an error, where an ErrNilArguments
-// error corresponds to the case that one or more of the arguments are nil,
-// ErrUnacceptableCommitment corresponds to the case that s and t do not
-// correctly correspond to the commitment, and a nil error means that the
-// commitment was accepted.
-func (ped *Pedersen) Verify(s, t, commitment *big.Int) error {
-	if s == nil || t == nil || commitment == nil {
-		return ErrNilArguments
-	} else if ped.Commit(s, t).Cmp(commitment) != 0 {
-		return ErrUnacceptableCommitment
-	}
-	return nil
+// Verify checks whether values s and t correspond to the given commitment. It
+// will return true if the correspondance is correct, and false otherwise.
+func (ped *Pedersen) Verify(s, t, commitment algebra.FpElement) bool {
+	return ped.Commit(s, t).Eq(commitment)
 }
