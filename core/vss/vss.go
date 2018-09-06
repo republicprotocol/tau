@@ -15,6 +15,7 @@ type VShare struct {
 	share, t    shamir.Share
 }
 
+// New constructs a new VShare from the given commitments and shares.
 func New(commitments []algebra.FpElement, share, t shamir.Share) VShare {
 	return VShare{
 		commitments,
@@ -78,6 +79,11 @@ func Verify(ped *pedersen.Pedersen, vshare VShare) bool {
 	return expected.Eq(actual)
 }
 
+// Add returns the VShare corresponding to the sharing of the sum of the secrets
+// of the two input VShares. The resulting share has the same verification
+// properties. It will panic if the length of the two commitment sets are
+// different It will panic indirectly through shamir.Share addition if the
+// shamir.Share pairs have different indices.
 func (vs *VShare) Add(other *VShare) VShare {
 	if len(vs.commitments) != len(other.commitments) {
 		panic("cannot add shares with different numbers of commitments")
