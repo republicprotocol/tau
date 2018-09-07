@@ -14,46 +14,97 @@ type Inst interface {
 	IsInst()
 }
 
-type InstPush struct {
-	Value
+type instPush struct {
+	value Value
 }
 
-func (inst InstPush) IsInst() {
+// InstPush will push a Value to the Stack. This Inst is synchronous.
+func InstPush(value Value) Inst {
+	return instPush{value}
 }
 
-type InstAdd struct {
+// IsInst implements the Inst interface.
+func (inst instPush) IsInst() {
 }
 
-func (inst InstAdd) IsInst() {
+type instAdd struct {
 }
 
-type InstRand struct {
-	RhoReady bool
-	RhoCh    <-chan shamir.Share
-	Rho      shamir.Share
-
-	SigmaReady bool
-	SigmaCh    <-chan shamir.Share
-	Sigma      shamir.Share
+// InstAdd will pop two Values from the Stack, add them, and then push the
+// result to the Stack. This Inst is synchronous.
+func InstAdd() Inst {
+	return instAdd{}
 }
 
-func (inst InstRand) IsInst() {
+// IsInst implements the Inst interface.
+func (inst instAdd) IsInst() {
 }
 
-type InstMul struct {
-	RetReady bool
-	RetCh    <-chan shamir.Share
-	Ret      shamir.Share
+type instGenerateRn struct {
+	ρReady bool
+	ρCh    <-chan shamir.Share
+	ρ      shamir.Share
+
+	σReady bool
+	σCh    <-chan shamir.Share
+	σ      shamir.Share
 }
 
-func (inst InstMul) IsInst() {
+// InstGenerateRn will generate a secure random number tuple and push the tuple
+// to the Stack. This Inst is asynchronous.
+func InstGenerateRn() Inst {
+	return instGenerateRn{
+		ρReady: false,
+		ρCh:    nil,
+		ρ:      shamir.Share{},
+
+		σReady: false,
+		σCh:    nil,
+		σ:      shamir.Share{}}
 }
 
-type InstOpen struct {
-	RetReady bool
-	RetCh    <-chan algebra.FpElement
-	Ret      algebra.FpElement
+// IsInst implements the Inst interface.
+func (inst instGenerateRn) IsInst() {
 }
 
-func (inst InstOpen) IsInst() {
+type instMul struct {
+	retReady bool
+	retCh    <-chan shamir.Share
+	ret      shamir.Share
+}
+
+// InstMul will pop a private random number tuple from the Stack, and then pop
+// two Values from the Stack. It will use the private random number tuple to
+// multiply the two Values, and then push the result to the Stack. This Inst is
+// asynchronous.
+func InstMul() Inst {
+	return instMul{
+		retReady: false,
+		retCh:    nil,
+		ret:      shamir.Share{},
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMul) IsInst() {
+}
+
+type instOpen struct {
+	retReady bool
+	retCh    <-chan algebra.FpElement
+	ret      algebra.FpElement
+}
+
+// InstOpen will pop a private Value from the Stack, and open it into a public
+// Value. This Inst is asynchronous.
+func InstOpen() Inst {
+	return instOpen{
+		retReady: false,
+		retCh:    nil,
+		ret:      algebra.FpElement{},
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instOpen) IsInst() {
 }
