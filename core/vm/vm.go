@@ -212,7 +212,7 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 }
 
 func (vm *VM) handleMulOpen(message mul.Open) {
-	vm.open.IO().Send(message)
+	vm.io.Send(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleMulResult(message mul.Result) {
