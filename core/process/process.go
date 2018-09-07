@@ -1,6 +1,8 @@
 package process
 
 import (
+	"errors"
+
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
@@ -79,6 +81,10 @@ func (proc *Process) Exec() Return {
 		switch inst := proc.Code[proc.PC].(type) {
 		case instPush:
 			ret = proc.execInstPush(inst)
+		case instStore:
+			ret = proc.execInstStore(inst)
+		case instLoad:
+			ret = proc.execInstLoad(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
 		case instGenerateRn:
@@ -100,6 +106,28 @@ func (proc *Process) execInstPush(inst instPush) Return {
 		return NotReady(ErrorExecution(err, proc.PC))
 	}
 
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstStore(inst instStore) Return {
+	value, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	proc.Memory[inst.addr] = value
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstLoad(inst instLoad) Return {
+	value, ok := proc.Memory[inst.addr]
+	if !ok {
+		return NotReady(ErrorExecution(errors.New("load from invalid memory address"), proc.PC))
+	}
+	if err := proc.Stack.Push(value); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
 	proc.PC++
 	return Ready()
 }

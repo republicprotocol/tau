@@ -27,6 +27,34 @@ func InstPush(value Value) Inst {
 func (inst instPush) IsInst() {
 }
 
+type instStore struct {
+	addr Addr
+}
+
+// InstStore will pop a Value from the Stack and store it in Memory. This Inst
+// is synchronous.
+func InstStore(addr Addr) Inst {
+	return instStore{addr}
+}
+
+// IsInst implements the Inst interface.
+func (inst instStore) IsInst() {
+}
+
+type instLoad struct {
+	addr Addr
+}
+
+// InstLoad will load a Value from Memory and push it to the Stack. This Inst is
+// synchronous.
+func InstLoad(addr Addr) Inst {
+	return instLoad{addr}
+}
+
+// IsInst implements the Inst interface.
+func (inst instLoad) IsInst() {
+}
+
 type instAdd struct {
 }
 
