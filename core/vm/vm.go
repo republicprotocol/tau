@@ -2,7 +2,6 @@ package vm
 
 import (
 	"log"
-	"time"
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
@@ -11,6 +10,7 @@ import (
 	"github.com/republicprotocol/smpc-go/core/vm/open"
 	"github.com/republicprotocol/smpc-go/core/vm/rng"
 	"github.com/republicprotocol/smpc-go/core/vm/task"
+	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 )
 
 type VM struct {
@@ -24,14 +24,14 @@ type VM struct {
 	open task.Task
 }
 
-func New(r, w buffer.ReaderWriter, n, k uint, cap int) VM {
+func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, k uint, cap int) VM {
 	return VM{
 		io:             task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal:     task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[process.ID]process.Intent{},
 
-		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), time.Minute, nil, nil, n, k, n-k, nil, cap),
+		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), addr, leader, ped, n, k, n-k, cap),
 		mul:  mul.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 		open: open.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 	}
