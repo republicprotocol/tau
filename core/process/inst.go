@@ -40,6 +40,19 @@ func InstAdd() Inst {
 func (inst instAdd) IsInst() {
 }
 
+type instSub struct {
+}
+
+// InstSub will pop two Values from the Stack, subtract them, and then push the
+// result to the Stack. This Inst is synchronous.
+func InstSub() Inst {
+	return instSub{}
+}
+
+// IsInst implements the Inst interface.
+func (inst instSub) IsInst() {
+}
+
 type instGenerateRn struct {
 	ρReady bool
 	ρCh    <-chan shamir.Share

@@ -132,6 +132,34 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	return Ready()
 }
 
+func (proc *Process) execInstSub(inst instSub) Return {
+	rhs, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	lhs, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	ret := Value(nil)
+	switch lhs := lhs.(type) {
+	case ValuePublic:
+		ret = lhs.Sub(rhs)
+	case ValuePrivate:
+		ret = lhs.Sub(rhs)
+	default:
+		return NotReady(ErrorUnexpectedValue(lhs, nil, proc.PC))
+	}
+	if err := proc.Stack.Push(ret); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
 func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 	if inst.ρCh == nil || inst.σCh == nil {
 		ρCh := make(chan shamir.Share, 1)
