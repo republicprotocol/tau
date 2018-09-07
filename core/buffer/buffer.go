@@ -46,11 +46,11 @@ type Buffer struct {
 
 // New returns a new Buffer with a capacity of `cap`. This function will panic
 // if `cap` is less than, or equal, to zero.
-func New(cap int) Buffer {
+func New(cap int) *Buffer {
 	if cap <= 0 {
 		panic("buffer capacity must be greater than zero")
 	}
-	return Buffer{
+	return &Buffer{
 		top:      0,
 		free:     0,
 		empty:    true,
