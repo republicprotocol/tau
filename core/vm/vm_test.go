@@ -157,7 +157,7 @@ var _ = Describe("Virtual Machine", func() {
 						})
 				}, 60)
 
-				FIt("should add private numbers", func(doneT Done) {
+				It("should add private numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -179,11 +179,6 @@ var _ = Describe("Virtual Machine", func() {
 							sharesA := shamir.Split(polyA, uint64(entry.n))
 							sharesB := shamir.Split(polyB, uint64(entry.n))
 
-							// expected := make(shamir.Shares, entry.n)
-							// for i := range expected {
-							// 	expected[i] = sharesA[i].Add(sharesB[i])
-							// }
-
 							for i := range vms {
 								valueA := process.NewValuePrivate(sharesA[i])
 								valueB := process.NewValuePrivate(sharesB[i])
@@ -202,20 +197,77 @@ var _ = Describe("Virtual Machine", func() {
 								ins[i] <- init
 							}
 
+							seen := map[uint64]struct{}{}
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 60).Should(Receive(&actual))
 
 								res, ok := actual.result.Value.(process.ValuePublic)
+								if _, exists := seen[actual.from]; exists {
+									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+								} else {
+									seen[actual.from] = struct{}{}
+								}
 								Expect(ok).To(BeTrue())
 								Expect(res.Value.Eq(a.Add(b))).To(BeTrue())
 							}
 						})
 				}, 60)
 
-				It("should add public numbers with private numbers", func(doneT Done) {
+				FIt("should add public numbers with private numbers", func(doneT Done) {
 					defer close(doneT)
-				})
+
+					done := make(chan (struct{}))
+					vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+					co.ParBegin(
+						func() {
+							runVMs(done, vms)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							results := routeMessages(done, ins, outs)
+
+							id := [32]byte{0x69}
+							pub, priv := SecretField.Random(), SecretField.Random()
+							poly := algebra.NewRandomPolynomial(SecretField, entry.k-1, priv)
+							shares := shamir.Split(poly, uint64(entry.n))
+
+							for i := range vms {
+								valuePub := process.NewValuePublic(pub)
+								valuePriv := process.NewValuePrivate(shares[i])
+
+								stack := process.NewStack(100)
+								mem := process.Memory{}
+								code := process.Code{
+									process.InstPush{Value: valuePub},
+									process.InstPush{Value: valuePriv},
+									process.InstAdd{},
+									process.InstOpen{},
+								}
+								proc := process.New(id, stack, mem, code)
+								init := NewExec(proc)
+
+								ins[i] <- init
+							}
+
+							seen := map[uint64]struct{}{}
+							for _ = range vms {
+								var actual TestResult
+								Eventually(results, 60).Should(Receive(&actual))
+
+								res, ok := actual.result.Value.(process.ValuePublic)
+								if _, exists := seen[actual.from]; exists {
+									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+								} else {
+									seen[actual.from] = struct{}{}
+								}
+								Expect(ok).To(BeTrue())
+								Expect(res.Value.Eq(pub.Add(priv))).To(BeTrue())
+							}
+						})
+				}, 60)
 
 				It("should generate private random numbers", func(doneT Done) {
 					defer close(doneT)
