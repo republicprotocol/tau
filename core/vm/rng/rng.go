@@ -275,7 +275,7 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 		}
 
 		rhoShare := message.RhoShares[addr]
-		sigmaShare := message.RhoShares[addr]
+		sigmaShare := message.SigmaShares[addr]
 
 		globalRnShare.RhoShare = globalRnShare.RhoShare.Add(rhoShare.Share())
 		globalRnShare.SigmaShare = globalRnShare.SigmaShare.Add(sigmaShare.Share())
