@@ -17,7 +17,7 @@ type VM struct {
 	io             task.IO
 	ioExternal     task.IO
 	processes      map[process.ID]process.Process
-	processIntents map[process.ID]process.Intent
+	processIntents map[[32]byte]process.Intent
 
 	addr uint64
 	rng  task.Task
@@ -30,7 +30,7 @@ func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n
 		io:             task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal:     task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 		processes:      map[process.ID]process.Process{},
-		processIntents: map[process.ID]process.Intent{},
+		processIntents: map[[32]byte]process.Intent{},
 
 		addr: addr,
 		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
@@ -146,17 +146,17 @@ func (vm *VM) exec(exec Exec) {
 
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
-		vm.processIntents[proc.ID] = intent
-		vm.rng.IO().Send(rng.NewGenerateRn(rng.Nonce(proc.ID)))
+		vm.processIntents[proc.Nonce()] = intent
+		vm.rng.IO().Send(rng.NewGenerateRn(rng.Nonce(proc.Nonce())))
 
 	case process.IntentToMultiply:
-		vm.processIntents[proc.ID] = intent
-		vm.mul.IO().Send(mul.NewMultiply(mul.Nonce(proc.ID), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.processIntents[proc.Nonce()] = intent
+		vm.mul.IO().Send(mul.NewMultiply(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
-		vm.processIntents[proc.ID] = intent
-		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.ID), intent.Value))
-		vm.io.Send(NewRemoteProcedureCall(open.NewOpen(open.Nonce(proc.ID), intent.Value)))
+		vm.processIntents[proc.Nonce()] = intent
+		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
+		vm.io.Send(NewRemoteProcedureCall(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value)))
 
 	case process.IntentToError:
 		log.Printf("[error] (vm) %v", intent.Error())
@@ -196,7 +196,7 @@ func (vm *VM) handleRngProposeGlobalRnShare(message rng.ProposeGlobalRnShare) {
 }
 
 func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
-	intent, ok := vm.processIntents[process.ID(message.Nonce)]
+	intent, ok := vm.processIntents[message.Nonce]
 	if !ok {
 		return
 	}
@@ -221,9 +221,11 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 		return
 	}
 
-	delete(vm.processIntents, process.ID(message.Nonce))
+	delete(vm.processIntents, message.Nonce)
 
-	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
+	pid := [31]byte{}
+	copy(pid[:], message.Nonce[1:])
+	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
 func (vm *VM) handleMulOpen(message mul.Open) {
@@ -231,7 +233,7 @@ func (vm *VM) handleMulOpen(message mul.Open) {
 }
 
 func (vm *VM) handleMulResult(message mul.Result) {
-	intent, ok := vm.processIntents[process.ID(message.Nonce)]
+	intent, ok := vm.processIntents[message.Nonce]
 	if !ok {
 		return
 	}
@@ -249,13 +251,15 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		return
 	}
 
-	delete(vm.processIntents, process.ID(message.Nonce))
+	delete(vm.processIntents, message.Nonce)
 
-	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
+	pid := [31]byte{}
+	copy(pid[:], message.Nonce[1:])
+	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
 func (vm *VM) handleOpenResult(message open.Result) {
-	intent, ok := vm.processIntents[process.ID(message.Nonce)]
+	intent, ok := vm.processIntents[(message.Nonce)]
 	if !ok {
 		return
 	}
@@ -273,7 +277,9 @@ func (vm *VM) handleOpenResult(message open.Result) {
 		return
 	}
 
-	delete(vm.processIntents, process.ID(message.Nonce))
+	delete(vm.processIntents, (message.Nonce))
 
-	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
+	pid := [31]byte{}
+	copy(pid[:], message.Nonce[1:])
+	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }

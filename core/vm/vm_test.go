@@ -142,7 +142,7 @@ var _ = Describe("Virtual Machine", func() {
 							defer GinkgoRecover()
 							defer close(done)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 							a, b := SecretField.Random(), SecretField.Random()
 							valueA, valueB := process.NewValuePublic(a), process.NewValuePublic(b)
 							expected := process.NewValuePublic(a.Add(b))
@@ -187,7 +187,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 							a, b := SecretField.Random(), SecretField.Random()
 							polyA := algebra.NewRandomPolynomial(SecretField, entry.k-1, a)
 							polyB := algebra.NewRandomPolynomial(SecretField, entry.k-1, b)
@@ -244,7 +244,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 							pub, priv := SecretField.Random(), SecretField.Random()
 							poly := algebra.NewRandomPolynomial(SecretField, entry.k-1, priv)
 							shares := shamir.Split(poly, uint64(entry.n))
@@ -299,7 +299,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 
 							for i := range vms {
 								stack := process.NewStack(100)
@@ -360,7 +360,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 							a, b := SecretField.Random(), SecretField.Random()
 							polyA := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a)
 							polyB := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, b)
@@ -418,7 +418,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [32]byte{0x69}
+							id := [31]byte{0x69}
 
 							a0, a1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
 							b0, b1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
@@ -441,8 +441,8 @@ var _ = Describe("Virtual Machine", func() {
 								valueB1 := process.NewValuePrivate(sharesB1[i])
 								valueOne := process.NewValuePublic(SecretField.NewInField(big.NewInt(1)))
 
-								stack := process.NewStack(100)
-								mem := process.NewMemory(100)
+								stack := process.NewStack(1000)
+								mem := process.NewMemory(1000)
 								code := process.Code{
 
 									// b0 && !a0 stored at 0
@@ -481,7 +481,7 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstMul(),
 									process.InstStore(3),
 
-									//
+									// addr 2 || addr 3
 									process.InstLoad(2),
 									process.InstLoad(3),
 									process.InstAdd(),
@@ -491,13 +491,13 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstMul(),
 									process.InstSub(),
 
-									//
+									// prev && addr 0 and store at 4
 									process.InstLoad(0),
 									process.InstGenerateRn(),
 									process.InstMul(),
 									process.InstStore(4),
 
-									//
+									// addr 1 || addr 4
 									process.InstLoad(1),
 									process.InstLoad(4),
 									process.InstAdd(),
@@ -507,7 +507,7 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstMul(),
 									process.InstSub(),
 
-									//
+									// open result
 									process.InstOpen(),
 								}
 								proc := process.New(id, stack, mem, code)
