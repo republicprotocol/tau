@@ -1,7 +1,7 @@
 package process
 
 import (
-	"math/big"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
@@ -51,8 +51,8 @@ func (inst InstMul) IsInst() {
 
 type InstOpen struct {
 	RetReady bool
-	RetCh    <-chan *big.Int
-	Ret      *big.Int
+	RetCh    <-chan algebra.FpElement
+	Ret      algebra.FpElement
 }
 
 func (inst InstOpen) IsInst() {

@@ -9,18 +9,14 @@ type Message interface {
 	IsMessage()
 }
 
-// A Reader is a read-only channel of Messages. A Reader is usually created by
-// returning the read-only direction of a ReaderWriter. This ensures that there
-// is a respective write-only direction that will fill the channel.
+// A Reader is a read-only channel of Messages.
 type Reader (<-chan Message)
 
-// A Writer is a write-only channel of Messages. A Writer is usually created by
-// returning the write-only direction of a ReaderWriter. This ensures that there
-// is a respective read-only direction that will drain the channel.
+// A Writer is a write-only channel of Messages.
 type Writer (chan<- Message)
 
 // A ReaderWriter is a bi-directional channel of Messages. It is recommended to
-// typecast a ReaderWriter down into a Reader, or a Writer, before using it.
+// typecast a ReaderWriter down into a Reader or a Writer before using it.
 type ReaderWriter (chan Message)
 
 // Reader returns the read-only direction of a ReaderWriter.

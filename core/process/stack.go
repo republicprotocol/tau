@@ -1,6 +1,8 @@
 package process
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	ErrStackOverflow  = errors.New("stack overflow")
@@ -40,8 +42,8 @@ func (stack *Stack) Pop() (Value, error) {
 		return nil, ErrStackUnderflow
 	}
 
+	stack.free = (len(stack.values) + stack.free - 1) % len(stack.values)
 	value := stack.values[stack.free]
-	stack.free = (stack.free - 1) % len(stack.values)
 	stack.empty = stack.top == stack.free
 
 	return value, nil

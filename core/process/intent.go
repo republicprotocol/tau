@@ -2,7 +2,8 @@ package process
 
 import (
 	"fmt"
-	"math/big"
+
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
@@ -49,10 +50,10 @@ func (intent IntentToMultiply) IsIntent() {
 type IntentToOpen struct {
 	Value shamir.Share
 
-	Ret chan<- *big.Int
+	Ret chan<- algebra.FpElement
 }
 
-func Open(value shamir.Share, ret chan<- *big.Int) IntentToOpen {
+func Open(value shamir.Share, ret chan<- algebra.FpElement) IntentToOpen {
 	return IntentToOpen{
 		Value: value,
 		Ret:   ret,
