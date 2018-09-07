@@ -9,13 +9,24 @@ type Exec struct {
 	proc process.Process
 }
 
-func NewExecMessage(proc process.Process) Exec {
+func NewExec(proc process.Process) Exec {
 	return Exec{
 		proc,
 	}
 }
 
 func (message Exec) IsMessage() {
+}
+
+type Result struct {
+	Value process.Value
+}
+
+func NewResult(value process.Value) Result {
+	return Result{value}
+}
+
+func (message Result) IsMessage() {
 }
 
 type RemoteProcedureCall struct {

@@ -126,6 +126,11 @@ func (vm *VM) exec(exec Exec) {
 	}
 	if ret.IsTerminated() {
 		log.Printf("[debug] (vm) process is terminated = %v", proc.ID)
+		result, err := proc.Stack.Pop()
+		if err != nil {
+			panic("unimplemented")
+		}
+		vm.io.Send(NewResult(result))
 		return
 	}
 	if ret.Intent() == nil {
@@ -208,7 +213,7 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
+	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
 
 func (vm *VM) handleMulOpen(message mul.Open) {
@@ -232,7 +237,7 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
+	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
 
 func (vm *VM) handleOpenResult(message open.Result) {
@@ -252,5 +257,5 @@ func (vm *VM) handleOpenResult(message open.Result) {
 		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
+	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
