@@ -82,19 +82,21 @@ func (message ProposeRn) IsMessage() {
 type LocalRnShares struct {
 	Nonce
 
-	To     Address
-	From   Address
-	Shares ShareMap
+	To          Address
+	From        Address
+	RhoShares   ShareMap
+	SigmaShares ShareMap
 }
 
 // NewLocalRnShares creates a new LocalRnShares message.
-func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]vss.VShare) LocalRnShares {
+func NewLocalRnShares(nonce Nonce, to, from Address, rhoShares, sigmaShares map[Address]vss.VShare) LocalRnShares {
 	return LocalRnShares{
 		nonce,
 
 		to,
 		from,
-		shares,
+		rhoShares,
+		sigmaShares,
 	}
 }
 
@@ -109,18 +111,20 @@ func (message LocalRnShares) IsMessage() {
 type ProposeGlobalRnShare struct {
 	Nonce
 
-	To     Address
-	From   Address
-	Shares ShareMap
+	To          Address
+	From        Address
+	RhoShares   ShareMap
+	SigmaShares ShareMap
 }
 
 // NewProposeGlobalRnShare creates a new ProposeGlobalRnShare message.
-func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]vss.VShare) ProposeGlobalRnShare {
+func NewProposeGlobalRnShare(nonce Nonce, to, from Address, rhoShares, sigmaShares map[Address]vss.VShare) ProposeGlobalRnShare {
 	return ProposeGlobalRnShare{
 		nonce,
 		to,
 		from,
-		shares,
+		rhoShares,
+		sigmaShares,
 	}
 }
 
@@ -133,16 +137,18 @@ func (message ProposeGlobalRnShare) IsMessage() {
 // secure random number that has been generated.
 type GlobalRnShare struct {
 	Nonce
-	shamir.Share
+	RhoShare   shamir.Share
+	SigmaShare shamir.Share
 
 	From Address
 }
 
 // NewGlobalRnShare creates a new GlobalRnShare message.
-func NewGlobalRnShare(nonce Nonce, share shamir.Share, from Address) GlobalRnShare {
+func NewGlobalRnShare(nonce Nonce, rhoShare, sigmaShare shamir.Share, from Address) GlobalRnShare {
 	return GlobalRnShare{
 		nonce,
-		share,
+		rhoShare,
+		sigmaShare,
 		from,
 	}
 }
