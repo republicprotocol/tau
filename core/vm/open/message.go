@@ -1,9 +1,8 @@
 package open
 
 import (
-	"math/big"
-
-	shamir "github.com/republicprotocol/shamir-go"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 type Nonce [32]byte
@@ -26,10 +25,10 @@ func (message Open) IsMessage() {
 type Result struct {
 	Nonce
 
-	Value *big.Int
+	Value algebra.FpElement
 }
 
-func NewResult(nonce Nonce, value *big.Int) Result {
+func NewResult(nonce Nonce, value algebra.FpElement) Result {
 	return Result{
 		nonce, value,
 	}

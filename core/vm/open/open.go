@@ -2,11 +2,10 @@ package open
 
 import (
 	"log"
-	"math/big"
 
-	"github.com/republicprotocol/shamir-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
 	"github.com/republicprotocol/smpc-go/core/vm/task"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 type opener struct {
@@ -67,7 +66,7 @@ func (opener *opener) open(message Open) {
 	if _, ok := opener.openings[message.Nonce]; !ok {
 		opener.openings[message.Nonce] = map[uint64]Open{}
 	}
-	opener.openings[message.Nonce][message.Index] = message
+	opener.openings[message.Nonce][message.Index()] = message
 
 	if uint(len(opener.openings[message.Nonce])) < opener.k {
 		return
@@ -78,7 +77,10 @@ func (opener *opener) open(message Open) {
 		opener.shares[n] = opening.Share
 		n++
 	}
-	result := shamir.Join(opener.shares[:n])
+	result, err := shamir.Join(opener.shares[:n])
+	if err != nil {
+		panic("unimplemented")
+	}
 
-	opener.io.Send(NewResult(message.Nonce, big.NewInt(0).SetUint64(result)))
+	opener.io.Send(NewResult(message.Nonce, result))
 }
