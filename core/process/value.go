@@ -2,7 +2,6 @@ package process
 
 import (
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
@@ -25,10 +24,7 @@ func (lhs ValuePublic) Add(rhs Value) (ret Value) {
 
 	case ValuePrivate:
 		ret = ValuePrivate{
-			Share: shamir.Share{
-				Index: rhs.Share.Index,
-				Value: lhs.Value.Add(rhs.Share.Value),
-			},
+			Share: shamir.New(rhs.Share.Index(), lhs.Value.Add(rhs.Share.Value())),
 		}
 	default:
 		panic("unimplemented")
@@ -48,18 +44,15 @@ func (lhs ValuePrivate) Add(rhs Value) (ret Value) {
 
 	case ValuePublic:
 		ret = ValuePrivate{
-			Share: shamir.Share{
-				Index: lhs.Share.Index,
-				Value: lhs.Share.Value.Add(rhs.Value),
-			},
+			Share: shamir.New(lhs.Share.Index(), lhs.Share.Value().Add(rhs.Value)),
 		}
 
 	case ValuePrivate:
+		if lhs.Share.Index() != rhs.Share.Index() {
+			panic("private addition: index mismatch")
+		}
 		ret = ValuePrivate{
-			Share: shamir.Share{
-				Index: lhs.Share.Index,
-				Value: lhs.Share.Value.Add(rhs.Share.Value),
-			},
+			Share: shamir.New(lhs.Share.Index(), lhs.Share.Value().Add(rhs.Share.Value())),
 		}
 	default:
 		panic("unimplemented")
