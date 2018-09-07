@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/republicprotocol/smpc-go/core/process"
+	"github.com/republicprotocol/smpc-go/core/vm/rng"
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
@@ -78,8 +79,21 @@ var _ = Describe("Virtual Machine", func() {
 
 					switch message := message.(type) {
 					case RemoteProcedureCall:
-						for _, in := range ins {
-							in <- message
+						switch message := message.Message.(type) {
+
+						case rng.ProposeRn:
+							ins[message.To] <- NewRemoteProcedureCall(message)
+
+						case rng.LocalRnShares:
+							ins[message.To] <- NewRemoteProcedureCall(message)
+
+						case rng.ProposeGlobalRnShare:
+							ins[message.To] <- NewRemoteProcedureCall(message)
+
+						default:
+							for _, in := range ins {
+								in <- NewRemoteProcedureCall(message)
+							}
 						}
 
 					case Result:
@@ -214,7 +228,7 @@ var _ = Describe("Virtual Machine", func() {
 						})
 				}, 60)
 
-				FIt("should add public numbers with private numbers", func(doneT Done) {
+				It("should add public numbers with private numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -271,7 +285,48 @@ var _ = Describe("Virtual Machine", func() {
 
 				It("should generate private random numbers", func(doneT Done) {
 					defer close(doneT)
-				})
+
+					done := make(chan (struct{}))
+					vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+					co.ParBegin(
+						func() {
+							runVMs(done, vms)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							results := routeMessages(done, ins, outs)
+
+							id := [32]byte{0x69}
+
+							for i := range vms {
+								stack := process.NewStack(100)
+								mem := process.Memory{}
+								code := process.Code{
+									process.InstRand{},
+								}
+								proc := process.New(id, stack, mem, code)
+								init := NewExec(proc)
+
+								ins[i] <- init
+							}
+
+							seen := map[uint64]struct{}{}
+							for _ = range vms {
+								var actual TestResult
+								Eventually(results, 60).Should(Receive(&actual))
+
+								_, ok := actual.result.Value.(process.ValuePrivateRn)
+								if _, exists := seen[actual.from]; exists {
+									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+								} else {
+									seen[actual.from] = struct{}{}
+								}
+								Expect(ok).To(BeTrue())
+							}
+						})
+				}, 60)
 
 				It("should multiply private numbers", func(doneT Done) {
 					defer close(doneT)
