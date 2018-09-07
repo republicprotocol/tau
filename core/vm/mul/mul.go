@@ -35,7 +35,7 @@ func (multiplier *multiplier) IO() task.IO {
 }
 
 func (multiplier *multiplier) Run(done <-chan struct{}) {
-	defer log.Printf("[info] (mul) terminating")
+	// defer log.Printf("[info] (mul) terminating")
 
 	for {
 		ok := task.Select(
@@ -83,6 +83,9 @@ func (multiplier *multiplier) open(message Open) {
 	multiplier.openings[message.Nonce][message.Index()] = message
 
 	if uint(len(multiplier.openings[message.Nonce])) < multiplier.k {
+		return
+	}
+	if _, ok := multiplier.pendings[message.Nonce]; !ok {
 		return
 	}
 
