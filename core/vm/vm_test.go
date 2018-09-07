@@ -420,8 +420,13 @@ var _ = Describe("Virtual Machine", func() {
 
 							id := [31]byte{0x69}
 
-							a0, a1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
-							b0, b1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
+							a0i, a1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
+							b0i, b1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
+							ai := big.NewInt(0).Add(big.NewInt(0).Mul(big.NewInt(2), a1i), a0i)
+							bi := big.NewInt(0).Add(big.NewInt(0).Mul(big.NewInt(2), b1i), b0i)
+
+							a0, a1 := SecretField.NewInField(a0i), SecretField.NewInField(a1i)
+							b0, b1 := SecretField.NewInField(b0i), SecretField.NewInField(b1i)
 							a := SecretField.NewInField(big.NewInt(2)).Mul(a1).Add(a0)
 							b := SecretField.NewInField(big.NewInt(2)).Mul(b1).Add(b0)
 
@@ -444,13 +449,16 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(1000)
 								mem := process.NewMemory(1000)
 								code := process.Code{
+									// store rn at 5
+									process.InstGenerateRn(),
+									process.InstStore(5),
 
 									// b0 && !a0 stored at 0
 									process.InstPush(valueB0),
 									process.InstPush(valueOne),
 									process.InstPush(valueA0),
 									process.InstSub(),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstStore(0),
 
@@ -459,7 +467,7 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstPush(valueOne),
 									process.InstPush(valueA1),
 									process.InstSub(),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstStore(1),
 
@@ -470,14 +478,14 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstPush(valueOne),
 									process.InstPush(valueA1),
 									process.InstSub(),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstStore(2),
 
 									// !b1 && !a1 stored at 3
 									process.InstPush(valueA1),
 									process.InstPush(valueB1),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstStore(3),
 
@@ -487,13 +495,13 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstAdd(),
 									process.InstLoad(2),
 									process.InstLoad(3),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstSub(),
 
 									// prev && addr 0 and store at 4
 									process.InstLoad(0),
-									process.InstGenerateRn(),
+									process.InstLoad(5),
 									process.InstMul(),
 									process.InstStore(4),
 
@@ -528,6 +536,11 @@ var _ = Describe("Virtual Machine", func() {
 									seen[actual.from] = struct{}{}
 								}
 								Expect(ok).To(BeTrue())
+								if res.Value.IsOne() {
+									Expect(ai.Cmp(bi)).To(Equal(-1))
+								} else {
+									Expect(ai.Cmp(bi)).ToNot(Equal(-1))
+								}
 								log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
 							}
 						})
