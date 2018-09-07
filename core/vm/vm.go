@@ -130,6 +130,7 @@ func (vm *VM) exec(exec Exec) {
 		if err != nil {
 			panic("unimplemented")
 		}
+		log.Printf("[debug] (vm) result = %v", result)
 		vm.io.Send(NewResult(result))
 		return
 	}
@@ -150,7 +151,7 @@ func (vm *VM) exec(exec Exec) {
 	case process.IntentToOpen:
 		vm.processIntents[proc.ID] = intent
 		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.ID), intent.Value))
-		vm.io.Send(open.NewOpen(open.Nonce(proc.ID), intent.Value))
+		vm.io.Send(NewRemoteProcedureCall(open.NewOpen(open.Nonce(proc.ID), intent.Value)))
 
 	case process.IntentToError:
 		log.Printf("[error] (vm) %v", intent.Error())
