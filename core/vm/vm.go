@@ -214,6 +214,8 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
 	}
 
+	delete(vm.processIntents, process.ID(message.Nonce))
+
 	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
 
@@ -238,6 +240,8 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
 	}
 
+	delete(vm.processIntents, process.ID(message.Nonce))
+
 	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
 
@@ -257,6 +261,8 @@ func (vm *VM) handleOpenResult(message open.Result) {
 	default:
 		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
 	}
+
+	delete(vm.processIntents, process.ID(message.Nonce))
 
 	vm.exec(NewExec(vm.processes[process.ID(message.Nonce)]))
 }
