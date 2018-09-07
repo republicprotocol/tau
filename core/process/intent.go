@@ -80,6 +80,13 @@ func ErrorUnexpectedInst(inst Inst, pc PC) IntentToError {
 	)
 }
 
+func ErrorInvalidMemoryAddr(addr Addr, pc PC) IntentToError {
+	return ErrorExecution(
+		fmt.Errorf("invalid memory address %v", addr),
+		pc,
+	)
+}
+
 func ErrorCodeOverflow(pc PC) IntentToError {
 	return ErrorExecution(
 		fmt.Errorf("code overflow"),
