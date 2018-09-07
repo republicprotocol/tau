@@ -25,11 +25,10 @@ var _ = Describe("Random number generators", func() {
 
 	P := big.NewInt(8589934583)
 	Q := big.NewInt(4294967291)
-	G := big.NewInt(592772542)
-	H := big.NewInt(4799487786)
-	PedersenScheme, _ := pedersen.New(P, Q, G, H)
-	// CommitField := algebra.NewField(P)
+	G := algebra.NewFpElement(big.NewInt(592772542), P)
+	H := algebra.NewFpElement(big.NewInt(4799487786), P)
 	SecretField := algebra.NewField(Q)
+	PedersenScheme := pedersen.New(G, H, SecretField)
 	BufferLimit := 64
 
 	// initPlayers for a secure multi-party computation network. These players

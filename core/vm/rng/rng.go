@@ -65,7 +65,7 @@ type rnger struct {
 
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
-	localRnShares map[Nonce](map[Address]ShareMap)
+	localRnShares map[Nonce](map[Address]LocalRnShares)
 }
 
 // New returns an Rnger that is identified as the i-th player in a network with
@@ -86,7 +86,7 @@ func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, 
 
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
-		localRnShares: map[Nonce](map[Address]ShareMap){},
+		localRnShares: map[Nonce](map[Address]LocalRnShares){},
 	}
 }
 
@@ -192,9 +192,9 @@ func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 
 	// TODO: Verify that the shares are well formed.
 	if _, ok := rnger.localRnShares[message.Nonce]; !ok {
-		rnger.localRnShares[message.Nonce] = map[Address]ShareMap{}
+		rnger.localRnShares[message.Nonce] = map[Address]LocalRnShares{}
 	}
-	rnger.localRnShares[message.Nonce][message.From] = message.Shares
+	rnger.localRnShares[message.Nonce][message.From] = message
 
 	// Check whether or not this Rnger has received enough LocalRnShares to
 	// securely build a GlobalRnShare for every Rnger in the network
@@ -230,19 +230,23 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 	}
 
 	rn := rnger.ped.SecretField().Random()
-	rnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k))
+	rhoRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k))
+	sigmaRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k/2))
 
-	shares := ShareMap{}
-	for i, share := range rnShares {
+	rhoShares := ShareMap{}
+	sigmaShares := ShareMap{}
+	for i := range rhoRnShares {
 		// log.Printf("[debug] <replica %v>: sending share %v", rnger.addr, share.SShare)
-		shares[Address(i)] = share
+		rhoShares[Address(i)] = rhoRnShares[i]
+		sigmaShares[Address(i)] = sigmaRnShares[i]
 	}
 
 	localRnShares := LocalRnShares{
-		Nonce:  message.Nonce,
-		To:     rnger.leader,
-		From:   rnger.addr,
-		Shares: shares,
+		Nonce:       message.Nonce,
+		To:          rnger.leader,
+		From:        rnger.addr,
+		RhoShares:   rhoShares,
+		SigmaShares: sigmaShares,
 	}
 	rnger.io.Send(localRnShares)
 
@@ -255,11 +259,12 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 
 	globalRnShare := GlobalRnShare{
-		Nonce: message.Nonce,
-		Share: shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
-		From:  rnger.addr,
+		Nonce:      message.Nonce,
+		RhoShare:   shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
+		SigmaShare: shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
+		From:       rnger.addr,
 	}
-	for _, share := range message.Shares {
+	for addr, share := range message.RhoShares {
 		// log.Printf("[debug] <replica %v>: received share %v", rnger.addr, share.SShare)
 
 		// Check that the share is correct
@@ -269,7 +274,11 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 			return
 		}
 
-		globalRnShare.Share = globalRnShare.Share.Add(share.Share())
+		rhoShare := message.RhoShares[addr]
+		sigmaShare := message.RhoShares[addr]
+
+		globalRnShare.RhoShare = globalRnShare.RhoShare.Add(rhoShare.Share())
+		globalRnShare.SigmaShare = globalRnShare.SigmaShare.Add(sigmaShare.Share())
 	}
 	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
 
@@ -286,13 +295,15 @@ func (rnger *rnger) buildProposeGlobalRnShares(nonce Nonce) []ProposeGlobalRnSha
 	globalRnShares := make([]ProposeGlobalRnShare, rnger.n)
 
 	for j := uint(0); j < rnger.n; j++ {
-		shares := ShareMap{}
+		rhoShares := ShareMap{}
+		sigmaShares := ShareMap{}
 
 		for addr, shareMapFromAddr := range rnger.localRnShares[nonce] {
-			shares[addr] = shareMapFromAddr[Address(j)]
+			rhoShares[addr] = shareMapFromAddr.RhoShares[Address(j)]
+			sigmaShares[addr] = shareMapFromAddr.SigmaShares[Address(j)]
 		}
 
-		globalRnShares[j] = NewProposeGlobalRnShare(nonce, Address(j), rnger.addr, shares)
+		globalRnShares[j] = NewProposeGlobalRnShare(nonce, Address(j), rnger.addr, rhoShares, sigmaShares)
 	}
 
 	return globalRnShares
