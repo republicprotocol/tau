@@ -158,8 +158,14 @@ func (vm *VM) exec(exec Exec) {
 func (vm *VM) invoke(message RemoteMessage) {
 	switch message := message.Message.(type) {
 
-	case rng.ProposeRn:
+	case rng.ProposeRn, rng.LocalRnShares, rng.ProposeGlobalRnShare:
 		vm.rng.IO().Send(message)
+
+	case mul.Open:
+		vm.mul.IO().Send(message)
+
+	case open.Open:
+		vm.open.IO().Send(message)
 
 	default:
 		panic("unimplemented")
@@ -188,15 +194,15 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 	case process.IntentToGenerateRn:
 
 		select {
-		case intent.Rho <- message.Share:
+		case intent.Rho <- message.Rho:
 		default:
-			log.Printf("[error] (vm, rng, rho) unavailable intent")
+			log.Printf("[error] (vm, rng, ρ) unavailable intent")
 		}
 
 		select {
-		case intent.Sigma <- message.Share:
+		case intent.Sigma <- message.Sigma:
 		default:
-			log.Printf("[error] (vm, rng, sigma) unavailable intent")
+			log.Printf("[error] (vm, rng, σ) unavailable intent")
 		}
 	default:
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
