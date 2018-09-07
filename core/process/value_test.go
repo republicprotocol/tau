@@ -3,16 +3,18 @@ package process_test
 import (
 	"math/big"
 
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/republicprotocol/smpc-go/core/process"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
-var _ = Describe("Values", func() {
-	buildValuePublic := func(i *big.Int) ValuePublic {
+var _ = FDescribe("Values", func() {
+	buildValuePublic := func(v algebra.FpElement) ValuePublic {
 		return ValuePublic{
-			Int: i,
+			Value: v,
 		}
 	}
 
@@ -29,16 +31,16 @@ var _ = Describe("Values", func() {
 		}
 	}
 
-	generateShare := func(index uint64, i *big.Int) shamir.Share {
+	buildShare := func(index uint64, v algebra.FpElement) shamir.Share {
 		return shamir.Share{
 			Index: index,
-			Value: i,
+			Value: v,
 		}
 	}
 
 	Context("building values", func() {
 		It("public value", func() {
-			Expect(buildValuePublic(big.NewInt(0))).NotTo(BeNil())
+			Expect(buildValuePublic(algebra.NewFpElement(big.NewInt(1), big.NewInt(7)))).NotTo(BeNil())
 		})
 
 		It("private value", func() {
@@ -52,35 +54,35 @@ var _ = Describe("Values", func() {
 
 	Context("add operations", func() {
 		It("lhs: public value & rhs: public value", func() {
-			v1 := buildValuePublic(big.NewInt(2))
-			v2 := buildValuePublic(big.NewInt(3))
+			v1 := buildValuePublic(algebra.NewFpElement(big.NewInt(2), big.NewInt(8113765242226142771)))
+			v2 := buildValuePublic(algebra.NewFpElement(big.NewInt(3), big.NewInt(8113765242226142771)))
 			ret := v1.Add(v2)
 			retVal := ret.(ValuePublic)
-			Expect(retVal.Int.Cmp(big.NewInt(5))).To(Equal(0))
+			Expect(retVal.Value.Eq(algebra.NewFpElement(big.NewInt(5), big.NewInt(8113765242226142771)))).To(BeTrue())
 		})
 
 		It("lhs: private value & rhs: public value", func() {
-			v1 := buildValuePrivate(generateShare(1, big.NewInt(5)))
-			v2 := buildValuePublic(big.NewInt(2))
+			v1 := buildValuePrivate(buildShare(1, algebra.NewFpElement(big.NewInt(2), big.NewInt(8113765242226142771))))
+			v2 := buildValuePublic(algebra.NewFpElement(big.NewInt(3), big.NewInt(8113765242226142771)))
 			ret := v1.Add(v2)
 			retVal := ret.(ValuePrivate)
-			Expect(retVal.Share.Value.Cmp(big.NewInt(7))).To(Equal(0))
+			Expect(retVal.Share.Value.Eq(algebra.NewFpElement(big.NewInt(5), big.NewInt(8113765242226142771)))).To(BeTrue())
 		})
 
 		It("lhs: public value & rhs: private value", func() {
-			v1 := buildValuePublic(big.NewInt(3))
-			v2 := buildValuePrivate(generateShare(1, big.NewInt(5)))
+			v1 := buildValuePublic(algebra.NewFpElement(big.NewInt(5), big.NewInt(8113765242226142771)))
+			v2 := buildValuePrivate(buildShare(1, algebra.NewFpElement(big.NewInt(4), big.NewInt(8113765242226142771))))
 			ret := v1.Add(v2)
 			retVal := ret.(ValuePrivate)
-			Expect(retVal.Share.Value.Cmp(big.NewInt(8))).To(Equal(0))
+			Expect(retVal.Share.Value.Eq(algebra.NewFpElement(big.NewInt(9), big.NewInt(8113765242226142771)))).To(BeTrue())
 		})
 
 		It("lhs: private value & rhs: private value", func() {
-			v1 := buildValuePrivate(generateShare(1, big.NewInt(6)))
-			v2 := buildValuePrivate(generateShare(1, big.NewInt(7)))
+			v1 := buildValuePrivate(buildShare(1, algebra.NewFpElement(big.NewInt(6), big.NewInt(8113765242226142771))))
+			v2 := buildValuePrivate(buildShare(1, algebra.NewFpElement(big.NewInt(7), big.NewInt(8113765242226142771))))
 			ret := v1.Add(v2)
 			retVal := ret.(ValuePrivate)
-			Expect(retVal.Share.Value.Cmp(big.NewInt(13))).To(Equal(0))
+			Expect(retVal.Share.Value.Eq(algebra.NewFpElement(big.NewInt(13), big.NewInt(8113765242226142771)))).To(BeTrue())
 		})
 	})
 
