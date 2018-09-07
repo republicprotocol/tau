@@ -15,6 +15,10 @@ type ValuePublic struct {
 	Value algebra.FpElement
 }
 
+func NewValuePublic(n algebra.FpElement) ValuePublic {
+	return ValuePublic{n}
+}
+
 func (lhs ValuePublic) Add(rhs Value) (ret Value) {
 	switch rhs := rhs.(type) {
 	case ValuePublic:
@@ -37,6 +41,10 @@ func (lhs ValuePublic) IsValue() {
 
 type ValuePrivate struct {
 	Share shamir.Share
+}
+
+func NewValuePrivate(share shamir.Share) ValuePrivate {
+	return ValuePrivate{share}
 }
 
 func (lhs ValuePrivate) Add(rhs Value) (ret Value) {
