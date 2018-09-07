@@ -24,14 +24,14 @@ type VM struct {
 	open task.Task
 }
 
-func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, k uint, cap int) VM {
+func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n, k uint, cap int) VM {
 	return VM{
 		io:             task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal:     task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[process.ID]process.Intent{},
 
-		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), addr, leader, ped, n, k, n-k, cap),
+		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
 		mul:  mul.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 		open: open.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 	}
@@ -155,7 +155,7 @@ func (vm *VM) exec(exec Exec) {
 	}
 }
 
-func (vm *VM) invoke(message RemoteMessage) {
+func (vm *VM) invoke(message RemoteProcedureCall) {
 	switch message := message.Message.(type) {
 
 	case rng.ProposeRn, rng.LocalRnShares, rng.ProposeGlobalRnShare:
@@ -185,7 +185,7 @@ func (vm *VM) handleRngProposeGlobalRnShare(message rng.ProposeGlobalRnShare) {
 }
 
 func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
-	intent, ok := vm.processIntents[message.Nonce]
+	intent, ok := vm.processIntents[process.ID(message.Nonce)]
 	if !ok {
 		return
 	}
@@ -194,13 +194,13 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 	case process.IntentToGenerateRn:
 
 		select {
-		case intent.Rho <- message.Rho:
+		case intent.Rho <- message.RhoShare:
 		default:
 			log.Printf("[error] (vm, rng, ρ) unavailable intent")
 		}
 
 		select {
-		case intent.Sigma <- message.Sigma:
+		case intent.Sigma <- message.SigmaShare:
 		default:
 			log.Printf("[error] (vm, rng, σ) unavailable intent")
 		}
@@ -208,15 +208,15 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
+	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
 }
 
 func (vm *VM) handleMulOpen(message mul.Open) {
-	vm.open.IO().Send(open)
+	vm.open.IO().Send(message)
 }
 
 func (vm *VM) handleMulResult(message mul.Result) {
-	intent, ok := vm.processIntents[message.Nonce]
+	intent, ok := vm.processIntents[process.ID(message.Nonce)]
 	if !ok {
 		return
 	}
@@ -232,11 +232,11 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
+	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
 }
 
 func (vm *VM) handleOpenResult(message open.Result) {
-	intent, ok := vm.processIntents[message.Nonce]
+	intent, ok := vm.processIntents[process.ID(message.Nonce)]
 	if !ok {
 		return
 	}
@@ -252,5 +252,5 @@ func (vm *VM) handleOpenResult(message open.Result) {
 		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
 	}
 
-	vm.exec(NewExecMessage(vm.processes[message.Nonce]))
+	vm.exec(NewExecMessage(vm.processes[process.ID(message.Nonce)]))
 }
