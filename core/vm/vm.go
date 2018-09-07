@@ -108,6 +108,9 @@ func (vm *VM) recvMessage(message buffer.Message) {
 	case open.Result:
 		vm.handleOpenResult(message)
 
+	case rng.Err:
+		// TODO: Error handling?
+
 	default:
 		log.Printf("[error] (vm) unexpected message type %T", message)
 	}
