@@ -2,7 +2,6 @@ package rng
 
 import (
 	"errors"
-	"log"
 	"math/big"
 	"time"
 
@@ -98,7 +97,7 @@ func (rnger *rnger) IO() task.IO {
 // should be run in a background goroutine. It is recommended that the input and
 // output channels are buffered, however it is not required.
 func (rnger *rnger) Run(done <-chan struct{}) {
-	defer log.Printf("[info] (rng) terminating")
+	// defer log.Printf("[info] (rng) terminating")
 
 	for {
 		ok := task.Select(

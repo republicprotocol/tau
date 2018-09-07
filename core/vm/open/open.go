@@ -33,7 +33,7 @@ func (opener *opener) IO() task.IO {
 }
 
 func (opener *opener) Run(done <-chan struct{}) {
-	defer log.Printf("[info] (open) terminating")
+	// defer log.Printf("[info] (open) terminating")
 
 	for {
 		ok := task.Select(
