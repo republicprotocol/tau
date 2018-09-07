@@ -44,3 +44,13 @@ func (ped *Pedersen) Commit(s, t algebra.FpElement) algebra.FpElement {
 func (ped *Pedersen) Verify(s, t, commitment algebra.FpElement) bool {
 	return ped.Commit(s, t).Eq(commitment)
 }
+
+// CommitEq returns true if the two commitments are to the same value. The
+// difference `diff` is the difference between the two `h` exponents; namely if
+// `commitA` is `(g^s)(h^t1)` and `commitB` is `(g^s)(h^t2)` then `diff` should
+// be `t1 - t2`.
+func (ped *Pedersen) CommitEq(commitA, commitB, diff algebra.FpElement) bool {
+	expected := ped.h.Exp(diff.AsField(ped.h.Field()))
+	actual := commitA.Div(commitB)
+	return expected.Eq(actual)
+}

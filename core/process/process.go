@@ -1,7 +1,7 @@
 package process
 
 import (
-	"math/big"
+	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
@@ -113,14 +113,6 @@ func (proc *Process) execInstAdd(inst InstAdd) Return {
 	lhs, err := proc.Stack.Pop()
 	if err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
-	}
-
-	if lhs == nil {
-		panic("lhs nil value")
-	}
-
-	if rhs == nil {
-		panic("rhs nil value")
 	}
 
 	ret := Value(nil)
@@ -248,7 +240,7 @@ func (proc *Process) execInstOpen(inst InstOpen) Return {
 			return NotReady(ErrorUnexpectedValue(value, ValuePrivate{}, proc.PC))
 		}
 
-		retCh := make(chan *big.Int, 1)
+		retCh := make(chan algebra.FpElement, 1)
 		inst.RetCh = retCh
 		proc.Code[proc.PC] = inst
 		return NotReady(Open(v.Share, retCh))
@@ -266,7 +258,7 @@ func (proc *Process) execInstOpen(inst InstOpen) Return {
 	}
 
 	proc.Push(ValuePublic{
-		Int: inst.Ret,
+		Value: inst.Ret,
 	})
 
 	proc.PC++
