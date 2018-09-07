@@ -85,6 +85,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstLoad(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
+		case instSub:
+			ret = proc.execInstSub(inst)
 		case instGenerateRn:
 			ret = proc.execInstGenerateRn(inst)
 		case instMul:

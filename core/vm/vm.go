@@ -19,6 +19,7 @@ type VM struct {
 	processes      map[process.ID]process.Process
 	processIntents map[process.ID]process.Intent
 
+	addr uint64
 	rng  task.Task
 	mul  task.Task
 	open task.Task
@@ -31,6 +32,7 @@ func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[process.ID]process.Intent{},
 
+		addr: addr,
 		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
 		mul:  mul.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 		open: open.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
@@ -243,7 +245,7 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		}
 	default:
 		// FIXME: Handle intent transitioning correctly.
-		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
+		log.Printf("[error] (vm, mul) <%v> unexpected intent type %T", vm.addr, intent)
 		return
 	}
 

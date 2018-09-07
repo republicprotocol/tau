@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"math/rand"
 
 	"github.com/republicprotocol/smpc-go/core/process"
 	"github.com/republicprotocol/smpc-go/core/vm/rng"
@@ -150,9 +151,9 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(100)
 								mem := process.Memory{}
 								code := process.Code{
-									process.InstPush{Value: valueA},
-									process.InstPush{Value: valueB},
-									process.InstAdd{},
+									process.InstPush(valueA),
+									process.InstPush(valueB),
+									process.InstAdd(),
 								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
@@ -200,10 +201,10 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(100)
 								mem := process.Memory{}
 								code := process.Code{
-									process.InstPush{Value: valueA},
-									process.InstPush{Value: valueB},
-									process.InstAdd{},
-									process.InstOpen{},
+									process.InstPush(valueA),
+									process.InstPush(valueB),
+									process.InstAdd(),
+									process.InstOpen(),
 								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
@@ -255,10 +256,10 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(100)
 								mem := process.Memory{}
 								code := process.Code{
-									process.InstPush{Value: valuePub},
-									process.InstPush{Value: valuePriv},
-									process.InstAdd{},
-									process.InstOpen{},
+									process.InstPush(valuePub),
+									process.InstPush(valuePriv),
+									process.InstAdd(),
+									process.InstOpen(),
 								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
@@ -304,7 +305,7 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(100)
 								mem := process.Memory{}
 								code := process.Code{
-									process.InstRand{},
+									process.InstGenerateRn(),
 								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
@@ -344,7 +345,7 @@ var _ = Describe("Virtual Machine", func() {
 						})
 				}, 60)
 
-				FIt("should multiply private numbers", func(doneT Done) {
+				It("should multiply private numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -373,11 +374,11 @@ var _ = Describe("Virtual Machine", func() {
 								stack := process.NewStack(100)
 								mem := process.Memory{}
 								code := process.Code{
-									process.InstPush{Value: valueA},
-									process.InstPush{Value: valueB},
-									process.InstRand{},
-									process.InstMul{},
-									process.InstOpen{},
+									process.InstPush(valueA),
+									process.InstPush(valueB),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstOpen(),
 								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
@@ -398,6 +399,136 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								Expect(ok).To(BeTrue())
 								Expect(res.Value.Eq(a.Mul(b))).To(BeTrue())
+							}
+						})
+				}, 60)
+
+				FIt("should compare 2 bit numbers", func(doneT Done) {
+					defer close(doneT)
+
+					done := make(chan (struct{}))
+					vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+					co.ParBegin(
+						func() {
+							runVMs(done, vms)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							results := routeMessages(done, ins, outs)
+
+							id := [32]byte{0x69}
+
+							a0, a1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
+							b0, b1 := SecretField.NewInField(big.NewInt(rand.Int63n(2))), SecretField.NewInField(big.NewInt(rand.Int63n(2)))
+							a := SecretField.NewInField(big.NewInt(2)).Mul(a1).Add(a0)
+							b := SecretField.NewInField(big.NewInt(2)).Mul(b1).Add(b0)
+
+							polyA0 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a0)
+							polyA1 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a1)
+							polyB0 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, b0)
+							polyB1 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, b1)
+							sharesA0 := shamir.Split(polyA0, uint64(entry.n))
+							sharesA1 := shamir.Split(polyA1, uint64(entry.n))
+							sharesB0 := shamir.Split(polyB0, uint64(entry.n))
+							sharesB1 := shamir.Split(polyB1, uint64(entry.n))
+
+							for i := range vms {
+								valueA0 := process.NewValuePrivate(sharesA0[i])
+								valueA1 := process.NewValuePrivate(sharesA1[i])
+								valueB0 := process.NewValuePrivate(sharesB0[i])
+								valueB1 := process.NewValuePrivate(sharesB1[i])
+								valueOne := process.NewValuePublic(SecretField.NewInField(big.NewInt(1)))
+
+								stack := process.NewStack(100)
+								mem := process.NewMemory(100)
+								code := process.Code{
+
+									// b0 && !a0 stored at 0
+									process.InstPush(valueB0),
+									process.InstPush(valueOne),
+									process.InstPush(valueA0),
+									process.InstSub(),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstStore(0),
+
+									// b1 && !a1 stored at 1
+									process.InstPush(valueB1),
+									process.InstPush(valueOne),
+									process.InstPush(valueA1),
+									process.InstSub(),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstStore(1),
+
+									// !b1 && !a1 stored at 2
+									process.InstPush(valueOne),
+									process.InstPush(valueB1),
+									process.InstSub(),
+									process.InstPush(valueOne),
+									process.InstPush(valueA1),
+									process.InstSub(),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstStore(2),
+
+									// !b1 && !a1 stored at 3
+									process.InstPush(valueA1),
+									process.InstPush(valueB1),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstStore(3),
+
+									//
+									process.InstLoad(2),
+									process.InstLoad(3),
+									process.InstAdd(),
+									process.InstLoad(2),
+									process.InstLoad(3),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstSub(),
+
+									//
+									process.InstLoad(0),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstStore(4),
+
+									//
+									process.InstLoad(1),
+									process.InstLoad(4),
+									process.InstAdd(),
+									process.InstLoad(1),
+									process.InstLoad(4),
+									process.InstGenerateRn(),
+									process.InstMul(),
+									process.InstSub(),
+
+									//
+									process.InstOpen(),
+								}
+								proc := process.New(id, stack, mem, code)
+								init := NewExec(proc)
+
+								ins[i] <- init
+							}
+
+							seen := map[uint64]struct{}{}
+							for _ = range vms {
+								var actual TestResult
+								Eventually(results, 60).Should(Receive(&actual))
+
+								res, ok := actual.result.Value.(process.ValuePublic)
+								if _, exists := seen[actual.from]; exists {
+									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+								} else {
+									seen[actual.from] = struct{}{}
+								}
+								Expect(ok).To(BeTrue())
+								log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
 							}
 						})
 				}, 60)
