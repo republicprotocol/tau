@@ -34,7 +34,7 @@ var _ = Describe("Random number generators", func() {
 
 	// initPlayers for a secure multi-party computation network. These players
 	// will communicate to run the secure random number generation algorithm.
-	initPlayers := func(timeout time.Duration, n, k, t uint, bufferCap int) ([]task.Task, []buffer.ReaderWriter, []buffer.ReaderWriter) {
+	initPlayers := func(n, k, t uint, bufferCap int) ([]task.Task, []buffer.ReaderWriter, []buffer.ReaderWriter) {
 		// Initialis the players
 		rngers := make([]task.Task, n)
 		inputs := make([]buffer.ReaderWriter, n)
@@ -42,7 +42,7 @@ var _ = Describe("Random number generators", func() {
 		for i := uint(0); i < n; i++ {
 			inputs[i] = buffer.NewReaderWriter(bufferCap)
 			outputs[i] = buffer.NewReaderWriter(bufferCap)
-			rngers[i] = New(inputs[i], outputs[i], timeout, Address(i), Address(0), n, k, t, PedersenScheme, bufferCap)
+			rngers[i] = New(inputs[i], outputs[i], Address(i), Address(0), PedersenScheme, n, k, t, bufferCap)
 		}
 		return rngers, inputs, outputs
 	}
@@ -191,7 +191,7 @@ var _ = Describe("Random number generators", func() {
 
 			input := buffer.NewReaderWriter(BufferLimit)
 			output := buffer.NewReaderWriter(BufferLimit)
-			rnger := New(input, output, time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
+			rnger := New(input, output, 0, 0, PedersenScheme, 1, 1, 1, 1)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
@@ -210,7 +210,7 @@ var _ = Describe("Random number generators", func() {
 
 			input := buffer.NewReaderWriter(BufferLimit)
 			output := buffer.NewReaderWriter(BufferLimit)
-			rnger := New(input, output, time.Second, 0, 0, 1, 1, 1, PedersenScheme, 1)
+			rnger := New(input, output, 0, 0, PedersenScheme, 1, 1, 1, 1)
 
 			done := make(chan (struct{}))
 			co.ParBegin(
@@ -243,7 +243,7 @@ var _ = Describe("Random number generators", func() {
 					defer close(doneT)
 
 					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.k/2, entry.bufferCap)
+					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.k/2, entry.bufferCap)
 
 					// Nonce that will be used to identify the secure random
 					// number
@@ -353,7 +353,7 @@ var _ = Describe("Random number generators", func() {
 						defer close(doneT)
 
 						mathRand.Seed(time.Now().UnixNano())
-						rngers, inputs, outputs := initPlayers(100*time.Millisecond, entry.n, entry.k, entry.k/2, entry.bufferCap)
+						rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.k/2, entry.bufferCap)
 
 						// Nonce that will be used to identify the secure random
 						// number

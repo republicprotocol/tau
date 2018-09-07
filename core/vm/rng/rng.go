@@ -59,10 +59,9 @@ type rnger struct {
 	io         task.IO
 	ioExternal task.IO
 
-	timeout      time.Duration
 	addr, leader Address
-	n, k, t      uint
 	ped          pedersen.Pedersen
+	n, k, t      uint
 
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
@@ -73,18 +72,17 @@ type rnger struct {
 // n players and k threshold. The Rnger will allocate a buffer for its output
 // messages and this buffer will grow indefinitely if the messages output from
 // the Rnger are not consumed.
-func New(r, w buffer.ReaderWriter, timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, cap int) task.Task {
+func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, n, k, t uint, cap int) task.Task {
 	return &rnger{
 		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 
-		timeout: timeout,
-		addr:    addr,
-		leader:  leader,
-		n:       n,
-		k:       k,
-		t:       t,
-		ped:     ped,
+		addr:   addr,
+		leader: leader,
+		ped:    ped,
+		n:      n,
+		k:      k,
+		t:      t,
 
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
