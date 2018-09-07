@@ -11,6 +11,7 @@ import (
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/smpc-go/core/vm/task"
 	"github.com/republicprotocol/smpc-go/core/vss/algebra"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
@@ -18,7 +19,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/republicprotocol/smpc-go/core/vm/rng"
-	"github.com/republicprotocol/smpc-go/core/vm/task"
 )
 
 var _ = Describe("Random number generators", func() {
