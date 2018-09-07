@@ -313,24 +313,94 @@ var _ = Describe("Virtual Machine", func() {
 							}
 
 							seen := map[uint64]struct{}{}
-							for _ = range vms {
+							rhoShares := make(shamir.Shares, entry.n)
+							sigmaShares := make(shamir.Shares, entry.n)
+							for i := range vms {
 								var actual TestResult
 								Eventually(results, 60).Should(Receive(&actual))
 
-								_, ok := actual.result.Value.(process.ValuePrivateRn)
+								res, ok := actual.result.Value.(process.ValuePrivateRn)
 								if _, exists := seen[actual.from]; exists {
 									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
 								} else {
 									seen[actual.from] = struct{}{}
 								}
 								Expect(ok).To(BeTrue())
+								rhoShares[i] = res.Rho
+								sigmaShares[i] = res.Sigma
+							}
+
+							rhoExpected, _ := shamir.Join(rhoShares)
+							for i := uint64(0); i < uint64(entry.n)-uint64(entry.k); i++ {
+								rhoActual, _ := shamir.Join(rhoShares[i : i+uint64(entry.k)])
+								Expect(rhoActual.Eq(rhoExpected)).To(BeTrue())
+							}
+
+							sigmaExpected, _ := shamir.Join(sigmaShares)
+							for i := uint64(0); i < uint64(entry.n)-uint64(entry.k/2); i++ {
+								sigmaActual, _ := shamir.Join(sigmaShares[i : i+uint64(entry.k/2)])
+								Expect(sigmaActual.Eq(sigmaExpected)).To(BeTrue())
 							}
 						})
 				}, 60)
 
-				It("should multiply private numbers", func(doneT Done) {
+				FIt("should multiply private numbers", func(doneT Done) {
 					defer close(doneT)
-				})
+
+					done := make(chan (struct{}))
+					vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+					co.ParBegin(
+						func() {
+							runVMs(done, vms)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							results := routeMessages(done, ins, outs)
+
+							id := [32]byte{0x69}
+							a, b := SecretField.Random(), SecretField.Random()
+							polyA := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a)
+							polyB := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, b)
+							sharesA := shamir.Split(polyA, uint64(entry.n))
+							sharesB := shamir.Split(polyB, uint64(entry.n))
+
+							for i := range vms {
+								valueA := process.NewValuePrivate(sharesA[i])
+								valueB := process.NewValuePrivate(sharesB[i])
+
+								stack := process.NewStack(100)
+								mem := process.Memory{}
+								code := process.Code{
+									process.InstPush{Value: valueA},
+									process.InstPush{Value: valueB},
+									process.InstRand{},
+									process.InstMul{},
+									process.InstOpen{},
+								}
+								proc := process.New(id, stack, mem, code)
+								init := NewExec(proc)
+
+								ins[i] <- init
+							}
+
+							seen := map[uint64]struct{}{}
+							for _ = range vms {
+								var actual TestResult
+								Eventually(results, 60).Should(Receive(&actual))
+
+								res, ok := actual.result.Value.(process.ValuePublic)
+								if _, exists := seen[actual.from]; exists {
+									Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+								} else {
+									seen[actual.from] = struct{}{}
+								}
+								Expect(ok).To(BeTrue())
+								Expect(res.Value.Eq(a.Mul(b))).To(BeTrue())
+							}
+						})
+				}, 60)
 			})
 		}
 	})

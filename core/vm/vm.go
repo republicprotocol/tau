@@ -214,7 +214,9 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 			log.Printf("[error] (vm, rng, σ) unavailable intent")
 		}
 	default:
+		// FIXME: Handle intent transitioning correctly.
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
+		return
 	}
 
 	delete(vm.processIntents, process.ID(message.Nonce))
@@ -240,7 +242,9 @@ func (vm *VM) handleMulResult(message mul.Result) {
 			log.Printf("[error] (vm, mul) unavailable intent")
 		}
 	default:
+		// FIXME: Handle intent transitioning correctly.
 		log.Printf("[error] (vm, mul) unexpected intent type %T", intent)
+		return
 	}
 
 	delete(vm.processIntents, process.ID(message.Nonce))
@@ -262,7 +266,9 @@ func (vm *VM) handleOpenResult(message open.Result) {
 			log.Printf("[error] (vm, open) unavailable intent")
 		}
 	default:
+		// FIXME: Handle intent transitioning correctly.
 		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
+		return
 	}
 
 	delete(vm.processIntents, process.ID(message.Nonce))
