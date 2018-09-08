@@ -4,33 +4,11 @@ import (
 	"time"
 
 	"github.com/republicprotocol/smpc-go/core/vss"
-	shamir "github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/smpc-go/core/vss/shamir"
 )
 
 // ShareMap is a convenience type that associates addresses with shares.
-type ShareMap map[Address]vss.VerifiableShare
-
-// An InputMessage can be passed to the Rnger as an input. It will be processed
-// by the Rnger and an error will be output if the message is an unexpected
-// type. No types external to this package should implement this interface.
-type InputMessage interface {
-
-	// IsInputMessage is a marker used to restrict InputMessages to types that
-	// have been explicitly marked. It is never called.
-	IsInputMessage()
-}
-
-// An OutputMessage can be passed from the Rnger as an output. Depending on the
-// type of output message, the user must route the message to the appropriate
-// Rnger in the network. See the documentation specific to each message for
-// information on how to handle it. No types external to this package should
-// implement this interface.
-type OutputMessage interface {
-
-	// IsOutputMessage is a marker used to restrict OutputMessages to types that
-	// have been explicitly marked. It is never called.
-	IsOutputMessage()
-}
+type ShareMap map[Address]vss.VShare
 
 // A Nominate message is used to nominate a computation leader. The Leader
 // Address is the address of the nominated leader.
@@ -45,8 +23,8 @@ func NewNominate(addr Address) Nominate {
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message Nominate) IsInputMessage() {
+// IsMessage implements the Message interface.
+func (message Nominate) IsMessage() {
 }
 
 // A GenerateRn message signals to the Rnger that is should begin a secure
@@ -66,8 +44,8 @@ func NewGenerateRn(nonce Nonce) GenerateRn {
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message GenerateRn) IsInputMessage() {
+// IsMessage implements the Message interface.
+func (message GenerateRn) IsMessage() {
 }
 
 // A ProposeRn message is sent by a computation leader to the compute nodes. It
@@ -91,12 +69,8 @@ func NewProposeRn(nonce Nonce, to, from Address) ProposeRn {
 	}
 }
 
-// IsOutputMessage implements the OutputMessage interface.
-func (message ProposeRn) IsOutputMessage() {
-}
-
-// IsInputMessage implements the InputMessage interface.
-func (message ProposeRn) IsInputMessage() {
+// IsMessage implements the Message interface.
+func (message ProposeRn) IsMessage() {
 }
 
 // A LocalRnShares message is produced by an Rnger after receiving a GenerateRn
@@ -108,28 +82,26 @@ func (message ProposeRn) IsInputMessage() {
 type LocalRnShares struct {
 	Nonce
 
-	To     Address
-	From   Address
-	Shares ShareMap
+	To          Address
+	From        Address
+	RhoShares   ShareMap
+	SigmaShares ShareMap
 }
 
 // NewLocalRnShares creates a new LocalRnShares message.
-func NewLocalRnShares(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) LocalRnShares {
+func NewLocalRnShares(nonce Nonce, to, from Address, rhoShares, sigmaShares map[Address]vss.VShare) LocalRnShares {
 	return LocalRnShares{
 		nonce,
 
 		to,
 		from,
-		shares,
+		rhoShares,
+		sigmaShares,
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message LocalRnShares) IsInputMessage() {
-}
-
-// IsOutputMessage implements the OutputMessage interface.
-func (message LocalRnShares) IsOutputMessage() {
+// IsMessage implements the Message interface.
+func (message LocalRnShares) IsMessage() {
 }
 
 // A ProposeGlobalRnShare message is sent by the computation leader and contains
@@ -139,27 +111,25 @@ func (message LocalRnShares) IsOutputMessage() {
 type ProposeGlobalRnShare struct {
 	Nonce
 
-	To     Address
-	From   Address
-	Shares ShareMap
+	To          Address
+	From        Address
+	RhoShares   ShareMap
+	SigmaShares ShareMap
 }
 
 // NewProposeGlobalRnShare creates a new ProposeGlobalRnShare message.
-func NewProposeGlobalRnShare(nonce Nonce, to, from Address, shares map[Address]vss.VerifiableShare) ProposeGlobalRnShare {
+func NewProposeGlobalRnShare(nonce Nonce, to, from Address, rhoShares, sigmaShares map[Address]vss.VShare) ProposeGlobalRnShare {
 	return ProposeGlobalRnShare{
 		nonce,
 		to,
 		from,
-		shares,
+		rhoShares,
+		sigmaShares,
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message ProposeGlobalRnShare) IsInputMessage() {
-}
-
-// IsOutputMessage implements the OutputMessage interface.
-func (message ProposeGlobalRnShare) IsOutputMessage() {
+// IsMessage implements the Message interface.
+func (message ProposeGlobalRnShare) IsMessage() {
 }
 
 // A GlobalRnShare message is produced by an Rnger at the end of a successful
@@ -167,22 +137,24 @@ func (message ProposeGlobalRnShare) IsOutputMessage() {
 // secure random number that has been generated.
 type GlobalRnShare struct {
 	Nonce
-	shamir.Share
+	RhoShare   shamir.Share
+	SigmaShare shamir.Share
 
 	From Address
 }
 
 // NewGlobalRnShare creates a new GlobalRnShare message.
-func NewGlobalRnShare(nonce Nonce, share shamir.Share, from Address) GlobalRnShare {
+func NewGlobalRnShare(nonce Nonce, rhoShare, sigmaShare shamir.Share, from Address) GlobalRnShare {
 	return GlobalRnShare{
 		nonce,
-		share,
+		rhoShare,
+		sigmaShare,
 		from,
 	}
 }
 
-// IsOutputMessage implements the OutputMessage interface.
-func (message GlobalRnShare) IsOutputMessage() {
+// IsMessage implements the Message interface.
+func (message GlobalRnShare) IsMessage() {
 }
 
 // A VoteGlobalRnShare message is produced by an Rnger after receiving a sufficient number of
@@ -209,12 +181,8 @@ func NewVoteGlobalRnShare(nonce Nonce, to, from Address, players []Address) Vote
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message VoteGlobalRnShare) IsInputMessage() {
-}
-
-// IsOutputMessage implements the OutputMessage interface.
-func (message VoteGlobalRnShare) IsOutputMessage() {
+// IsMessage implements the Message interface.
+func (message VoteGlobalRnShare) IsMessage() {
 }
 
 // A CheckDeadline message signals to the Rnger that it should clean up all
@@ -232,8 +200,8 @@ func NewCheckDeadline(time time.Time) CheckDeadline {
 	}
 }
 
-// IsInputMessage implements the InputMessage interface.
-func (message CheckDeadline) IsInputMessage() {
+// IsMessage implements the Message interface.
+func (message CheckDeadline) IsMessage() {
 }
 
 // Err is a message that is sent by a player when they encounter an error during
@@ -251,6 +219,6 @@ func NewErr(nonce Nonce, err error) Err {
 	}
 }
 
-// IsOutputMessage implements the OutputMessage interface.
-func (message Err) IsOutputMessage() {
+// IsMessage implements the Message interface.
+func (message Err) IsMessage() {
 }

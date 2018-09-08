@@ -15,7 +15,7 @@ import (
 )
 
 var _ = Describe("Shamir secret sharing", func() {
-	const Trials = 100
+	const Trials = 10
 
 	// randomDegree yields a random degree for constructing a polynomial, in a
 	// small range of values.
@@ -28,28 +28,43 @@ var _ = Describe("Shamir secret sharing", func() {
 	}
 
 	Context("when splitting a secret into shares", func() {
-		DescribeTable("it should panic if one of the indices is 0", func(prime *big.Int) {
+		DescribeTable("it should panic if n is too small", func(prime *big.Int) {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				indices := make([]uint64, (rand.Uint32()%20)+1)
-				zero := rand.Uint32() % uint32(len(indices))
-
-				for j := range indices {
-					if j == int(zero) {
-						indices[j] = 0
-					} else {
-						indices[j] = uint64(j)
-					}
+				if prime.Uint64() == 2 {
+					// Not possible to share correctly
+					continue
 				}
+				secret := field.Random()
+				k := randomDegree(prime) + 1
+				n := rand.Uint64() % uint64(k)
+				poly := algebra.NewRandomPolynomial(field, k-1, secret)
 
-				poly := algebra.NewRandomPolynomial(&field, randomDegree(prime))
-
-				Expect(func() { Split(&poly, indices) }).To(Panic())
+				Expect(func() { Split(poly, n) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
 		)
+	})
+
+	Context("when reconstructing secrets", func() {
+		DescribeTable("it should panic if the list of shares is empty", func(prime *big.Int) {
+			emptyShares := make(Shares, 0)
+			Expect(func() { Join(emptyShares) }).To(Panic())
+		},
+			PrimeEntries...,
+		)
+
+		It("should return an error if shares are in different fields", func() {
+			field := NewField(big.NewInt(2))
+			otherField := NewField(big.NewInt(3))
+			shares := make(Shares, 2)
+			shares[0] = New(1, field.Random())
+			shares[1] = New(2, otherField.Random())
+			_, err := Join(shares)
+			Expect(err).To(HaveOccurred())
+		})
 
 		DescribeTable("the shares should join back into the original secret", func(prime *big.Int) {
 			field := NewField(prime)
@@ -60,24 +75,80 @@ var _ = Describe("Shamir secret sharing", func() {
 					continue
 				}
 				secret := field.Random()
+				n := uint64(24)
 				k := randomDegree(prime) + 1
-				poly := algebra.NewRandomPolynomial(&field, k-1, secret)
-				var indices []uint64
+				poly := algebra.NewRandomPolynomial(field, k-1, secret)
 
-				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				shares := Split(&poly, indices)
+				shares := Split(poly, n)
 
-				Expect(Join(&field, shares).Cmp(secret)).To(Equal(0))
+				actual, _ := Join(shares)
+				Expect(actual.Eq(secret)).To(BeTrue())
 
-				for i := uint(0); i < 24-k; i++ {
-					Expect(Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+				for i := uint64(0); i < n-uint64(k); i++ {
+					actual, _ := Join(shares[i : i+uint64(k)])
+					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}
 		},
 			PrimeEntries...,
 		)
 
-		DescribeTable("the sharing should be commutable with addition", func(prime *big.Int) {
+		Context("when performing share arithmetic", func() {
+			It("should panic when adding shares in different fields", func() {
+				field := NewField(big.NewInt(2))
+				otherField := NewField(big.NewInt(3))
+				share := New(1, field.Random())
+				otherShare := New(2, otherField.Random())
+				Expect(func() { share.Add(otherShare) }).To(Panic())
+			})
+
+			DescribeTable("the sharing should be commutable with addition", func(prime *big.Int) {
+				field := NewField(prime)
+
+				for i := 0; i < Trials; i++ {
+					if prime.Uint64() == 2 {
+						// Not possible to share correctly
+						continue
+					}
+					secretA := field.Random()
+					secretB := field.Random()
+					n := uint64(24)
+					k := randomDegree(prime) + 1
+					polyA := algebra.NewRandomPolynomial(field, k-1, secretA)
+					polyB := algebra.NewRandomPolynomial(field, k-1, secretB)
+
+					sharesA := Split(polyA, n)
+					sharesB := Split(polyB, n)
+
+					secret := secretA.Add(secretB)
+
+					shares := make(Shares, n)
+					for i := range shares {
+						shares[i] = sharesA[i].Add(sharesB[i])
+					}
+
+					actual, _ := Join(shares)
+					Expect(actual.Eq(secret)).To(BeTrue())
+
+					for i := uint64(0); i < n-uint64(k); i++ {
+						actual, _ := Join(shares[i : i+uint64(k)])
+						Expect(actual.Eq(secret)).To(BeTrue())
+					}
+				}
+			},
+				PrimeEntries...,
+			)
+		})
+
+		It("should panic when subtracting shares in different fields", func() {
+			field := NewField(big.NewInt(2))
+			otherField := NewField(big.NewInt(3))
+			share := New(1, field.Random())
+			otherShare := New(2, otherField.Random())
+			Expect(func() { share.Sub(otherShare) }).To(Panic())
+		})
+
+		DescribeTable("the sharing should be commutable with subtraction", func(prime *big.Int) {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
@@ -87,29 +158,72 @@ var _ = Describe("Shamir secret sharing", func() {
 				}
 				secretA := field.Random()
 				secretB := field.Random()
+				n := uint64(24)
 				k := randomDegree(prime) + 1
-				polyA := algebra.NewRandomPolynomial(&field, k-1, secretA)
-				polyB := algebra.NewRandomPolynomial(&field, k-1, secretB)
-				var indices []uint64
+				polyA := algebra.NewRandomPolynomial(field, k-1, secretA)
+				polyB := algebra.NewRandomPolynomial(field, k-1, secretB)
 
-				indices = []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
-				sharesA := Split(&polyA, indices)
-				sharesB := Split(&polyB, indices)
+				sharesA := Split(polyA, n)
+				sharesB := Split(polyB, n)
 
-				secret := big.NewInt(0)
-				field.Add(secretA, secretB, secret)
+				secret := secretA.Sub(secretB)
 
-				shares := make(Shares, 24)
+				shares := make(Shares, n)
 				for i := range shares {
-					shares[i].Index = uint64(i + 1)
-					shares[i].Value = big.NewInt(0)
-					field.Add(sharesA[i].Value, sharesB[i].Value, shares[i].Value)
+					shares[i] = sharesA[i].Sub(sharesB[i])
 				}
 
-				Expect(Join(&field, shares).Cmp(secret)).To(Equal(0))
+				actual, _ := Join(shares)
+				Expect(actual.Eq(secret)).To(BeTrue())
 
-				for i := uint(0); i < 24-k; i++ {
-					Expect(Join(&field, shares[i:i+k]).Cmp(secret)).To(Equal(0))
+				for i := uint64(0); i < n-uint64(k); i++ {
+					actual, _ := Join(shares[i : i+uint64(k)])
+					Expect(actual.Eq(secret)).To(BeTrue())
+				}
+			}
+		},
+			PrimeEntries...,
+		)
+
+		It("should panic when multiplying shares in different fields", func() {
+			field := NewField(big.NewInt(2))
+			otherField := NewField(big.NewInt(3))
+			share := New(1, field.Random())
+			otherShare := New(2, otherField.Random())
+			Expect(func() { share.Mul(otherShare) }).To(Panic())
+		})
+
+		DescribeTable("the sharing should be commutable with multiplication when reconstructing with double the threshold", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				if prime.Uint64() == 2 {
+					// Not possible to share correctly
+					continue
+				}
+				secretA := field.Random()
+				secretB := field.Random()
+				n := uint64(40)
+				k := randomDegree(prime) + 1
+				polyA := algebra.NewRandomPolynomial(field, k-1, secretA)
+				polyB := algebra.NewRandomPolynomial(field, k-1, secretB)
+
+				sharesA := Split(polyA, n)
+				sharesB := Split(polyB, n)
+
+				secret := secretA.Mul(secretB)
+
+				shares := make(Shares, n)
+				for i := range shares {
+					shares[i] = sharesA[i].Mul(sharesB[i])
+				}
+
+				actual, _ := Join(shares)
+				Expect(actual.Eq(secret)).To(BeTrue())
+
+				for i := uint64(0); i < n-uint64(2*k); i++ {
+					actual, _ := Join(shares[i : i+uint64(2*k)])
+					Expect(actual.Eq(secret)).To(BeTrue())
 				}
 			}
 		},

@@ -1,11 +1,12 @@
 package rng
 
 import (
-	"crypto/rand"
 	"errors"
 	"math/big"
 	"time"
 
+	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/smpc-go/core/vm/task"
 	"github.com/republicprotocol/smpc-go/core/vss"
 	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
 	"github.com/republicprotocol/smpc-go/core/vss/shamir"
@@ -46,20 +47,6 @@ const (
 	StateFinished
 )
 
-// Rnger generates secure random numbers running a secure multi-party
-// computation with other Rngers in its network. After generating a secure
-// random number, each Rnger in the network will have a Shamir's secret share of
-// a global random number. This global random number cannot be opened unless
-// some threshold of malicious Rngers collude.
-type Rnger interface {
-
-	// Run the Rnger. It will read messages from the input channel and write
-	// messages to the output channel. Depending on the type of output message,
-	// the user must route the message to the appropriate Rnger in the network.
-	// Closing the done channel will stop the Rnger.
-	Run(done <-chan (struct{}), input <-chan InputMessage, output chan<- OutputMessage)
-}
-
 // A VoteTable stores all votes received for a nonce and the timestamp at which
 // the first vote was received.
 type VoteTable struct {
@@ -68,73 +55,58 @@ type VoteTable struct {
 }
 
 type rnger struct {
-	timeout      time.Duration
-	addr, leader Address
-	n, k, t      uint
-	ped          pedersen.Pedersen
+	io         task.IO
+	ioExternal task.IO
 
-	sendBuffer    []OutputMessage
-	sendBufferCap int
+	addr, leader Address
+	ped          pedersen.Pedersen
+	n, k, t      uint
 
 	states        map[Nonce]State
 	leaders       map[Nonce]Address
-	localRnShares map[Nonce](map[Address]ShareMap)
-	addresses     []uint64
+	localRnShares map[Nonce](map[Address]LocalRnShares)
 }
 
-// NewRnger returns an Rnger that is identified as the i-th player in a network
-// with n players and k threshold. The Rnger will allocate a buffer for its
-// output messages and this buffer will grow indefinitely if the messages output
-// from the Rnger are not consumed.
-func NewRnger(timeout time.Duration, addr, leader Address, n, k, t uint, ped pedersen.Pedersen, bufferCap int) Rnger {
-	addresses := make([]uint64, n)
-	for i := range addresses {
-		addresses[i] = uint64(i + 1)
-	}
-
+// New returns an Rnger that is identified as the i-th player in a network with
+// n players and k threshold. The Rnger will allocate a buffer for its output
+// messages and this buffer will grow indefinitely if the messages output from
+// the Rnger are not consumed.
+func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, n, k, t uint, cap int) task.Task {
 	return &rnger{
-		timeout: timeout,
-		addr:    addr,
-		leader:  leader,
-		n:       n,
-		k:       k,
-		t:       t,
-		ped:     ped,
+		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
+		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 
-		sendBuffer:    make([]OutputMessage, 0, bufferCap),
-		sendBufferCap: bufferCap,
+		addr:   addr,
+		leader: leader,
+		ped:    ped,
+		n:      n,
+		k:      k,
+		t:      t,
 
 		states:        map[Nonce]State{},
 		leaders:       map[Nonce]Address{},
-		localRnShares: map[Nonce](map[Address]ShareMap){},
-		addresses:     addresses,
+		localRnShares: map[Nonce](map[Address]LocalRnShares){},
 	}
+}
+
+func (rnger *rnger) IO() task.IO {
+	return rnger.ioExternal
 }
 
 // Run implements the Rnger interface. Calls to Rnger.Run are blocking and
 // should be run in a background goroutine. It is recommended that the input and
 // output channels are buffered, however it is not required.
-func (rnger *rnger) Run(done <-chan (struct{}), input <-chan InputMessage, output chan<- OutputMessage) {
+func (rnger *rnger) Run(done <-chan struct{}) {
+	// defer log.Printf("[info] (rng) terminating")
+
 	for {
-		var outputMessage OutputMessage
-		var outputMaybe chan<- OutputMessage
-		if len(rnger.sendBuffer) > 0 {
-			outputMessage = rnger.sendBuffer[0]
-			outputMaybe = output
-		}
-
-		select {
-		case <-done:
+		ok := task.Select(
+			done,
+			rnger.recvMessage,
+			rnger.io,
+		)
+		if !ok {
 			return
-
-		case message, ok := <-input:
-			if !ok {
-				return
-			}
-			rnger.recvMessage(message)
-
-		case outputMaybe <- outputMessage:
-			rnger.sendBuffer = rnger.sendBuffer[1:]
 		}
 	}
 }
@@ -143,11 +115,7 @@ func (rnger *rnger) isLeader(nonce Nonce) bool {
 	return rnger.leaders[nonce] == rnger.addr
 }
 
-func (rnger *rnger) sendMessage(message OutputMessage) {
-	rnger.sendBuffer = append(rnger.sendBuffer, message)
-}
-
-func (rnger *rnger) recvMessage(message InputMessage) {
+func (rnger *rnger) recvMessage(message buffer.Message) {
 	switch message := message.(type) {
 	case Nominate:
 		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
@@ -190,11 +158,11 @@ func (rnger *rnger) handleNominate(message Nominate) {
 func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 	// Verify the current state of the Rnger
 	if rnger.leader != rnger.addr {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
 		return
 	}
 	if rnger.states[message.Nonce] != StateNil {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: not in initial state")))
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: not in initial state")))
 		return
 	}
 
@@ -203,7 +171,7 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 
 	// Send a ProposeRn message to every other Rnger in the network
 	for j := uint(0); j < rnger.n; j++ {
-		rnger.sendMessage(NewProposeRn(message.Nonce, Address(j), rnger.addr))
+		rnger.io.Send(NewProposeRn(message.Nonce, Address(j), rnger.addr))
 	}
 
 	// Transition to a new state
@@ -213,19 +181,19 @@ func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 	// Verify the current state of the Rnger
 	if !rnger.isLeader(message.Nonce) {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: must be the leader")))
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: must be the leader")))
 		return
 	}
 	if rnger.states[message.Nonce] != StateWaitingForLocalRnShares {
-		// rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
+		// rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
 		return
 	}
 
 	// TODO: Verify that the shares are well formed.
 	if _, ok := rnger.localRnShares[message.Nonce]; !ok {
-		rnger.localRnShares[message.Nonce] = map[Address]ShareMap{}
+		rnger.localRnShares[message.Nonce] = map[Address]LocalRnShares{}
 	}
-	rnger.localRnShares[message.Nonce][message.From] = message.Shares
+	rnger.localRnShares[message.Nonce][message.From] = message
 
 	// Check whether or not this Rnger has received enough LocalRnShares to
 	// securely build a GlobalRnShare for every Rnger in the network
@@ -235,7 +203,7 @@ func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
 
 	globalRnShares := rnger.buildProposeGlobalRnShares(message.Nonce)
 	for j := uint(0); j < rnger.n; j++ {
-		rnger.sendMessage(globalRnShares[j])
+		rnger.io.Send(globalRnShares[j])
 	}
 
 	// Progress state
@@ -250,35 +218,36 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 	// TODO: Protection (if wanted) against multiple proposals from the same
 	// leader for the same nonce
 	if message.From != rnger.leaders[message.Nonce] {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: already have a leader")))
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: already have a leader")))
 		return
 	}
 
 	// Verify that the internal state is correct
 	if rnger.states[message.Nonce] != StateNil && !rnger.isLeader(message.Nonce) {
-		rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: not in initial state")))
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: not in initial state")))
 		return
 	}
 
-	rn, err := rand.Int(rand.Reader, rnger.ped.SubgroupOrder())
-	if err != nil {
-		panic(err)
-	}
-	rnShares := vss.Share(&rnger.ped, rn, rnger.k, rnger.addresses)
+	rn := rnger.ped.SecretField().Random()
+	rhoRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k))
+	sigmaRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k/2))
 
-	shares := ShareMap{}
-	for i, share := range rnShares {
+	rhoShares := ShareMap{}
+	sigmaShares := ShareMap{}
+	for i := range rhoRnShares {
 		// log.Printf("[debug] <replica %v>: sending share %v", rnger.addr, share.SShare)
-		shares[Address(i)] = share
+		rhoShares[Address(i)] = rhoRnShares[i]
+		sigmaShares[Address(i)] = sigmaRnShares[i]
 	}
 
 	localRnShares := LocalRnShares{
-		Nonce:  message.Nonce,
-		To:     rnger.leader,
-		From:   rnger.addr,
-		Shares: shares,
+		Nonce:       message.Nonce,
+		To:          rnger.leader,
+		From:        rnger.addr,
+		RhoShares:   rhoShares,
+		SigmaShares: sigmaShares,
 	}
-	rnger.sendMessage(localRnShares)
+	rnger.io.Send(localRnShares)
 
 	// Progress state if rnger is not the leader for this nonce
 	if !rnger.isLeader(message.Nonce) {
@@ -289,32 +258,30 @@ func (rnger *rnger) handleProposeRn(message ProposeRn) {
 func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 
 	globalRnShare := GlobalRnShare{
-		Nonce: message.Nonce,
-		Share: shamir.Share{
-			Index: uint64(rnger.addr) + 1,
-			Value: big.NewInt(0),
-		},
-		From: rnger.addr,
+		Nonce:      message.Nonce,
+		RhoShare:   shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
+		SigmaShare: shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
+		From:       rnger.addr,
 	}
-	for _, share := range message.Shares {
+	for addr, share := range message.RhoShares {
 		// log.Printf("[debug] <replica %v>: received share %v", rnger.addr, share.SShare)
 
 		// Check that the share is correct
 		if !vss.Verify(&rnger.ped, share) {
 			// log.Println("[debug] replica received a malformed share")
-			rnger.sendMessage(NewErr(message.Nonce, errors.New("cannot accept incorrect share")))
+			rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept incorrect share")))
 			return
 		}
 
-		if globalRnShare.Share.Index != share.SShare.Index {
-			panic("share indices are not the same")
-		}
-		globalRnShare.Share.Value.Add(globalRnShare.Share.Value, share.SShare.Value)
-		globalRnShare.Share.Value.Mod(globalRnShare.Share.Value, rnger.ped.SubgroupOrder())
+		rhoShare := message.RhoShares[addr]
+		sigmaShare := message.SigmaShares[addr]
+
+		globalRnShare.RhoShare = globalRnShare.RhoShare.Add(rhoShare.Share())
+		globalRnShare.SigmaShare = globalRnShare.SigmaShare.Add(sigmaShare.Share())
 	}
 	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
 
-	rnger.sendMessage(globalRnShare)
+	rnger.io.Send(globalRnShare)
 
 	// Progress state
 	rnger.states[message.Nonce] = StateFinished
@@ -327,13 +294,15 @@ func (rnger *rnger) buildProposeGlobalRnShares(nonce Nonce) []ProposeGlobalRnSha
 	globalRnShares := make([]ProposeGlobalRnShare, rnger.n)
 
 	for j := uint(0); j < rnger.n; j++ {
-		shares := ShareMap{}
+		rhoShares := ShareMap{}
+		sigmaShares := ShareMap{}
 
 		for addr, shareMapFromAddr := range rnger.localRnShares[nonce] {
-			shares[addr] = shareMapFromAddr[Address(j)]
+			rhoShares[addr] = shareMapFromAddr.RhoShares[Address(j)]
+			sigmaShares[addr] = shareMapFromAddr.SigmaShares[Address(j)]
 		}
 
-		globalRnShares[j] = NewProposeGlobalRnShare(nonce, Address(j), rnger.addr, shares)
+		globalRnShares[j] = NewProposeGlobalRnShare(nonce, Address(j), rnger.addr, rhoShares, sigmaShares)
 	}
 
 	return globalRnShares

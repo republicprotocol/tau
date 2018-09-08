@@ -1,4 +1,4 @@
-package oro_test
+package open_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestOro(t *testing.T) {
+func TestOpen(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Oro Suite")
+	RunSpecs(t, "Open Suite")
 }

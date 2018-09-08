@@ -31,18 +31,18 @@ var _ = Describe("Polynomial", func() {
 
 			for i := 0; i < Trials; i++ {
 				degree := randomDegree(prime)
-				coefficients := make([]*big.Int, degree+1)
+				coefficients := make([]FpElement, degree+1)
 
 				for i := range coefficients {
 					coefficients[i] = field.Random()
 				}
-				poly := NewPolynomial(&field, coefficients)
+				poly := NewPolynomial(coefficients)
 				actualCoefficients := poly.Coefficients()
 
 				Expect(len(coefficients)).To(Equal(len(actualCoefficients)))
 
 				for i := range coefficients {
-					Expect(coefficients[i].Cmp(actualCoefficients[i])).To(Equal(0))
+					Expect(coefficients[i].Eq(actualCoefficients[i])).To(BeTrue())
 				}
 			}
 		},
@@ -52,38 +52,40 @@ var _ = Describe("Polynomial", func() {
 
 	Context("when explicitly constructing a polynomial", func() {
 		DescribeTable("it should panic when there are no coefficients", func(prime *big.Int) {
-			field := NewField(prime)
-
 			for i := 0; i < Trials; i++ {
-				coefficients := make([]*big.Int, 0)
-				Expect(func() { NewPolynomial(&field, coefficients) }).To(Panic())
+				coefficients := make([]FpElement, 0)
+				Expect(func() { NewPolynomial(coefficients) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
 		)
 
-		It("should panic when there are too many coefficients", func(doneT Done) {
-			defer close(doneT)
+		It("should panic when there are too many coefficients", func() {
 			prime := big.NewInt(2)
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
 				degree := randomDegree(prime)
 				degree += uint(prime.Uint64())
-				coefficients := make([]*big.Int, degree+1)
+				coefficients := make([]FpElement, degree+1)
 				for i := 0; i <= int(degree); i++ {
 					coefficients[i] = field.Random()
 				}
 
-				Expect(func() { NewPolynomial(&field, coefficients) }).To(Panic())
+				Expect(func() { NewPolynomial(coefficients) }).To(Panic())
 			}
 		})
 
-		DescribeTable("it should panic when any of the given coefficients are not field elements", func(prime *big.Int) {
+		DescribeTable("it should panic when any of the given coefficients are not in the same field as each other", func(prime *big.Int) {
 			field := NewField(prime)
+			otherField := NewField(big.NewInt(7))
 
 			for i := 0; i < Trials; i++ {
 				degree := randomDegree(prime)
+				if degree == 0 {
+					// This case will not panic
+					continue
+				}
 				var nonFieldIndex uint
 				if degree == 0 {
 					nonFieldIndex = 0
@@ -91,32 +93,32 @@ var _ = Describe("Polynomial", func() {
 					nonFieldIndex = randomDegree(prime) % degree
 				}
 
-				coefficients := make([]*big.Int, degree+1)
+				coefficients := make([]FpElement, degree+1)
 				for i := 0; i <= int(degree); i++ {
 					if i == int(nonFieldIndex) {
-						coefficients[i] = RandomNotInField(&field)
+						coefficients[i] = otherField.Random()
 					} else {
 						coefficients[i] = field.Random()
 					}
 				}
 
-				Expect(func() { NewPolynomial(&field, coefficients) }).To(Panic())
+				Expect(func() { NewPolynomial(coefficients) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
 		)
 
-		DescribeTable("it should succeed when the given coefficients are field elements", func(prime *big.Int) {
+		DescribeTable("it should succeed when the given coefficients are in the same field", func(prime *big.Int) {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
 				degree := randomDegree(prime)
-				coefficients := make([]*big.Int, degree+1)
+				coefficients := make([]FpElement, degree+1)
 				for i := 0; i <= int(degree); i++ {
 					coefficients[i] = field.Random()
 				}
 
-				Expect(func() { NewPolynomial(&field, coefficients) }).ToNot(Panic())
+				Expect(func() { NewPolynomial(coefficients) }).ToNot(Panic())
 			}
 		},
 			PrimeEntries...,
@@ -131,7 +133,7 @@ var _ = Describe("Polynomial", func() {
 				degree := randomDegree(prime)
 				degree += uint(prime.Uint64())
 
-				Expect(func() { NewRandomPolynomial(&field, degree) }).To(Panic())
+				Expect(func() { NewRandomPolynomial(field, degree) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
@@ -144,12 +146,12 @@ var _ = Describe("Polynomial", func() {
 				degree := randomDegree(prime)
 				// Utilise the randomness from randomDegree for picking the length of secret
 				length := randomDegree(prime) + 2
-				secret := make([]*big.Int, length)
+				secret := make([]FpElement, length)
 				for i := 0; i < int(length); i++ {
 					secret[i] = field.Random()
 				}
 
-				Expect(func() { NewRandomPolynomial(&field, degree, secret...) }).To(Panic())
+				Expect(func() { NewRandomPolynomial(field, degree, secret...) }).To(Panic())
 			}
 		},
 			PrimeEntries...,
@@ -162,16 +164,16 @@ var _ = Describe("Polynomial", func() {
 				degree := randomDegree(prime)
 
 				if RandomBool() {
-					Expect(func() { NewRandomPolynomial(&field, degree) }).ToNot(Panic())
+					Expect(func() { NewRandomPolynomial(field, degree) }).ToNot(Panic())
 				} else {
 					secret := field.Random()
 					poly := new(Polynomial)
 
-					Expect(func() { *poly = NewRandomPolynomial(&field, degree, secret) }).ToNot(Panic())
+					Expect(func() { *poly = NewRandomPolynomial(field, degree, secret) }).ToNot(Panic())
 					if prime.Cmp(big.NewInt(2)) == 0 {
 						log.Printf("secret: %v, poly: %+v", secret, *poly)
 					}
-					Expect(poly.Evaluate(big.NewInt(0)).Cmp(secret)).To(Equal(0))
+					Expect(poly.Evaluate(field.NewInField(big.NewInt(0))).Eq(secret)).To(BeTrue())
 				}
 
 			}
@@ -186,7 +188,7 @@ var _ = Describe("Polynomial", func() {
 
 			for i := 0; i < Trials; i++ {
 				degree := randomDegree(prime)
-				poly := NewRandomPolynomial(&field, degree)
+				poly := NewRandomPolynomial(field, degree)
 
 				Expect(poly.Degree()).To(Equal(degree))
 			}
@@ -205,17 +207,17 @@ var _ = Describe("Polynomial", func() {
 					// long
 					continue
 				}
-				zeros := make([]*big.Int, randomDegree(prime))
-				poly := NewRandomPolynomial(&field, degree)
-				paddedCoefficients := make([]*big.Int, int(degree)+len(zeros)+1)
+				zeros := make([]FpElement, randomDegree(prime))
+				poly := NewRandomPolynomial(field, degree)
+				paddedCoefficients := make([]FpElement, int(degree)+len(zeros)+1)
 
 				for i, c := range poly.Coefficients() {
-					paddedCoefficients[i] = big.NewInt(0).Set(c)
+					paddedCoefficients[i] = c.Copy()
 				}
 				for i := int(degree) + 1; i < len(paddedCoefficients); i++ {
-					paddedCoefficients[i] = big.NewInt(0)
+					paddedCoefficients[i] = field.NewInField(big.NewInt(0))
 				}
-				paddedPoly := NewPolynomial(&field, paddedCoefficients)
+				paddedPoly := NewPolynomial(paddedCoefficients)
 
 				Expect(poly.Degree()).To(Equal(paddedPoly.Degree()))
 			}
@@ -227,10 +229,11 @@ var _ = Describe("Polynomial", func() {
 	Context("when evaluating a polynomial at a point", func() {
 		DescribeTable("it should panic when the point is not in the field", func(prime *big.Int) {
 			field := NewField(prime)
+			otherField := NewField(big.NewInt(7))
 
 			for i := 0; i < Trials; i++ {
-				poly := NewRandomPolynomial(&field, randomDegree(prime))
-				x := RandomNotInField(&field)
+				poly := NewRandomPolynomial(field, randomDegree(prime))
+				x := otherField.Random()
 
 				Expect(func() { poly.Evaluate(x) }).To(Panic())
 			}
@@ -242,30 +245,21 @@ var _ = Describe("Polynomial", func() {
 			field := NewField(prime)
 
 			for i := 0; i < Trials; i++ {
-				poly := NewRandomPolynomial(&field, randomDegree(prime))
+				poly := NewRandomPolynomial(field, randomDegree(prime))
 				x := field.Random()
 
 				coefficients := poly.Coefficients()
 
 				// Manual evaluation
-				accum := big.NewInt(0)
-				term := big.NewInt(0)
+				accum := field.NewInField(big.NewInt(0))
+				term := field.NewInField(big.NewInt(0))
 				for i, c := range coefficients {
-					term.Exp(x, big.NewInt(int64(i)), prime)
-					term.Mul(term, c)
-					accum.Add(accum, term)
-					accum.Mod(accum, prime)
+					term = x.Exp(field.NewInField(big.NewInt(int64(i))))
+					term = term.Mul(c)
+					accum = accum.Add(term)
 				}
 
-				Expect(poly.Evaluate(x).Cmp(accum)).To(Equal(0))
-
-				// Sum of coefficients should equal f(1)
-				accum.SetUint64(0)
-				for _, c := range poly.Coefficients() {
-					field.Add(accum, c, accum)
-				}
-
-				Expect(poly.Evaluate(big.NewInt(1)).Cmp(accum)).To(Equal(0))
+				Expect(poly.Evaluate(x).Eq(accum)).To(BeTrue())
 			}
 		},
 			PrimeEntries...,
