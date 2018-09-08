@@ -1,4 +1,4 @@
-package smpc_test
+package oro_test
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestSmpcGo(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "SmpcGo Suite")
+	RunSpecs(t, "Oro Suite")
 }
