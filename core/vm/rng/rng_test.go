@@ -10,15 +10,15 @@ import (
 	"time"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/vm/task"
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/vm/task"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vm/rng"
+	. "github.com/republicprotocol/oro-go/core/vm/rng"
 )
 
 var _ = Describe("Random number generators", func() {

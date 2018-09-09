@@ -6,18 +6,18 @@ import (
 	"math/big"
 	"math/rand"
 
-	"github.com/republicprotocol/smpc-go/core/process"
-	"github.com/republicprotocol/smpc-go/core/vm/rng"
+	"github.com/republicprotocol/oro-go/core/process"
+	"github.com/republicprotocol/oro-go/core/vm/rng"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vm"
+	. "github.com/republicprotocol/oro-go/core/vm"
 )
 
 var _ = Describe("Virtual Machine", func() {

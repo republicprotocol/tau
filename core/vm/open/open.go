@@ -3,9 +3,9 @@ package open
 import (
 	"log"
 
-	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/vm/task"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/task"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type opener struct {

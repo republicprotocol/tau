@@ -3,11 +3,12 @@ package process_test
 import (
 	"math/big"
 
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/process"
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	. "github.com/republicprotocol/oro-go/core/vm/process"
 )
 
 var _ = FDescribe("Processes", func() {

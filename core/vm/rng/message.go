@@ -3,8 +3,8 @@ package rng
 import (
 	"time"
 
-	"github.com/republicprotocol/smpc-go/core/vss"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/vss"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 // ShareMap is a convenience type that associates addresses with shares.

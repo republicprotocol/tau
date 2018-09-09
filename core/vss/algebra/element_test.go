@@ -8,7 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vss/algebra"
+	. "github.com/republicprotocol/oro-go/core/vss/algebra"
 )
 
 var _ = Describe("Finite field Elements", func() {

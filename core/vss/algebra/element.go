@@ -13,6 +13,9 @@ type FpElement struct {
 	prime, value *big.Int
 }
 
+// FpElements is a slice.
+type FpElements []FpElement
+
 func (lhs FpElement) String() string {
 	return fmt.Sprintf("{p: %v, v: %v}", lhs.prime, lhs.value)
 }

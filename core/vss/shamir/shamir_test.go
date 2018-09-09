@@ -4,14 +4,14 @@ import (
 	"math/big"
 	"math/rand"
 
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	. "github.com/onsi/ginkgo/extensions/table"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vss/algebra"
-	. "github.com/republicprotocol/smpc-go/core/vss/shamir"
+	. "github.com/republicprotocol/oro-go/core/vss/algebra"
+	. "github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 var _ = Describe("Shamir secret sharing", func() {

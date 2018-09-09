@@ -1,7 +1,7 @@
 package pedersen
 
 import (
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
 )
 
 // A Pedersen struct encapsulates the information needed to create and verify

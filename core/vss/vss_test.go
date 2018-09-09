@@ -5,10 +5,10 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vss"
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	. "github.com/republicprotocol/oro-go/core/vss"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 var _ = Describe("Verifiable secret sharing", func() {

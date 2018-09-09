@@ -3,9 +3,9 @@ package vss
 import (
 	"math/big"
 
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
-	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 // A VShare is a Shamir share that can be verified to be correctly shared. The

@@ -3,11 +3,11 @@ package pedersen_test
 import (
 	"math/big"
 
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/smpc-go/core/vss/pedersen"
+	. "github.com/republicprotocol/oro-go/core/vss/pedersen"
 )
 
 var _ = Describe("Pedersen commitments", func() {

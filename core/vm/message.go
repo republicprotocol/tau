@@ -1,8 +1,8 @@
 package vm
 
 import (
-	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/process"
+	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/vm/process"
 )
 
 type Exec struct {

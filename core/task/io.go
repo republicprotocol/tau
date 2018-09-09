@@ -4,7 +4,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/buffer"
 )
 
 // IO is used to couple a `buffer.Reader` and `buffer.Writer`. It also provides

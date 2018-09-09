@@ -4,13 +4,13 @@ import (
 	"log"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/smpc-go/core/buffer"
-	"github.com/republicprotocol/smpc-go/core/process"
-	"github.com/republicprotocol/smpc-go/core/vm/mul"
-	"github.com/republicprotocol/smpc-go/core/vm/open"
-	"github.com/republicprotocol/smpc-go/core/vm/rng"
-	"github.com/republicprotocol/smpc-go/core/vm/task"
-	"github.com/republicprotocol/smpc-go/core/vss/pedersen"
+	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/process"
+	"github.com/republicprotocol/oro-go/core/vm/mul"
+	"github.com/republicprotocol/oro-go/core/vm/open"
+	"github.com/republicprotocol/oro-go/core/vm/rng"
+	"github.com/republicprotocol/oro-go/core/vm/task"
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 )
 
 type VM struct {

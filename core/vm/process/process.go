@@ -1,9 +1,9 @@
 package process
 
 import (
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type Return struct {

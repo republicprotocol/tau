@@ -4,7 +4,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/republicprotocol/smpc-go/core/vss/algebra"
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
 )
 
 var ErrDifferentFields = errors.New("expected shares to all be in the same field")

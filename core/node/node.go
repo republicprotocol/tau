@@ -3,7 +3,7 @@ package node
 import (
 	"log"
 
-	"github.com/republicprotocol/smpc-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/buffer"
 )
 
 // A Node in the network can send and receive messages to and from other Nodes

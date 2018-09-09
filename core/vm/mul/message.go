@@ -1,7 +1,7 @@
 package mul
 
 import (
-	"github.com/republicprotocol/smpc-go/core/vss/shamir"
+	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type Nonce [32]byte
