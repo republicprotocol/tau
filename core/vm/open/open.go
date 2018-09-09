@@ -12,9 +12,12 @@ type opener struct {
 	io         task.IO
 	ioExternal task.IO
 
-	n, k     uint
-	openings map[Nonce](map[uint64]Open)
-	shares   shamir.Shares
+	n, k uint
+
+	opens      map[Nonce]Open
+	broadcasts map[Nonce]map[uint64]BroadcastShare
+
+	shares shamir.Shares
 }
 
 func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
