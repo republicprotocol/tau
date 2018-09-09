@@ -63,9 +63,12 @@ type rnger struct {
 	ped          pedersen.Pedersen
 	n, k, t      uint
 
-	states        map[Nonce]State
-	leaders       map[Nonce]Address
-	localRnShares map[Nonce](map[Address]LocalRnShares)
+	states  map[Nonce]State
+	leaders map[Nonce]Address
+
+	rns            map[Nonce]GenerateRn
+	localRnShares  map[Nonce](map[Address]LocalRnShares)
+	globalRnShares map[Nonce]GlobalRnShare
 }
 
 // New returns an Rnger that is identified as the i-th player in a network with
@@ -84,9 +87,12 @@ func New(r, w buffer.ReaderWriter, addr, leader Address, ped pedersen.Pedersen, 
 		k:      k,
 		t:      t,
 
-		states:        map[Nonce]State{},
-		leaders:       map[Nonce]Address{},
-		localRnShares: map[Nonce](map[Address]LocalRnShares){},
+		states:  map[Nonce]State{},
+		leaders: map[Nonce]Address{},
+
+		rns:            map[Nonce]GenerateRn{},
+		localRnShares:  map[Nonce](map[Address]LocalRnShares){},
+		globalRnShares: map[Nonce]GlobalRnShare{},
 	}
 }
 
@@ -155,12 +161,18 @@ func (rnger *rnger) handleNominate(message Nominate) {
 
 func (rnger *rnger) handleGenerateRn(message GenerateRn) {
 	// Verify the current state of the Rnger
-	if rnger.leader != rnger.addr {
-		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
-		return
-	}
 	if rnger.states[message.Nonce] != StateNil {
 		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: not in initial state")))
+		return
+	}
+	rnger.rns[message.Nonce] = message
+	if globalRnShare, ok := rnger.globalRnShares[message.Nonce]; ok {
+		rnger.io.Send(globalRnShare)
+	}
+
+	// Do not proceed if you are not the leader
+	if rnger.leader != rnger.addr {
+		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
 		return
 	}
 
@@ -278,8 +290,10 @@ func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
 		globalRnShare.SigmaShare = globalRnShare.SigmaShare.Add(sigmaShare.Share())
 	}
 	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
-
-	rnger.io.Send(globalRnShare)
+	rnger.globalRnShares[message.Nonce] = globalRnShare
+	if _, ok := rnger.rns[message.Nonce]; ok {
+		rnger.io.Send(globalRnShare)
+	}
 
 	// Progress state
 	rnger.states[message.Nonce] = StateFinished

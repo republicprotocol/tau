@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/republicprotocol/co-go"
@@ -102,11 +103,14 @@ func (vm *VM) recvMessage(message buffer.Message) {
 	case rng.GlobalRnShare:
 		vm.handleRngResult(message)
 
-	case mul.Open:
+	case mul.BroadcastIntermediateShare:
 		vm.handleMulOpen(message)
 
 	case mul.Result:
 		vm.handleMulResult(message)
+
+	case open.BroadcastShare:
+		vm.handleOpenBroadcastShare(message)
 
 	case open.Result:
 		vm.handleOpenResult(message)
@@ -154,12 +158,11 @@ func (vm *VM) exec(exec Exec) {
 
 	case process.IntentToMultiply:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.mul.IO().Send(mul.NewMultiply(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.mul.IO().Send(mul.NewMul(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
 		vm.processIntents[proc.Nonce()] = intent
 		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
-		vm.io.Send(NewRemoteProcedureCall(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value)))
 
 	case process.IntentToError:
 		log.Printf("[error] (vm) %v", intent.Error())
@@ -175,14 +178,14 @@ func (vm *VM) invoke(message RemoteProcedureCall) {
 	case rng.ProposeRn, rng.LocalRnShares, rng.ProposeGlobalRnShare:
 		vm.rng.IO().Send(message)
 
-	case mul.Open:
+	case mul.BroadcastIntermediateShare:
 		vm.mul.IO().Send(message)
 
-	case open.Open:
+	case open.BroadcastShare:
 		vm.open.IO().Send(message)
 
 	default:
-		panic("unimplemented")
+		panic(fmt.Sprintf("unexpected rpc type %T", message))
 	}
 }
 
@@ -231,7 +234,7 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
-func (vm *VM) handleMulOpen(message mul.Open) {
+func (vm *VM) handleMulOpen(message mul.BroadcastIntermediateShare) {
 	vm.io.Send(NewRemoteProcedureCall(message))
 }
 
@@ -259,6 +262,10 @@ func (vm *VM) handleMulResult(message mul.Result) {
 	pid := [31]byte{}
 	copy(pid[:], message.Nonce[1:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
+}
+
+func (vm *VM) handleOpenBroadcastShare(message open.BroadcastShare) {
+	vm.io.Send(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleOpenResult(message open.Result) {
