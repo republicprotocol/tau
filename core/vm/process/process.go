@@ -1,6 +1,8 @@
 package process
 
 import (
+	"log"
+
 	"github.com/republicprotocol/oro-go/core/stack"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
@@ -280,6 +282,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 			inst.ret = ret
 			proc.Code[proc.PC] = inst
 		default:
+			log.Printf("[error] (proc) still waiting")
 			return NotReady(nil)
 		}
 	}

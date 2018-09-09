@@ -5,11 +5,11 @@ import (
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/oro-go/core/buffer"
-	"github.com/republicprotocol/oro-go/core/process"
+	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/mul"
 	"github.com/republicprotocol/oro-go/core/vm/open"
+	"github.com/republicprotocol/oro-go/core/vm/process"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
-	"github.com/republicprotocol/oro-go/core/vm/task"
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 )
 
@@ -26,7 +26,7 @@ type VM struct {
 }
 
 func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n, k uint, cap int) VM {
-	return VM{
+	vm := VM{
 		io:             task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
 		ioExternal:     task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
 		processes:      map[process.ID]process.Process{},
@@ -37,6 +37,7 @@ func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n
 		mul:  mul.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 		open: open.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
 	}
+	return vm
 }
 
 func (vm *VM) IO() task.IO {
@@ -112,6 +113,7 @@ func (vm *VM) recvMessage(message buffer.Message) {
 
 	case rng.Err:
 		// TODO: Error handling?
+		log.Printf("[error] (vm, rng) %v", message.Error())
 
 	default:
 		log.Printf("[error] (vm) unexpected message type %T", message)
@@ -122,8 +124,10 @@ func (vm *VM) exec(exec Exec) {
 	proc := exec.proc
 	vm.processes[proc.ID] = proc
 
+	log.Printf("[debug] (vm) <%p> executing = %v", vm.mul, proc.Nonce())
 	ret := proc.Exec()
 	vm.processes[proc.ID] = proc
+	log.Printf("[debug] (vm) <%p> done = %v", vm.mul, proc.Nonce())
 
 	if ret.IsReady() {
 		log.Printf("[error] (vm) process is ready after execution = %v", proc.ID)
@@ -135,8 +139,7 @@ func (vm *VM) exec(exec Exec) {
 		if err != nil {
 			panic("unimplemented")
 		}
-		log.Printf("[debug] (vm) result = %v", result)
-		vm.io.Send(NewResult(result))
+		vm.io.Send(NewResult(result.(process.Value)))
 		return
 	}
 	if ret.Intent() == nil {
@@ -270,9 +273,9 @@ func (vm *VM) handleOpenResult(message open.Result) {
 		case intent.Ret <- message.Value:
 		default:
 			log.Printf("[error] (vm, open) unavailable intent")
+			return
 		}
 	default:
-		// FIXME: Handle intent transitioning correctly.
 		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
 		return
 	}

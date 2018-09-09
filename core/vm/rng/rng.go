@@ -2,6 +2,7 @@ package rng
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -141,17 +142,14 @@ func (rnger *rnger) recvMessage(message buffer.Message) {
 		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
 		rnger.handleVoteGlobalRnShare(message)
 
-		// case Vote:
-		// 	// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		// 	rnger.handleVote(message)
-
+	default:
+		panic(fmt.Sprintf("unexpected message type %T", message))
 		// case CheckDeadline:
 		// 	rnger.handleCheckDeadline(message)
 	}
 }
 
 func (rnger *rnger) handleNominate(message Nominate) {
-	// TODO: Logic for whether or not to accept a nomination.
 	rnger.leader = message.Leader
 }
 

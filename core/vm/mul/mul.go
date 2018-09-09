@@ -96,6 +96,7 @@ func (multiplier *multiplier) open(message Open) {
 	}
 	value, err := shamir.Join(multiplier.shares[:n])
 	if err != nil {
+		log.Printf("[error] (mul) join error = %v", multiplier, err)
 		return
 	}
 
