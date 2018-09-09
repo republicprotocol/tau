@@ -3,6 +3,7 @@ package process_test
 import (
 	"math/big"
 
+	"github.com/republicprotocol/oro-go/core/stack"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 
@@ -26,21 +27,18 @@ var _ = FDescribe("Processes", func() {
 	}
 
 	buildShare := func(index uint64, v algebra.FpElement) shamir.Share {
-		return shamir.Share{
-			Index: index,
-			Value: v,
-		}
+		return shamir.New(index, v)
 	}
 
 	add := func(a, b Value) Value {
-		stack := NewStack(32)
+		stack := stack.New(32)
 		err := stack.Push(b)
 		Expect(err).Should(BeNil())
 		err = stack.Push(a)
 		Expect(err).Should(BeNil())
 		mem := Memory{}
 		id := [32]byte{1}
-		code := []Inst{InstAdd{}}
+		code := Code{InstAdd()}
 		proc := New(id, stack, mem, code)
 		proc.Exec()
 		res, err := proc.Stack.Pop()
