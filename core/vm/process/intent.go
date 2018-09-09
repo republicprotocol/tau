@@ -94,9 +94,15 @@ func ErrorCodeOverflow(pc PC) IntentToError {
 	)
 }
 
-func ErrorUnexpectedValue(got, expected Value, pc PC) IntentToError {
+func ErrorUnexpectedTypeConversion(got, expected interface{}, pc PC) IntentToError {
+	if expected == nil {
+		return ErrorExecution(
+			fmt.Errorf("unexpected type conversion of %T", got),
+			pc,
+		)
+	}
 	return ErrorExecution(
-		fmt.Errorf("unexpected value type %T expected %T", got, expected),
+		fmt.Errorf("unexpected type conversion of %T into %T", got, expected),
 		pc,
 	)
 }

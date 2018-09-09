@@ -1,6 +1,7 @@
 package process
 
 import (
+	"github.com/republicprotocol/oro-go/core/stack"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -52,13 +53,13 @@ type ID [31]byte
 
 type Process struct {
 	ID
-	Stack
+	stack.Stack
 	Memory
 	Code
 	PC
 }
 
-func New(id ID, stack Stack, mem Memory, code Code) Process {
+func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -122,7 +123,7 @@ func (proc *Process) execInstStore(inst instStore) Return {
 	if err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
 	}
-	proc.Memory[inst.addr] = value
+	proc.Memory[inst.addr] = value.(Value)
 	proc.PC++
 	return Ready()
 }
@@ -153,11 +154,11 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	ret := Value(nil)
 	switch lhs := lhs.(type) {
 	case ValuePublic:
-		ret = lhs.Add(rhs)
+		ret = lhs.Add(rhs.(Value))
 	case ValuePrivate:
-		ret = lhs.Add(rhs)
+		ret = lhs.Add(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedValue(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
 	if err := proc.Stack.Push(ret); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
@@ -181,11 +182,11 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	ret := Value(nil)
 	switch lhs := lhs.(type) {
 	case ValuePublic:
-		ret = lhs.Sub(rhs)
+		ret = lhs.Sub(rhs.(Value))
 	case ValuePrivate:
-		ret = lhs.Sub(rhs)
+		ret = lhs.Sub(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedValue(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
 	if err := proc.Stack.Push(ret); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
@@ -245,7 +246,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 		rn, ok := rnValue.(ValuePrivateRn)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(rnValue, ValuePrivateRn{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(rnValue, ValuePrivateRn{}, proc.PC))
 		}
 
 		yValue, err := proc.Stack.Pop()
@@ -254,7 +255,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 		y, ok := yValue.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(yValue, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(yValue, ValuePrivate{}, proc.PC))
 		}
 
 		xValue, err := proc.Stack.Pop()
@@ -263,7 +264,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 		x, ok := xValue.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(xValue, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(xValue, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan shamir.Share, 1)
@@ -300,7 +301,7 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 		}
 		v, ok := value.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedValue(value, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(value, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
