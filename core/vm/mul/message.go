@@ -1,6 +1,8 @@
 package mul
 
 import (
+	"fmt"
+
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
@@ -29,6 +31,10 @@ func NewMul(nonce Nonce, x, y, ρ, σ shamir.Share) Mul {
 func (message Mul) IsMessage() {
 }
 
+func (message Mul) String() string {
+	return fmt.Sprintf("mul.Mul {\n\tnonce: %v\n\tx: %v\n\ty: %v\n\tρ: %v\n\tσ: %v\n}", message.Nonce, message.x, message.y, message.ρ, message.σ)
+}
+
 // A BroadcastIntermediateShare message is used by a Multiplier to accept and
 // store intermediate multiplication shares so that the respective
 // multiplication can be completed. A BroadcastIntermediateShare message is
@@ -49,6 +55,10 @@ func NewBroadcastIntermediateShare(nonce Nonce, share shamir.Share) BroadcastInt
 func (message BroadcastIntermediateShare) IsMessage() {
 }
 
+func (message BroadcastIntermediateShare) String() string {
+	return fmt.Sprintf("mul.BroadcastIntermediateShare {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
+}
+
 // A Result message is produced by a Multiplier after it has received (a) a Mul
 // message, and (b) a sufficient threshold of BroadcastIntermediateShare
 // messages with the same Nonce. The order in which it receives the Mul message
@@ -67,4 +77,8 @@ func NewResult(nonce Nonce, share shamir.Share) Result {
 
 // IsMessage implements the Message interface.
 func (message Result) IsMessage() {
+}
+
+func (message Result) String() string {
+	return fmt.Sprintf("mul.Result {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
 }
