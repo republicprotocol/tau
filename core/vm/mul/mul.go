@@ -17,7 +17,7 @@ type multiplier struct {
 
 	muls        map[Nonce]Mul
 	broadcasts  map[Nonce]map[uint64]BroadcastIntermediateShare
-	completions map[Nonce]struct{}
+	completions map[Nonce]shamir.Share
 }
 
 func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
@@ -30,7 +30,7 @@ func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
 
 		muls:        map[Nonce]Mul{},
 		broadcasts:  map[Nonce]map[uint64]BroadcastIntermediateShare{},
-		completions: map[Nonce]struct{}{},
+		completions: map[Nonce]shamir.Share{},
 	}
 }
 
@@ -68,6 +68,10 @@ func (multiplier *multiplier) recvMessage(message buffer.Message) {
 }
 
 func (multiplier *multiplier) multiply(message Mul) {
+	if share, ok := multiplier.completions[message.Nonce]; ok {
+		log.Printf("[info] (mul) short circuiting")
+		multiplier.io.Send(NewResult(message.Nonce, share))
+	}
 	share := message.x.Mul(message.y)
 	share = share.Add(message.ρ)
 
@@ -116,7 +120,7 @@ func (multiplier *multiplier) recvBroadcastIntermediateShare(message BroadcastIn
 
 	delete(multiplier.muls, message.Nonce)
 	delete(multiplier.broadcasts, message.Nonce)
-	multiplier.completions[message.Nonce] = struct{}{}
+	multiplier.completions[message.Nonce] = result
 
 	multiplier.io.Send(NewResult(message.Nonce, result))
 }
