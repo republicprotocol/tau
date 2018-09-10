@@ -62,6 +62,7 @@ type Process struct {
 }
 
 func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
+	expandMacros(code)
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -95,6 +96,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstLoad(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
+		case instNeg:
+			ret = proc.execInstNeg(inst)
 		case instSub:
 			ret = proc.execInstSub(inst)
 		case instGenerateRn:
@@ -103,6 +106,7 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstMul(inst)
 		case instOpen:
 			ret = proc.execInstOpen(inst)
+
 		default:
 			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
 		}
@@ -159,6 +163,29 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 		ret = lhs.Add(rhs.(Value))
 	case ValuePrivate:
 		ret = lhs.Add(rhs.(Value))
+	default:
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+	}
+	if err := proc.Stack.Push(ret); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstNeg(inst instNeg) Return {
+	lhs, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	ret := Value(nil)
+	switch lhs := lhs.(type) {
+	case ValuePublic:
+		ret = lhs.Neg()
+	case ValuePrivate:
+		ret = lhs.Neg()
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
@@ -330,4 +357,14 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 	proc.PC++
 	return Ready()
+}
+
+func expandMacros(code Code) {
+	for i := 0; i < len(code); i++ {
+		if inst, ok := code[i].(instMacro); ok {
+			temp := append(inst.code, code[i+1:]...)
+			code = append(code[:i], temp...)
+			i--
+		}
+	}
 }

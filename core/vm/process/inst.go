@@ -68,6 +68,18 @@ func InstAdd() Inst {
 func (inst instAdd) IsInst() {
 }
 
+type instNeg struct {
+}
+
+// InstNeg will negate an element on the stack. This Inst is synchronous.
+func InstNeg() Inst {
+	return instNeg{}
+}
+
+// IsInst implements the Inst interface.
+func (inst instNeg) IsInst() {
+}
+
 type instSub struct {
 }
 
@@ -148,4 +160,18 @@ func InstOpen() Inst {
 
 // IsInst implements the Inst interface.
 func (inst instOpen) IsInst() {
+}
+
+type instMacro struct {
+	code Code
+}
+
+// InstMacro will insert code into the list of instructions. This Inst is
+// synchronous.
+func InstMacro(code Code) Inst {
+	return instMacro{code}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMacro) IsInst() {
 }
