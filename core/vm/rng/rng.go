@@ -160,32 +160,26 @@ func (rnger *rnger) handleNominate(message Nominate) {
 }
 
 func (rnger *rnger) handleGenerateRn(message GenerateRn) {
-	// Verify the current state of the Rnger
-	if rnger.states[message.Nonce] != StateNil {
-		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: not in initial state")))
-		return
-	}
+	// If the rnger has already contructed a global share, short circuit
 	rnger.rns[message.Nonce] = message
 	if globalRnShare, ok := rnger.globalRnShares[message.Nonce]; ok {
 		rnger.io.Send(globalRnShare)
-	}
-
-	// Do not proceed if you are not the leader
-	if rnger.leader != rnger.addr {
-		rnger.io.Send(NewErr(message.Nonce, errors.New("cannot accept GenerateRn: must be the leader")))
+		rnger.states[message.Nonce] = StateFinished
 		return
 	}
 
-	// Set rnger to leader for this nonce
-	rnger.leaders[message.Nonce] = rnger.addr
+	if rnger.addr == rnger.leader {
+		// Set rnger to leader for this nonce
+		rnger.leaders[message.Nonce] = rnger.addr
 
-	// Send a ProposeRn message to every other Rnger in the network
-	for j := uint(0); j < rnger.n; j++ {
-		rnger.io.Send(NewProposeRn(message.Nonce, Address(j), rnger.addr))
+		// Send a ProposeRn message to every other Rnger in the network
+		for j := uint(0); j < rnger.n; j++ {
+			rnger.io.Send(NewProposeRn(message.Nonce, Address(j), rnger.addr))
+		}
+
+		// Transition to a new state
+		rnger.states[message.Nonce] = StateWaitingForLocalRnShares
 	}
-
-	// Transition to a new state
-	rnger.states[message.Nonce] = StateWaitingForLocalRnShares
 }
 
 func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
