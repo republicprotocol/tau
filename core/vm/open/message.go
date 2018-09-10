@@ -1,6 +1,8 @@
 package open
 
 import (
+	"fmt"
+
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
@@ -25,6 +27,10 @@ func NewOpen(nonce Nonce, share shamir.Share) Open {
 func (message Open) IsMessage() {
 }
 
+func (message Open) String() string {
+	return fmt.Sprintf("open.Open {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
+}
+
 // A BroadcastShare message is used by an Opener to accept and store shares so
 // that the respective secret can be opened. A BroadcastShare message is related
 // to other BroadcastShare messages, and to an Open message, by its Nonce.
@@ -39,6 +45,10 @@ func NewBroadcastShare(nonce Nonce, share shamir.Share) BroadcastShare {
 
 // IsMessage implements the Message interface.
 func (message BroadcastShare) IsMessage() {
+}
+
+func (message BroadcastShare) String() string {
+	return fmt.Sprintf("open.BroadcastShare {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
 }
 
 // A Result message is produced by an Opener after it has received (a) an Open
@@ -60,4 +70,8 @@ func NewResult(nonce Nonce, value algebra.FpElement) Result {
 
 // IsMessage implements the Message interface.
 func (message Result) IsMessage() {
+}
+
+func (message Result) String() string {
+	return fmt.Sprintf("open.Result {\n\tnonce: %v\n\tvalue: %v\n}", message.Nonce, message.Value)
 }
