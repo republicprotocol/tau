@@ -128,17 +128,17 @@ func (vm *VM) exec(exec Exec) {
 	proc := exec.proc
 	vm.processes[proc.ID] = proc
 
-	log.Printf("[debug] (vm) <%p> executing = %v", vm.mul, proc.Nonce())
+	// log.Printf("[debug] (vm %v) <%p> executing = %v", vm.addr, vm.mul, proc.Nonce())
 	ret := proc.Exec()
 	vm.processes[proc.ID] = proc
-	log.Printf("[debug] (vm) <%p> done = %v", vm.mul, proc.Nonce())
+	// log.Printf("[debug] (vm %v) <%p> done = %v", vm.addr, vm.mul, proc.Nonce())
 
 	if ret.IsReady() {
-		log.Printf("[error] (vm) process is ready after execution = %v", proc.ID)
+		log.Printf("[error] (vm %v) process is ready after execution = %v", vm.addr, proc.ID)
 		return
 	}
 	if ret.IsTerminated() {
-		log.Printf("[debug] (vm) process is terminated = %v", proc.ID)
+		// log.Printf("[debug] (vm %v) process is terminated = %v", vm.addr, proc.ID)
 		result, err := proc.Stack.Pop()
 		if err != nil {
 			panic("unimplemented")
@@ -147,7 +147,7 @@ func (vm *VM) exec(exec Exec) {
 		return
 	}
 	if ret.Intent() == nil {
-		log.Printf("[debug] (vm) process is waiting = %v", proc.ID)
+		log.Printf("[debug] (vm %v) process is waiting = %v", vm.addr, proc.ID)
 		return
 	}
 
@@ -165,7 +165,7 @@ func (vm *VM) exec(exec Exec) {
 		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
 
 	case process.IntentToError:
-		log.Printf("[error] (vm) %v", intent.Error())
+		log.Printf("[error] (vm %v) %v", vm.addr, intent.Error())
 
 	default:
 		panic("unimplemented")

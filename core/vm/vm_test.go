@@ -120,9 +120,9 @@ var _ = Describe("Virtual Machine", func() {
 			bufferCap int
 		}{
 			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, {3, 2, BufferLimit * 4},
-			// {6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
-			// {12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
-			// {24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
+			{6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
+			{12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
+			{24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
 		}
 
 		for _, entry := range table {
@@ -345,7 +345,7 @@ var _ = Describe("Virtual Machine", func() {
 						})
 				}, 60)
 
-				FIt("should multiply private numbers", func(doneT Done) {
+				It("should multiply private numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -392,7 +392,7 @@ var _ = Describe("Virtual Machine", func() {
 							seen := map[uint64]struct{}{}
 							for _ = range vms {
 								var actual TestResult
-								Eventually(results, 60).Should(Receive(&actual))
+								Eventually(results, 5).Should(Receive(&actual))
 
 								_, _ = actual.result.Value.(process.ValuePublic)
 								if _, exists := seen[actual.from]; exists {
@@ -404,9 +404,9 @@ var _ = Describe("Virtual Machine", func() {
 								// Expect(res.Value.Eq(a.Mul(b))).To(BeTrue())
 							}
 						})
-				}, 60)
+				}, 5)
 
-				It("should compare 2 bit numbers", func(doneT Done) {
+				FIt("should compare 2 bit numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -430,8 +430,8 @@ var _ = Describe("Virtual Machine", func() {
 
 							a0, a1 := SecretField.NewInField(a0i), SecretField.NewInField(a1i)
 							b0, b1 := SecretField.NewInField(b0i), SecretField.NewInField(b1i)
-							a := SecretField.NewInField(big.NewInt(2)).Mul(a1).Add(a0)
-							b := SecretField.NewInField(big.NewInt(2)).Mul(b1).Add(b0)
+							// a := SecretField.NewInField(big.NewInt(2)).Mul(a1).Add(a0)
+							// b := SecretField.NewInField(big.NewInt(2)).Mul(b1).Add(b0)
 
 							polyA0 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a0)
 							polyA1 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, a1)
@@ -544,7 +544,7 @@ var _ = Describe("Virtual Machine", func() {
 								} else {
 									Expect(ai.Cmp(bi)).ToNot(Equal(-1))
 								}
-								log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
+								// log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
 							}
 						})
 				}, 60)
