@@ -69,7 +69,6 @@ func (multiplier *multiplier) recvMessage(message buffer.Message) {
 
 func (multiplier *multiplier) multiply(message Mul) {
 	if share, ok := multiplier.completions[message.Nonce]; ok {
-		log.Printf("[info] (mul) short circuiting")
 		multiplier.io.Send(NewResult(message.Nonce, share))
 	}
 	share := message.x.Mul(message.y)
