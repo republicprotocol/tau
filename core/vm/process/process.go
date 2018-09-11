@@ -62,7 +62,7 @@ type Process struct {
 }
 
 func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
-	expandMacros(code)
+	expandMacros(&code)
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -90,6 +90,8 @@ func (proc *Process) Exec() Return {
 		switch inst := proc.Code[proc.PC].(type) {
 		case instPush:
 			ret = proc.execInstPush(inst)
+		case instCopy:
+			ret = proc.execInstCopy(inst)
 		case instStore:
 			ret = proc.execInstStore(inst)
 		case instLoad:
@@ -118,6 +120,27 @@ func (proc *Process) Exec() Return {
 func (proc *Process) execInstPush(inst instPush) Return {
 	if err := proc.Stack.Push(inst.value); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstCopy(inst instCopy) Return {
+	values := make([]stack.Element, inst.depth)
+	for i := range values {
+		value, err := proc.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
+		values[i] = value
+	}
+
+	values = append(values, values...)
+	for _, value := range values {
+		if err := proc.Stack.Push(value); err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
 	}
 
 	proc.PC++
@@ -359,11 +382,11 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 	return Ready()
 }
 
-func expandMacros(code Code) {
-	for i := 0; i < len(code); i++ {
-		if inst, ok := code[i].(instMacro); ok {
-			temp := append(inst.code, code[i+1:]...)
-			code = append(code[:i], temp...)
+func expandMacros(code *Code) {
+	for i := 0; i < len(*code); i++ {
+		if inst, ok := (*code)[i].(instMacro); ok {
+			temp := append(inst.code, (*code)[i+1:]...)
+			*code = append((*code)[:i], temp...)
 			i--
 		}
 	}
