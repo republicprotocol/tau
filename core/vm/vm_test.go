@@ -447,76 +447,50 @@ var _ = Describe("Virtual Machine", func() {
 								valueA1 := process.NewValuePrivate(sharesA1[i])
 								valueB0 := process.NewValuePrivate(sharesB0[i])
 								valueB1 := process.NewValuePrivate(sharesB1[i])
-								valueOne := process.NewValuePublic(SecretField.NewInField(big.NewInt(1)))
 
 								stack := stack.New(100)
 								mem := process.NewMemory(100)
 								code := process.Code{
-									// store rn at 5
-									process.InstGenerateRn(),
-									process.InstStore(5),
-
 									// b0 && !a0 stored at 0
-									process.InstPush(valueB0),
-									process.InstPush(valueOne),
 									process.InstPush(valueA0),
-									process.InstSub(),
-									process.InstLoad(5),
-									process.InstMul(),
+									process.Not(SecretField),
+									process.InstPush(valueB0),
+									process.And(),
 									process.InstStore(0),
 
 									// b1 && !a1 stored at 1
-									process.InstPush(valueB1),
-									process.InstPush(valueOne),
 									process.InstPush(valueA1),
-									process.InstSub(),
-									process.InstLoad(5),
-									process.InstMul(),
+									process.Not(SecretField),
+									process.InstPush(valueB1),
+									process.And(),
 									process.InstStore(1),
 
 									// !b1 && !a1 stored at 2
-									process.InstPush(valueOne),
 									process.InstPush(valueB1),
-									process.InstSub(),
-									process.InstPush(valueOne),
+									process.Not(SecretField),
 									process.InstPush(valueA1),
-									process.InstSub(),
-									process.InstLoad(5),
-									process.InstMul(),
+									process.Not(SecretField),
+									process.And(),
 									process.InstStore(2),
 
-									// !b1 && !a1 stored at 3
+									// b1 && a1 stored at 3
 									process.InstPush(valueA1),
 									process.InstPush(valueB1),
-									process.InstLoad(5),
-									process.InstMul(),
+									process.And(),
 									process.InstStore(3),
 
 									// addr 2 || addr 3
 									process.InstLoad(2),
 									process.InstLoad(3),
-									process.InstAdd(),
-									process.InstLoad(2),
-									process.InstLoad(3),
-									process.InstLoad(5),
-									process.InstMul(),
-									process.InstSub(),
+									process.Or(),
 
-									// prev && addr 0 and store at 4
+									// prev && addr 0
 									process.InstLoad(0),
-									process.InstLoad(5),
-									process.InstMul(),
-									process.InstStore(4),
+									process.And(),
 
-									// addr 1 || addr 4
+									// prev || addr 1
 									process.InstLoad(1),
-									process.InstLoad(4),
-									process.InstAdd(),
-									process.InstLoad(1),
-									process.InstLoad(4),
-									process.InstGenerateRn(),
-									process.InstMul(),
-									process.InstSub(),
+									process.Or(),
 
 									// open result
 									process.InstOpen(),
