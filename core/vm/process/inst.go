@@ -27,6 +27,20 @@ func InstPush(value Value) Inst {
 func (inst instPush) IsInst() {
 }
 
+type instCopy struct {
+	depth uint64
+}
+
+// InstCopy will push a copy of the top element of the stack to the stack. This
+// Inst is synchronous.
+func InstCopy(depth uint64) Inst {
+	return instCopy{depth}
+}
+
+// IsInst implements the Inst interface.
+func (inst instCopy) IsInst() {
+}
+
 type instStore struct {
 	addr Addr
 }
