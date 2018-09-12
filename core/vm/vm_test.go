@@ -605,7 +605,7 @@ var _ = Describe("Virtual Machine", func() {
 							})
 					})
 
-					FIt("should compute an or gate", func(doneT Done) {
+					It("should compute an or gate", func(doneT Done) {
 						defer close(doneT)
 
 						done := make(chan (struct{}))
@@ -646,6 +646,75 @@ var _ = Describe("Virtual Machine", func() {
 											process.InstPush(valueX),
 											process.InstPush(valueY),
 											process.MacroOr(),
+											process.InstOpen(),
+										}
+										proc := process.New(id, stack, mem, code)
+										init := NewExec(proc)
+
+										ins[j] <- init
+									}
+
+									seen := map[uint64]struct{}{}
+									for _ = range vms {
+										var actual TestResult
+										Eventually(results, 1).Should(Receive(&actual))
+
+										res, ok := actual.result.Value.(process.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if _, exists := seen[actual.from]; exists {
+											Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+										} else {
+											seen[actual.from] = struct{}{}
+										}
+
+										Expect(res.Value.Eq(assignment.out)).To(BeTrue())
+									}
+								}
+							})
+					})
+
+					FIt("should compute an xor gate", func(doneT Done) {
+						defer close(doneT)
+
+						done := make(chan (struct{}))
+						vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+						co.ParBegin(
+							func() {
+								runVMs(done, vms)
+							},
+							func() {
+								defer GinkgoRecover()
+								defer close(done)
+
+								results := routeMessages(done, ins, outs)
+
+								logicTable := []struct {
+									x, y, out algebra.FpElement
+								}{
+									{Zero, Zero, Zero},
+									{Zero, One, One},
+									{One, Zero, One},
+									{One, One, Zero},
+								}
+
+								for i, assignment := range logicTable {
+									polyX := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.x)
+									polyY := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.y)
+									sharesX := shamir.Split(polyX, uint64(entry.n))
+									sharesY := shamir.Split(polyY, uint64(entry.n))
+
+									for j := range vms {
+										valueX := process.NewValuePrivate(sharesX[j])
+										valueY := process.NewValuePrivate(sharesY[j])
+
+										id := idFromUint64(uint64(i))
+										stack := stack.New(100)
+										mem := process.NewMemory(10)
+										code := process.Code{
+											process.InstPush(valueX),
+											process.InstPush(valueY),
+											process.MacroXor(),
 											process.InstOpen(),
 										}
 										proc := process.New(id, stack, mem, code)
