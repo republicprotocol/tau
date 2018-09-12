@@ -103,10 +103,10 @@ func MacroOpCLA() Inst {
 		MacroSwap(),      // ...p1, p2, g2, g1]
 		InstLoadStack(2), // ...p1, p2, g2, g1, p2]
 		MacroAnd(),       // ...p1, p2, g2, g1 & p2]
-		MacroXor(),       // ...p1, p2, g2 ^ (g1 & p2)]
+		MacroOr(),        // ...p1, p2, g2 | (g1 & p2)]
 		InstStore(0),     // ...p1, p2]
 		MacroAnd(),       // ...p1 & p2]
-		InstLoad(0),      // ...p1 & p2, g2 ^ (g1 & p2)]
+		InstLoad(0),      // ...p1 & p2, g2 | (g1 & p2)]
 	}
 	return InstMacro(code)
 }
@@ -128,7 +128,7 @@ func MacroCmp64(field algebra.Fp, offset Addr) Inst {
 	c := Code{
 		InstLoad(offset),            // ...p0]
 		InstLoad(offset + Addr(1)),  // ...p0, g0]
-		MacroXor(),                  // ...p0 ^ g0]
+		MacroOr(),                   // ...p0 | g0]
 		InstStore(offset + Addr(1)), // ...]
 	}
 	code = append(code, c...)

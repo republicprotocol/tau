@@ -1019,7 +1019,7 @@ var _ = Describe("Virtual Machine", func() {
 							})
 					}, 5)
 
-					FIt("should correctly compute the CLA operation", func(doneT Done) {
+					It("should correctly compute the CLA operation", func(doneT Done) {
 						defer close(doneT)
 
 						done := make(chan (struct{}))
@@ -1044,7 +1044,7 @@ var _ = Describe("Virtual Machine", func() {
 									{Zero, One, Zero, Zero, Zero, Zero},
 									{Zero, One, Zero, One, Zero, One},
 									{Zero, One, One, Zero, Zero, One},
-									{Zero, One, One, One, Zero, Zero},
+									{Zero, One, One, One, Zero, One},
 									{One, Zero, Zero, Zero, Zero, Zero},
 									{One, Zero, Zero, One, Zero, One},
 									{One, Zero, One, Zero, One, Zero},
@@ -1052,7 +1052,7 @@ var _ = Describe("Virtual Machine", func() {
 									{One, One, Zero, Zero, Zero, Zero},
 									{One, One, Zero, One, Zero, One},
 									{One, One, One, Zero, One, One},
-									{One, One, One, One, One, Zero},
+									{One, One, One, One, One, One},
 								}
 
 								for i, assignment := range logicTable {
@@ -1152,7 +1152,7 @@ var _ = Describe("Virtual Machine", func() {
 					}, 10)
 				})
 
-				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+				FIt("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -1179,8 +1179,8 @@ var _ = Describe("Virtual Machine", func() {
 								br := big.NewInt(rand.Int63n(2))
 								aBits[i] = SecretField.NewInField(ar)
 								bBits[i] = SecretField.NewInField(br)
-								a.Add(a, big.NewInt(0).Mul(ar, big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(i)), Q)))
-								b.Add(b, big.NewInt(0).Mul(br, big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(i)), Q)))
+								a.Add(a, big.NewInt(0).Mul(ar, big.NewInt(0).SetUint64(uint64(1)<<uint(i))))
+								b.Add(b, big.NewInt(0).Mul(br, big.NewInt(0).SetUint64(uint64(1)<<uint(i))))
 							}
 
 							aVals := make([][]process.ValuePrivate, entry.n)
