@@ -3,14 +3,12 @@ package mul
 import (
 	"log"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type multiplier struct {
-	io         task.IO
-	ioExternal task.IO
+	io task.IO
 
 	n, k        uint
 	sharesCache shamir.Shares
@@ -20,10 +18,9 @@ type multiplier struct {
 	completions map[Nonce]shamir.Share
 }
 
-func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
+func New(n, k uint, cap int) task.Task {
 	return &multiplier{
-		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
-		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
+		io: task.NewIO(cap),
 
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
@@ -34,26 +31,23 @@ func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
 	}
 }
 
-func (multiplier *multiplier) IO() task.IO {
-	return multiplier.ioExternal
+func (multiplier *multiplier) Channel() task.Channel {
+	return multiplier.io.Channel()
 }
 
 func (multiplier *multiplier) Run(done <-chan struct{}) {
 	// defer log.Printf("[info] (mul) terminating")
 
 	for {
-		ok := task.Select(
-			done,
-			multiplier.recvMessage,
-			multiplier.io,
-		)
+		message, ok := multiplier.io.Flush(done)
 		if !ok {
 			return
 		}
+		multiplier.recvMessage(message)
 	}
 }
 
-func (multiplier *multiplier) recvMessage(message buffer.Message) {
+func (multiplier *multiplier) recvMessage(message task.Message) {
 	switch message := message.(type) {
 
 	case Mul:
@@ -69,14 +63,14 @@ func (multiplier *multiplier) recvMessage(message buffer.Message) {
 
 func (multiplier *multiplier) multiply(message Mul) {
 	if share, ok := multiplier.completions[message.Nonce]; ok {
-		multiplier.io.Send(NewResult(message.Nonce, share))
+		multiplier.io.Write(NewResult(message.Nonce, share))
 	}
 	share := message.x.Mul(message.y)
 	share = share.Add(message.ρ)
 
 	multiplier.muls[message.Nonce] = message
 	multiplier.recvMessage(NewBroadcastIntermediateShare(message.Nonce, share))
-	multiplier.io.Send(NewBroadcastIntermediateShare(message.Nonce, share))
+	multiplier.io.Write(NewBroadcastIntermediateShare(message.Nonce, share))
 }
 
 // TODO:
@@ -121,5 +115,5 @@ func (multiplier *multiplier) recvBroadcastIntermediateShare(message BroadcastIn
 	delete(multiplier.broadcasts, message.Nonce)
 	multiplier.completions[message.Nonce] = result
 
-	multiplier.io.Send(NewResult(message.Nonce, result))
+	multiplier.io.Write(NewResult(message.Nonce, result))
 }
