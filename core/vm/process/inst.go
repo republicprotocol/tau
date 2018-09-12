@@ -69,6 +69,20 @@ func InstLoad(addr Addr) Inst {
 func (inst instLoad) IsInst() {
 }
 
+type instLoadStack struct {
+	offset uint64
+}
+
+// InstLoadStack will load a Value from the stack and push it to the top of the
+// Stack. This Inst is synchronous.
+func InstLoadStack(offset uint64) Inst {
+	return instLoadStack{offset}
+}
+
+// IsInst implements the Inst interface.
+func (inst instLoadStack) IsInst() {
+}
+
 type instAdd struct {
 }
 
