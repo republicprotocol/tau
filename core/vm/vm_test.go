@@ -1,6 +1,7 @@
 package vm_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math/big"
@@ -22,13 +23,16 @@ import (
 
 var _ = Describe("Virtual Machine", func() {
 
-	P := big.NewInt(8589934583)
-	Q := big.NewInt(4294967291)
-	G := algebra.NewFpElement(big.NewInt(592772542), P)
-	H := algebra.NewFpElement(big.NewInt(4799487786), P)
+	P := big.NewInt(0).SetBytes([]byte{59, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 218, 189})
+	Q := big.NewInt(0).SetBytes([]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 97})
+	G := algebra.NewFpElement(big.NewInt(0).SetBytes([]byte{46, 217, 224, 127, 231, 86, 139, 236, 205, 5, 30, 157, 110, 39, 97, 111, 203}), P)
+	H := algebra.NewFpElement(big.NewInt(0).SetBytes([]byte{1, 165, 222, 96, 116, 29, 93, 210, 13, 91, 221, 196, 71, 130, 67, 247, 62}), P)
 	SecretField := algebra.NewField(Q)
 	PedersenScheme := pedersen.New(G, H, SecretField)
 	BufferLimit := 64
+
+	Zero := SecretField.NewInField(big.NewInt(0))
+	One := SecretField.NewInField(big.NewInt(1))
 
 	type TestResult struct {
 		result Result
@@ -111,6 +115,20 @@ var _ = Describe("Virtual Machine", func() {
 		}()
 
 		return results
+	}
+
+	// randomBit := func() algebra.FpElement {
+	// 	return SecretField.NewInField(big.NewInt(rand.Int63n(2)))
+	// }
+
+	idFromUint64 := func(n uint64) [31]byte {
+		ret := [31]byte{0x0}
+		id := make([]byte, 8)
+		binary.LittleEndian.PutUint64(id, n)
+		for i, b := range id {
+			ret[i] = b
+		}
+		return ret
 	}
 
 	Context("when running the virtual machines in a fully connected network", func() {
@@ -379,7 +397,7 @@ var _ = Describe("Virtual Machine", func() {
 									process.InstGenerateRn(),
 									process.InstMul(),
 									process.InstPush(valueA),
-									process.InstGenerateRn(), // FIXME: It is possible for a VM, that is not the leader, to finish producing this Rn (thanks to others being further through execution) before the VM actually gets to this instruction. The result is therefore ignored by the VM, and the VM halts here forever.
+									process.InstGenerateRn(),
 									process.InstMul(),
 									process.InstOpen(),
 								}
@@ -406,7 +424,7 @@ var _ = Describe("Virtual Machine", func() {
 						})
 				}, 5)
 
-				FIt("should compare 2 bit numbers", func(doneT Done) {
+				It("should compare 2 bit numbers", func(doneT Done) {
 					defer close(doneT)
 
 					done := make(chan (struct{}))
@@ -453,44 +471,44 @@ var _ = Describe("Virtual Machine", func() {
 								code := process.Code{
 									// b0 && !a0 stored at 0
 									process.InstPush(valueA0),
-									process.Not(SecretField),
+									process.MacroNot(SecretField),
 									process.InstPush(valueB0),
-									process.And(),
+									process.MacroAnd(),
 									process.InstStore(0),
 
 									// b1 && !a1 stored at 1
 									process.InstPush(valueA1),
-									process.Not(SecretField),
+									process.MacroNot(SecretField),
 									process.InstPush(valueB1),
-									process.And(),
+									process.MacroAnd(),
 									process.InstStore(1),
 
 									// !b1 && !a1 stored at 2
 									process.InstPush(valueB1),
-									process.Not(SecretField),
+									process.MacroNot(SecretField),
 									process.InstPush(valueA1),
-									process.Not(SecretField),
-									process.And(),
+									process.MacroNot(SecretField),
+									process.MacroAnd(),
 									process.InstStore(2),
 
 									// b1 && a1 stored at 3
 									process.InstPush(valueA1),
 									process.InstPush(valueB1),
-									process.And(),
+									process.MacroAnd(),
 									process.InstStore(3),
 
 									// addr 2 || addr 3
 									process.InstLoad(2),
 									process.InstLoad(3),
-									process.Or(),
+									process.MacroOr(),
 
 									// prev && addr 0
 									process.InstLoad(0),
-									process.And(),
+									process.MacroAnd(),
 
 									// prev || addr 1
 									process.InstLoad(1),
-									process.Or(),
+									process.MacroOr(),
 
 									// open result
 									process.InstOpen(),
@@ -504,7 +522,7 @@ var _ = Describe("Virtual Machine", func() {
 							seen := map[uint64]struct{}{}
 							for _ = range vms {
 								var actual TestResult
-								Eventually(results, 60).Should(Receive(&actual))
+								Eventually(results, 5).Should(Receive(&actual))
 
 								res, ok := actual.result.Value.(process.ValuePublic)
 								if _, exists := seen[actual.from]; exists {
@@ -521,7 +539,159 @@ var _ = Describe("Virtual Machine", func() {
 								// log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
 							}
 						})
-				}, 60)
+				}, 5)
+
+				FContext("when using macros", func() {
+					It("should compute a not gate", func(doneT Done) {
+						defer close(doneT)
+
+						done := make(chan (struct{}))
+						vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+						co.ParBegin(
+							func() {
+								runVMs(done, vms)
+							},
+							func() {
+								defer GinkgoRecover()
+								defer close(done)
+
+								results := routeMessages(done, ins, outs)
+
+								logicTable := []struct {
+									x, out algebra.FpElement
+								}{
+									{Zero, One},
+									{One, Zero},
+								}
+
+								for i, assignment := range logicTable {
+									poly := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.x)
+									shares := shamir.Split(poly, uint64(entry.n))
+
+									for j := range vms {
+										value := process.NewValuePrivate(shares[j])
+
+										id := idFromUint64(uint64(i))
+										stack := stack.New(100)
+										mem := process.NewMemory(10)
+										code := process.Code{
+											process.InstPush(value),
+											process.MacroNot(SecretField),
+											process.InstOpen(),
+										}
+										proc := process.New(id, stack, mem, code)
+										init := NewExec(proc)
+
+										ins[j] <- init
+									}
+
+									seen := map[uint64]struct{}{}
+									for _ = range vms {
+										var actual TestResult
+										Eventually(results, 1).Should(Receive(&actual))
+
+										res, ok := actual.result.Value.(process.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if _, exists := seen[actual.from]; exists {
+											Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+										} else {
+											seen[actual.from] = struct{}{}
+										}
+
+										Expect(res.Value.Eq(assignment.out)).To(BeTrue())
+										log.Println("[debug] test completed")
+									}
+								}
+							})
+					})
+				})
+
+				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+					defer close(doneT)
+
+					done := make(chan (struct{}))
+					vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+					co.ParBegin(
+						func() {
+							runVMs(done, vms)
+						},
+						func() {
+							defer GinkgoRecover()
+							defer close(done)
+
+							results := routeMessages(done, ins, outs)
+
+							id := [31]byte{0x69}
+
+							a := big.NewInt(0)
+							b := big.NewInt(0)
+
+							aBits := make([]algebra.FpElement, 64)
+							bBits := make([]algebra.FpElement, 64)
+							for i := range aBits {
+								ar := big.NewInt(rand.Int63n(2))
+								br := big.NewInt(rand.Int63n(2))
+								aBits[i] = SecretField.NewInField(ar)
+								bBits[i] = SecretField.NewInField(br)
+								a.Add(a, big.NewInt(0).Mul(ar, big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(i)), Q)))
+								b.Add(b, big.NewInt(0).Mul(br, big.NewInt(0).Exp(big.NewInt(2), big.NewInt(int64(i)), Q)))
+							}
+
+							aVals := make([][]process.ValuePrivate, entry.n)
+							bVals := make([][]process.ValuePrivate, entry.n)
+							for i := range aVals {
+								aVals[i] = make([]process.ValuePrivate, 64)
+								bVals[i] = make([]process.ValuePrivate, 64)
+							}
+
+							for i := 0; i < 64; i++ {
+								polyA := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, aBits[i])
+								polyB := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, bBits[i])
+								sharesA := shamir.Split(polyA, uint64(entry.n))
+								sharesB := shamir.Split(polyB, uint64(entry.n))
+
+								for j, share := range sharesA {
+									aVals[j][i] = process.NewValuePrivate(share)
+								}
+								for j, share := range sharesB {
+									bVals[j][i] = process.NewValuePrivate(share)
+								}
+							}
+
+							for i := range vms {
+								stack := stack.New(100)
+								mem := process.NewMemory(300)
+								code := make(process.Code, 0)
+								for j := 0; j < 64; j++ {
+									c := process.Code{
+										process.InstPush(aVals[i][j]),
+										process.InstStore(process.Addr(10 + 2*j)),
+										process.InstPush(bVals[i][j]),
+										process.InstStore(process.Addr(11 + 2*j)),
+									}
+									code = append(code, c...)
+								}
+								code = append(code, process.MacroCmp64(SecretField, process.Addr(10)), process.InstOpen())
+								proc := process.New(id, stack, mem, code)
+								init := NewExec(proc)
+
+								ins[i] <- init
+							}
+
+							for _ = range vms {
+								var actual TestResult
+								Eventually(results, 5).Should(Receive(&actual))
+								res, ok := actual.result.Value.(process.ValuePublic)
+								Expect(ok).To(BeTrue())
+								if a.Cmp(b) == -1 {
+									Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
+								} else {
+									Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
+								}
+							}
+						})
+				}, 5)
 			})
 		}
 	})
