@@ -25,7 +25,8 @@ type Stack struct {
 	elems []Element
 }
 
-// New returns a Stack with a limited capacity of Elements.
+// New returns a Stack with a limited capacity of Elements. This function will
+// panic if the capacity is less than, or equal, to zero.
 func New(cap int) Stack {
 	if cap <= 0 {
 		panic("stack capacity must be greater than zero")
