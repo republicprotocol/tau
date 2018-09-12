@@ -63,12 +63,6 @@ type Process struct {
 
 func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
 	expandMacros(&code)
-	// for i, c := range code {
-	// 	if i == 1034 {
-	// 		break
-	// 	}
-	// 	log.Printf("[debug] %v: %T", i, c)
-	// }
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -335,7 +329,6 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 		rn, ok := rnValue.(ValuePrivateRn)
 		if !ok {
-			// log.Printf("[debug] current stack: %v", proc.Stack.String())
 			return NotReady(ErrorUnexpectedTypeConversion(rnValue, ValuePrivateRn{}, proc.PC))
 		}
 
