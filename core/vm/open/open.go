@@ -3,14 +3,12 @@ package open
 import (
 	"log"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type opener struct {
-	io         task.IO
-	ioExternal task.IO
+	io task.IO
 
 	n, k        uint
 	sharesCache shamir.Shares
@@ -20,10 +18,9 @@ type opener struct {
 	completions map[Nonce]struct{}
 }
 
-func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
+func New(n, k uint, cap int) task.Task {
 	return &opener{
-		io:         task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
-		ioExternal: task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
+		io: task.NewIO(cap),
 
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
@@ -34,26 +31,23 @@ func New(r, w buffer.ReaderWriter, n, k uint, cap int) task.Task {
 	}
 }
 
-func (opener *opener) IO() task.IO {
-	return opener.ioExternal
+func (opener *opener) Channel() task.Channel {
+	return opener.io.Channel()
 }
 
 func (opener *opener) Run(done <-chan struct{}) {
 	// defer log.Printf("[info] (open) terminating")
 
 	for {
-		ok := task.Select(
-			done,
-			opener.recvMessage,
-			opener.io,
-		)
+		message, ok := opener.io.Flush(done)
 		if !ok {
 			return
 		}
+		opener.recvMessage(message)
 	}
 }
 
-func (opener *opener) recvMessage(message buffer.Message) {
+func (opener *opener) recvMessage(message task.Message) {
 	switch message := message.(type) {
 
 	case Open:
@@ -77,7 +71,7 @@ func (opener *opener) open(message Open) {
 	}
 	opener.opens[message.Nonce] = message
 	opener.recvBroadcastShare(NewBroadcastShare(message.Nonce, message.Share))
-	opener.io.Send(NewBroadcastShare(message.Nonce, message.Share))
+	opener.io.Write(NewBroadcastShare(message.Nonce, message.Share))
 }
 
 func (opener *opener) recvBroadcastShare(message BroadcastShare) {
@@ -113,5 +107,5 @@ func (opener *opener) recvBroadcastShare(message BroadcastShare) {
 	delete(opener.broadcasts, message.Nonce)
 	opener.completions[message.Nonce] = struct{}{}
 
-	opener.io.Send(NewResult(message.Nonce, result))
+	opener.io.Write(NewResult(message.Nonce, result))
 }
