@@ -3,7 +3,7 @@ package vm
 import (
 	"fmt"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/mul"
 	"github.com/republicprotocol/oro-go/core/vm/open"
 	"github.com/republicprotocol/oro-go/core/vm/process"
@@ -43,10 +43,10 @@ func (message Result) IsMessage() {
 }
 
 type RemoteProcedureCall struct {
-	Message buffer.Message
+	Message task.Message
 }
 
-func NewRemoteProcedureCall(message buffer.Message) RemoteProcedureCall {
+func NewRemoteProcedureCall(message task.Message) RemoteProcedureCall {
 	return RemoteProcedureCall{
 		message,
 	}

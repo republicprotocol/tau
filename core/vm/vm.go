@@ -5,7 +5,6 @@ import (
 	"log"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/oro-go/core/buffer"
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/mul"
 	"github.com/republicprotocol/oro-go/core/vm/open"
@@ -26,23 +25,22 @@ type VM struct {
 	open task.Task
 }
 
-func New(r, w buffer.ReaderWriter, addr, leader uint64, ped pedersen.Pedersen, n, k uint, cap int) VM {
+func New(addr, leader uint64, ped pedersen.Pedersen, n, k uint, cap int) VM {
 	vm := VM{
-		io:             task.NewIO(buffer.New(cap), r.Reader(), w.Writer()),
-		ioExternal:     task.NewIO(buffer.New(cap), w.Reader(), r.Writer()),
+		io:             task.NewIO(cap),
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[[32]byte]process.Intent{},
 
 		addr: addr,
-		rng:  rng.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
-		mul:  mul.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
-		open: open.New(buffer.NewReaderWriter(cap), buffer.NewReaderWriter(cap), n, k, cap),
+		rng:  rng.New(rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
+		mul:  mul.New(n, k, cap),
+		open: open.New(n, k, cap),
 	}
 	return vm
 }
 
-func (vm *VM) IO() task.IO {
-	return vm.ioExternal
+func (vm *VM) Channel() task.Channel {
+	return vm.io.Channel()
 }
 
 func (vm *VM) Run(done <-chan struct{}) {
@@ -54,17 +52,11 @@ func (vm *VM) Run(done <-chan struct{}) {
 		},
 		func() {
 			for {
-				ok := task.Select(
-					done,
-					vm.recvMessage,
-					vm.io,
-					vm.rng.IO(),
-					vm.mul.IO(),
-					vm.open.IO(),
-				)
+				message, ok := vm.io.Flush(done, vm.rng.Channel(), vm.mul.Channel(), vm.open.Channel())
 				if !ok {
 					return
 				}
+				vm.recvMessage(message)
 			}
 		})
 }
@@ -82,7 +74,7 @@ func (vm *VM) runBackgroundGoroutines(done <-chan struct{}) {
 		})
 }
 
-func (vm *VM) recvMessage(message buffer.Message) {
+func (vm *VM) recvMessage(message task.Message) {
 	switch message := message.(type) {
 
 	case Exec:
@@ -143,7 +135,7 @@ func (vm *VM) exec(exec Exec) {
 		if err != nil {
 			panic("unimplemented")
 		}
-		vm.io.Send(NewResult(result.(process.Value)))
+		vm.io.Write(NewResult(result.(process.Value)))
 		return
 	}
 	if ret.Intent() == nil {
@@ -154,15 +146,15 @@ func (vm *VM) exec(exec Exec) {
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.rng.IO().Send(rng.NewGenerateRn(rng.Nonce(proc.Nonce())))
+		vm.rng.Channel().Send(rng.NewGenerateRn(rng.Nonce(proc.Nonce())))
 
 	case process.IntentToMultiply:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.mul.IO().Send(mul.NewMul(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.mul.Channel().Send(mul.NewMul(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.open.IO().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
+		vm.open.Channel().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
 
 	case process.IntentToError:
 		log.Printf("[error] (vm %v) %v", vm.addr, intent.Error())
@@ -176,13 +168,13 @@ func (vm *VM) invoke(message RemoteProcedureCall) {
 	switch message := message.Message.(type) {
 
 	case rng.ProposeRn, rng.LocalRnShares, rng.ProposeGlobalRnShare:
-		vm.rng.IO().Send(message)
+		vm.rng.Channel().Send(message)
 
 	case mul.BroadcastIntermediateShare:
-		vm.mul.IO().Send(message)
+		vm.mul.Channel().Send(message)
 
 	case open.BroadcastShare:
-		vm.open.IO().Send(message)
+		vm.open.Channel().Send(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected rpc type %T", message))
@@ -190,15 +182,15 @@ func (vm *VM) invoke(message RemoteProcedureCall) {
 }
 
 func (vm *VM) proposeRn(message rng.ProposeRn) {
-	vm.io.Send(NewRemoteProcedureCall(message))
+	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleRngLocalRnShares(message rng.LocalRnShares) {
-	vm.io.Send(NewRemoteProcedureCall(message))
+	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleRngProposeGlobalRnShare(message rng.ProposeGlobalRnShare) {
-	vm.io.Send(NewRemoteProcedureCall(message))
+	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
@@ -235,7 +227,7 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 }
 
 func (vm *VM) handleMulOpen(message mul.BroadcastIntermediateShare) {
-	vm.io.Send(NewRemoteProcedureCall(message))
+	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleMulResult(message mul.Result) {
@@ -265,7 +257,7 @@ func (vm *VM) handleMulResult(message mul.Result) {
 }
 
 func (vm *VM) handleOpenBroadcastShare(message open.BroadcastShare) {
-	vm.io.Send(NewRemoteProcedureCall(message))
+	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
 func (vm *VM) handleOpenResult(message open.Result) {
