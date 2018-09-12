@@ -2,6 +2,8 @@ package stack
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 var (
@@ -73,4 +75,12 @@ func (stack *Stack) IsFull() bool {
 // Popping from an empty Stack will result in a stack underflow.
 func (stack *Stack) IsEmpty() bool {
 	return stack.free == 0
+}
+
+func (stack *Stack) String() string {
+	types := []string{}
+	for _, elem := range stack.elems {
+		types = append(types, fmt.Sprintf("%T", elem))
+	}
+	return fmt.Sprintf("[%v]", strings.Join(types, ", "))
 }
