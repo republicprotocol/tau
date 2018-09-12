@@ -743,7 +743,7 @@ var _ = Describe("Virtual Machine", func() {
 							})
 					})
 
-					FIt("should compute an and gate", func(doneT Done) {
+					It("should compute an and gate", func(doneT Done) {
 						defer close(doneT)
 
 						done := make(chan (struct{}))
@@ -808,6 +808,105 @@ var _ = Describe("Virtual Machine", func() {
 
 										Expect(res.Value.Eq(assignment.out)).To(BeTrue())
 									}
+								}
+							})
+					})
+
+					FIt("should correctly swap elements on the stack", func(doneT Done) {
+						defer close(doneT)
+
+						done := make(chan (struct{}))
+						vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+						co.ParBegin(
+							func() {
+								runVMs(done, vms)
+							},
+							func() {
+								defer GinkgoRecover()
+								defer close(done)
+
+								results := routeMessages(done, ins, outs)
+								x := SecretField.Random()
+								y := SecretField.Random()
+
+								polyX := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, x)
+								polyY := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, y)
+								sharesX := shamir.Split(polyX, uint64(entry.n))
+								sharesY := shamir.Split(polyY, uint64(entry.n))
+
+								// MacroSwap should swap the elements on the stack
+								for j := range vms {
+									valueX := process.NewValuePrivate(sharesX[j])
+									valueY := process.NewValuePrivate(sharesY[j])
+
+									id := idFromUint64(1)
+									stack := stack.New(100)
+									mem := process.NewMemory(10)
+									code := process.Code{
+										process.InstPush(valueX),
+										process.InstPush(valueY),
+										process.MacroSwap(),
+										process.InstOpen(),
+									}
+									proc := process.New(id, stack, mem, code)
+									init := NewExec(proc)
+
+									ins[j] <- init
+								}
+
+								seen1 := map[uint64]struct{}{}
+								for _ = range vms {
+									var actual TestResult
+									Eventually(results, 1).Should(Receive(&actual))
+
+									res, ok := actual.result.Value.(process.ValuePublic)
+									Expect(ok).To(BeTrue())
+
+									if _, exists := seen1[actual.from]; exists {
+										Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+									} else {
+										seen1[actual.from] = struct{}{}
+									}
+
+									Expect(res.Value.Eq(x)).To(BeTrue())
+								}
+
+								// Two applications of MacroSwap should leave the stack unchanged
+								for j := range vms {
+									valueX := process.NewValuePrivate(sharesX[j])
+									valueY := process.NewValuePrivate(sharesY[j])
+
+									id := idFromUint64(1)
+									stack := stack.New(100)
+									mem := process.NewMemory(10)
+									code := process.Code{
+										process.InstPush(valueX),
+										process.InstPush(valueY),
+										process.MacroSwap(),
+										process.MacroSwap(),
+										process.InstOpen(),
+									}
+									proc := process.New(id, stack, mem, code)
+									init := NewExec(proc)
+
+									ins[j] <- init
+								}
+
+								seen2 := map[uint64]struct{}{}
+								for _ = range vms {
+									var actual TestResult
+									Eventually(results, 1).Should(Receive(&actual))
+
+									res, ok := actual.result.Value.(process.ValuePublic)
+									Expect(ok).To(BeTrue())
+
+									if _, exists := seen2[actual.from]; exists {
+										Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+									} else {
+										seen2[actual.from] = struct{}{}
+									}
+
+									Expect(res.Value.Eq(y)).To(BeTrue())
 								}
 							})
 					})
