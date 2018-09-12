@@ -23,10 +23,10 @@ import (
 
 var _ = Describe("Virtual Machine", func() {
 
-	P := big.NewInt(0).SetBytes([]byte{59, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 218, 189})
-	Q := big.NewInt(0).SetBytes([]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 97})
-	G := algebra.NewFpElement(big.NewInt(0).SetBytes([]byte{46, 217, 224, 127, 231, 86, 139, 236, 205, 5, 30, 157, 110, 39, 97, 111, 203}), P)
-	H := algebra.NewFpElement(big.NewInt(0).SetBytes([]byte{1, 165, 222, 96, 116, 29, 93, 210, 13, 91, 221, 196, 71, 130, 67, 247, 62}), P)
+	P := big.NewInt(8589934583)
+	Q := big.NewInt(4294967291)
+	G := algebra.NewFpElement(big.NewInt(592772542), P)
+	H := algebra.NewFpElement(big.NewInt(4799487786), P)
 	SecretField := algebra.NewField(Q)
 	PedersenScheme := pedersen.New(G, H, SecretField)
 	BufferLimit := 64
@@ -911,7 +911,7 @@ var _ = Describe("Virtual Machine", func() {
 							})
 					})
 
-					FIt("should correctly compute the propagator and generator", func(doneT Done) {
+					It("should correctly compute the propagator and generator", func(doneT Done) {
 						defer close(doneT)
 
 						done := make(chan (struct{}))
@@ -977,15 +977,8 @@ var _ = Describe("Virtual Machine", func() {
 
 										Expect(res.Value.Eq(assignment.g)).To(BeTrue())
 									}
-								}
 
-								// Check that computing the porpagator is correct
-								for i, assignment := range logicTable {
-									polyX := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.x)
-									polyY := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.y)
-									sharesX := shamir.Split(polyX, uint64(entry.n))
-									sharesY := shamir.Split(polyY, uint64(entry.n))
-
+									// Check that computing the porpagator is correct
 									for j := range vms {
 										valueX := process.NewValuePrivate(sharesX[j])
 										valueY := process.NewValuePrivate(sharesY[j])
@@ -1025,6 +1018,138 @@ var _ = Describe("Virtual Machine", func() {
 								}
 							})
 					}, 5)
+
+					FIt("should correctly compute the CLA operation", func(doneT Done) {
+						defer close(doneT)
+
+						done := make(chan (struct{}))
+						vms, ins, outs := initVMs(entry.n, entry.k, 0, entry.bufferCap)
+						co.ParBegin(
+							func() {
+								runVMs(done, vms)
+							},
+							func() {
+								defer GinkgoRecover()
+								defer close(done)
+
+								results := routeMessages(done, ins, outs)
+
+								logicTable := []struct {
+									p1, g1, p2, g2, pp, gg algebra.FpElement
+								}{
+									{Zero, Zero, Zero, Zero, Zero, Zero},
+									{Zero, Zero, Zero, One, Zero, One},
+									{Zero, Zero, One, Zero, Zero, Zero},
+									{Zero, Zero, One, One, Zero, One},
+									{Zero, One, Zero, Zero, Zero, Zero},
+									{Zero, One, Zero, One, Zero, One},
+									{Zero, One, One, Zero, Zero, One},
+									{Zero, One, One, One, Zero, Zero},
+									{One, Zero, Zero, Zero, Zero, Zero},
+									{One, Zero, Zero, One, Zero, One},
+									{One, Zero, One, Zero, One, Zero},
+									{One, Zero, One, One, One, One},
+									{One, One, Zero, Zero, Zero, Zero},
+									{One, One, Zero, One, Zero, One},
+									{One, One, One, Zero, One, One},
+									{One, One, One, One, One, Zero},
+								}
+
+								for i, assignment := range logicTable {
+									polyP1 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.p1)
+									polyG1 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.g1)
+									polyP2 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.p2)
+									polyG2 := algebra.NewRandomPolynomial(SecretField, entry.k/2-1, assignment.g2)
+									sharesP1 := shamir.Split(polyP1, uint64(entry.n))
+									sharesG1 := shamir.Split(polyG1, uint64(entry.n))
+									sharesP2 := shamir.Split(polyP2, uint64(entry.n))
+									sharesG2 := shamir.Split(polyG2, uint64(entry.n))
+
+									// Check that computing the generator is correct
+									for j := range vms {
+										valueP1 := process.NewValuePrivate(sharesP1[j])
+										valueG1 := process.NewValuePrivate(sharesG1[j])
+										valueP2 := process.NewValuePrivate(sharesP2[j])
+										valueG2 := process.NewValuePrivate(sharesG2[j])
+
+										id := idFromUint64(uint64(i))
+										stack := stack.New(100)
+										mem := process.NewMemory(10)
+										code := process.Code{
+											process.InstPush(valueP1),
+											process.InstPush(valueG1),
+											process.InstPush(valueP2),
+											process.InstPush(valueG2),
+											process.MacroOpCLA(),
+											process.InstOpen(),
+										}
+										proc := process.New(id, stack, mem, code)
+										init := NewExec(proc)
+
+										ins[j] <- init
+									}
+
+									seen1 := map[uint64]struct{}{}
+									for _ = range vms {
+										var actual TestResult
+										Eventually(results, 10).Should(Receive(&actual))
+
+										res, ok := actual.result.Value.(process.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if _, exists := seen1[actual.from]; exists {
+											Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+										} else {
+											seen1[actual.from] = struct{}{}
+										}
+
+										Expect(res.Value.Eq(assignment.gg)).To(BeTrue())
+									}
+
+									// Check that computing the porpagator is correct
+									for j := range vms {
+										valueP1 := process.NewValuePrivate(sharesP1[j])
+										valueG1 := process.NewValuePrivate(sharesG1[j])
+										valueP2 := process.NewValuePrivate(sharesP2[j])
+										valueG2 := process.NewValuePrivate(sharesG2[j])
+
+										id := idFromUint64(uint64(i + 16))
+										stack := stack.New(100)
+										mem := process.NewMemory(10)
+										code := process.Code{
+											process.InstPush(valueP1),
+											process.InstPush(valueG1),
+											process.InstPush(valueP2),
+											process.InstPush(valueG2),
+											process.MacroOpCLA(),
+											process.MacroSwap(),
+											process.InstOpen(),
+										}
+										proc := process.New(id, stack, mem, code)
+										init := NewExec(proc)
+
+										ins[j] <- init
+									}
+
+									seen2 := map[uint64]struct{}{}
+									for _ = range vms {
+										var actual TestResult
+										Eventually(results, 10).Should(Receive(&actual))
+
+										res, ok := actual.result.Value.(process.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if _, exists := seen2[actual.from]; exists {
+											Fail(fmt.Sprintf("received more than one result from player %v", actual.from))
+										} else {
+											seen2[actual.from] = struct{}{}
+										}
+
+										Expect(res.Value.Eq(assignment.pp)).To(BeTrue())
+									}
+								}
+							})
+					}, 10)
 				})
 
 				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
