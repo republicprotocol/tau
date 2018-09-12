@@ -63,6 +63,12 @@ type Process struct {
 
 func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
 	expandMacros(&code)
+	// for i, c := range code {
+	// 	if i == 1034 {
+	// 		break
+	// 	}
+	// 	log.Printf("[debug] %v: %T", i, c)
+	// }
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -96,6 +102,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstStore(inst)
 		case instLoad:
 			ret = proc.execInstLoad(inst)
+		case instLoadStack:
+			ret = proc.execInstLoadStack(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
 		case instNeg:
@@ -164,6 +172,33 @@ func (proc *Process) execInstLoad(inst instLoad) Return {
 	}
 	if err := proc.Stack.Push(value); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstLoadStack(inst instLoadStack) Return {
+	values := make([]stack.Element, inst.offset+1)
+	for i := uint64(0); i < inst.offset; i++ {
+		value, err := proc.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
+		values[i+1] = value
+	}
+
+	toLoad, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	if err := proc.Stack.Push(toLoad); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	values[0] = toLoad
+	for i := uint64(0); i < inst.offset+1; i++ {
+		if err := proc.Stack.Push(values[inst.offset-i]); err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
 	}
 	proc.PC++
 	return Ready()
@@ -280,10 +315,12 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 		}
 	}
 
-	proc.Push(ValuePrivateRn{
+	if err := proc.Push(ValuePrivateRn{
 		Rho:   inst.ρ,
 		Sigma: inst.σ,
-	})
+	}); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
 
 	proc.PC++
 	return Ready()
@@ -298,6 +335,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 		rn, ok := rnValue.(ValuePrivateRn)
 		if !ok {
+			// log.Printf("[debug] current stack: %v", proc.Stack.String())
 			return NotReady(ErrorUnexpectedTypeConversion(rnValue, ValuePrivateRn{}, proc.PC))
 		}
 
