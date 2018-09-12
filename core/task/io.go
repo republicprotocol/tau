@@ -2,14 +2,11 @@ package task
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 
 	"github.com/republicprotocol/oro-go/core/buffer"
 )
-
-type Message interface {
-	IsMessage()
-}
 
 type Channel interface {
 	Send(message Message) bool
@@ -29,7 +26,13 @@ func (ch *channel) Send(message Message) bool {
 	return ch.buf.Enqueue(message)
 }
 
-type IO struct {
+type IO interface {
+	Write(message Message)
+	Flush(done <-chan struct{}, channels ...Channel) (Message, bool)
+	Channel() Channel
+}
+
+type inputOutput struct {
 	ch Channel
 
 	r   <-chan Message
@@ -41,7 +44,7 @@ func NewIO(cap int) IO {
 	r := make(chan Message, cap)
 	w := make(chan Message, cap)
 
-	return IO{
+	return &inputOutput{
 		newChannel(w, r, buffer.New(cap)),
 
 		r,
@@ -50,11 +53,13 @@ func NewIO(cap int) IO {
 	}
 }
 
-func (io *IO) Write(message Message) bool {
-	return io.buf.Enqueue(message)
+func (io *inputOutput) Write(message Message) {
+	if !io.buf.Enqueue(message) {
+		log.Printf("[error] (io) buffer overflow")
+	}
 }
 
-func (io *IO) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
+func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
 
 	cases := []reflect.SelectCase{
 		// Read from the done channel
@@ -96,9 +101,14 @@ func (io *IO) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
 	}
 
 	chosen, recv, recvOk := reflect.Select(cases)
+
+	// Done was selected
 	if chosen == 0 || !recvOk {
 		return nil, false
 	}
+
+	// Reading from the io output buffer was selected, so an element is dequeued
+	// from the buffer and flushed to the io output
 	if chosen == 1 {
 		select {
 		case <-done:
@@ -108,10 +118,14 @@ func (io *IO) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
 			return nil, io.buf.Dequeue()
 		}
 	}
+	// Reading from the io input was selected, so an element is read from the io
+	// input and returned
 	if chosen == 2 {
 		return recv.Interface().(Message), recvOk
 	}
 
+	// An input buffer was selected from one of the channels, so an element is
+	// dequeued from the input buffer and flushed to the channel input
 	if (chosen-3)%2 == 0 {
 		ch := channels[(chosen - 3)].(*channel)
 		select {
@@ -122,9 +136,12 @@ func (io *IO) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
 			return nil, ch.buf.Dequeue()
 		}
 	}
+
+	// An output was selected from one of the channels, so an element is read
+	// from the channel output and returned
 	return recv.Interface().(Message), recvOk
 }
 
-func (io *IO) Channel() Channel {
+func (io *inputOutput) Channel() Channel {
 	return io.ch
 }
