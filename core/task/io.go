@@ -127,7 +127,7 @@ func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message
 	// An input buffer was selected from one of the channels, so an element is
 	// dequeued from the input buffer and flushed to the channel input
 	if (chosen-3)%2 == 0 {
-		ch := channels[(chosen - 3)].(*channel)
+		ch := channels[(chosen-3)/2].(*channel)
 		select {
 		case <-done:
 			return nil, false
