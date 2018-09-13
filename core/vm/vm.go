@@ -22,7 +22,7 @@ type VM struct {
 	mul            task.Task
 	open           task.Task
 	processes      map[process.ID]process.Process
-	processIntents map[[32]byte]process.Intent
+	processIntents map[task.MessageID]process.Intent
 }
 
 func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
@@ -35,7 +35,7 @@ func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
 		mul:            mul.New(n, k, cap),
 		open:           open.New(n, k, cap),
 		processes:      map[process.ID]process.Process{},
-		processIntents: map[[32]byte]process.Intent{},
+		processIntents: map[task.MessageID]process.Intent{},
 	}
 	return vm
 }
@@ -139,16 +139,16 @@ func (vm *VM) exec(exec Exec) {
 
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
-		vm.processIntents[proc.Nonce()] = intent
-		vm.rng.Channel().Send(rng.NewSignalGenerateRn(task.MessageID(proc.Nonce())))
+		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
+		vm.rng.Channel().Send(rng.NewSignalGenerateRn(pidToMsgid(proc.ID, proc.PC)))
 
 	case process.IntentToMultiply:
-		vm.processIntents[proc.Nonce()] = intent
-		vm.mul.Channel().Send(mul.NewSignalMul(task.MessageID(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
+		vm.mul.Channel().Send(mul.NewSignalMul(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
-		vm.processIntents[proc.Nonce()] = intent
-		vm.open.Channel().Send(open.NewSignal(task.MessageID(proc.Nonce()), intent.Value))
+		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
+		vm.open.Channel().Send(open.NewSignal(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.Value))
 
 	case process.IntentToError:
 		vm.io.Write(task.NewError(intent))
@@ -200,6 +200,7 @@ func (vm *VM) recvInternalRngResult(message rng.Result) {
 		default:
 			log.Printf("[error] (vm, rng, σ) unavailable intent")
 		}
+
 	default:
 		// FIXME: Handle intent transitioning correctly.
 		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
@@ -208,9 +209,7 @@ func (vm *VM) recvInternalRngResult(message rng.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [30]byte{}
-	copy(pid[:], message.MessageID[2:])
-	vm.exec(NewExec(vm.processes[process.ID(pid)]))
+	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
 }
 
 func (vm *VM) recvInternalOpenMul(message mul.OpenMul) {
@@ -238,9 +237,7 @@ func (vm *VM) recvInternalMulResult(message mul.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [30]byte{}
-	copy(pid[:], message.MessageID[2:])
-	vm.exec(NewExec(vm.processes[process.ID(pid)]))
+	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
 }
 
 func (vm *VM) recvInternalOpen(message open.Open) {
@@ -268,7 +265,25 @@ func (vm *VM) recvInternalOpenResult(message open.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [30]byte{}
-	copy(pid[:], message.MessageID[2:])
-	vm.exec(NewExec(vm.processes[process.ID(pid)]))
+	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
+}
+
+func pidToMsgid(pid process.ID, pc process.PC) task.MessageID {
+	id := task.MessageID{}
+	copy(id[:32], pid[:32])
+	id[32] = byte(pc)
+	id[33] = byte(pc >> 8)
+	id[34] = byte(pc >> 16)
+	id[35] = byte(pc >> 24)
+	id[36] = byte(pc >> 32)
+	id[37] = byte(pc >> 40)
+	id[38] = byte(pc >> 48)
+	id[39] = byte(pc >> 56)
+	return id
+}
+
+func msgidToPid(msgid task.MessageID) process.ID {
+	pid := process.ID{}
+	copy(pid[:32], msgid[:32])
+	return pid
 }

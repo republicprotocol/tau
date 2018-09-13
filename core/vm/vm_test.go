@@ -8,8 +8,8 @@ import (
 	"math/rand"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/oro-go/core/buffer"
 	"github.com/republicprotocol/oro-go/core/stack"
+	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/process"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
@@ -41,17 +41,13 @@ var _ = Describe("Virtual Machine", func() {
 
 	// initVMs for a secure multi-party computation network. The VMs will
 	// communicate to execute processes.
-	initVMs := func(n, k, leader uint, cap int) ([]VM, []buffer.ReaderWriter, []buffer.ReaderWriter) {
+	initVMs := func(n, k uint64, cap int) []VM {
 		// Initialize the VMs
-		ins := make([]buffer.ReaderWriter, n)
-		outs := make([]buffer.ReaderWriter, n)
 		vms := make([]VM, n)
-		for i := uint(0); i < n; i++ {
-			ins[i] = buffer.NewReaderWriter(cap)
-			outs[i] = buffer.NewReaderWriter(cap)
-			vms[i] = New(ins[i], outs[i], uint64(i), uint64(leader), PedersenScheme, n, k, cap)
+		for i := 0; i < len(vms); i++ {
+			vms[i] = New(PedersenScheme, uint64(i)+1, n, k, cap)
 		}
-		return vms, ins, outs
+		return vms
 	}
 
 	// runVMs until the done channel is closed.
@@ -61,15 +57,15 @@ var _ = Describe("Virtual Machine", func() {
 		})
 	}
 
-	routeMessages := func(done <-chan struct{}, ins, outs []buffer.ReaderWriter) <-chan TestResult {
-		results := make(chan TestResult, len(outs))
+	routeMessages := func(done <-chan struct{}, tasks []task.Task) <-chan TestResult {
+		results := make(chan TestResult, len(tasks))
 
 		go func() {
 			defer close(results)
 
-			co.ParForAll(outs, func(i int) {
+			co.ParForAll(tasks, func(i int) {
 				defer GinkgoRecover()
-				var message buffer.Message
+				var message task.Message
 				var ok bool
 
 				for {

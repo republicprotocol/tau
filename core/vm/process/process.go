@@ -51,7 +51,7 @@ func (ret Return) IsTerminated() bool {
 	return ret.terminated
 }
 
-type ID [30]byte
+type ID [32]byte
 
 type Process struct {
 	ID
@@ -70,14 +70,6 @@ func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
 		Code:   code,
 		PC:     0,
 	}
-}
-
-func (proc *Process) Nonce() [32]byte {
-	n := [32]byte{}
-	copy(n[2:], proc.ID[:])
-	n[0] = byte(proc.PC)
-	n[1] = byte(proc.PC >> 8)
-	return n
 }
 
 func (proc *Process) Exec() Return {
