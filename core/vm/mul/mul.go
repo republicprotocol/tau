@@ -43,7 +43,9 @@ func (multiplier *multiplier) Run(done <-chan struct{}) {
 		if !ok {
 			return
 		}
-		multiplier.recv(message)
+		if message != nil {
+			multiplier.recv(message)
+		}
 	}
 }
 

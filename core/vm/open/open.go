@@ -43,7 +43,9 @@ func (opener *opener) Run(done <-chan struct{}) {
 		if !ok {
 			return
 		}
-		opener.recv(message)
+		if message != nil {
+			opener.recv(message)
+		}
 	}
 }
 

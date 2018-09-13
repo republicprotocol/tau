@@ -14,27 +14,28 @@ import (
 )
 
 type VM struct {
-	io             task.IO
-	ioExternal     task.IO
+	io task.IO
+
+	index uint64
+
+	rng            task.Task
+	mul            task.Task
+	open           task.Task
 	processes      map[process.ID]process.Process
 	processIntents map[[32]byte]process.Intent
-
-	addr uint64
-	rng  task.Task
-	mul  task.Task
-	open task.Task
 }
 
-func New(addr, leader uint64, ped pedersen.Pedersen, n, k uint, cap int) VM {
+func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
 	vm := VM{
-		io:             task.NewIO(cap),
+		io: task.NewIO(cap),
+
+		index: index,
+
+		rng:            rng.New(scheme, index, n, k, n-k, cap),
+		mul:            mul.New(n, k, cap),
+		open:           open.New(n, k, cap),
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[[32]byte]process.Intent{},
-
-		addr: addr,
-		rng:  rng.New(rng.Address(addr), rng.Address(leader), ped, n, k, n-k, cap),
-		mul:  mul.New(n, k, cap),
-		open: open.New(n, k, cap),
 	}
 	return vm
 }
@@ -56,7 +57,9 @@ func (vm *VM) Run(done <-chan struct{}) {
 				if !ok {
 					return
 				}
-				vm.recvMessage(message)
+				if message != nil {
+					vm.recv(message)
+				}
 			}
 		})
 }
@@ -74,7 +77,7 @@ func (vm *VM) runBackgroundGoroutines(done <-chan struct{}) {
 		})
 }
 
-func (vm *VM) recvMessage(message task.Message) {
+func (vm *VM) recv(message task.Message) {
 	switch message := message.(type) {
 
 	case Exec:
@@ -83,36 +86,29 @@ func (vm *VM) recvMessage(message task.Message) {
 	case RemoteProcedureCall:
 		vm.invoke(message)
 
-	case rng.ProposeRn:
-		vm.proposeRn(message)
+	case rng.RnShares:
+		vm.recvInternalRnShares(message)
 
-	case rng.LocalRnShares:
-		vm.handleRngLocalRnShares(message)
+	case rng.Result:
+		vm.recvInternalRngResult(message)
 
-	case rng.ProposeGlobalRnShare:
-		vm.handleRngProposeGlobalRnShare(message)
-
-	case rng.GlobalRnShare:
-		vm.handleRngResult(message)
-
-	case mul.BroadcastIntermediateShare:
-		vm.handleMulOpen(message)
+	case mul.OpenMul:
+		vm.recvInternalOpenMul(message)
 
 	case mul.Result:
-		vm.handleMulResult(message)
+		vm.recvInternalMulResult(message)
 
-	case open.BroadcastShare:
-		vm.handleOpenBroadcastShare(message)
+	case open.Open:
+		vm.recvInternalOpen(message)
 
 	case open.Result:
-		vm.handleOpenResult(message)
+		vm.recvInternalOpenResult(message)
 
-	case rng.Err:
-		// TODO: Error handling?
-		log.Printf("[error] (vm, rng) %v", message.Error())
+	case task.Error:
+		log.Printf("[error] (vm) %v", message.Error())
 
 	default:
-		log.Printf("[error] (vm) unexpected message type %T", message)
+		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
@@ -120,44 +116,43 @@ func (vm *VM) exec(exec Exec) {
 	proc := exec.proc
 	vm.processes[proc.ID] = proc
 
-	// log.Printf("[debug] (vm %v) <%p> executing = %v", vm.addr, vm.mul, proc.Nonce())
 	ret := proc.Exec()
 	vm.processes[proc.ID] = proc
-	// log.Printf("[debug] (vm %v) <%p> done = %v", vm.addr, vm.mul, proc.Nonce())
 
 	if ret.IsReady() {
-		log.Printf("[error] (vm %v) process is ready after execution = %v", vm.addr, proc.ID)
+		vm.io.Write(task.NewError(fmt.Errorf("process is ready after execution = %v", proc.ID)))
 		return
 	}
 	if ret.IsTerminated() {
-		// log.Printf("[debug] (vm %v) process is terminated = %v", vm.addr, proc.ID)
 		result, err := proc.Stack.Pop()
 		if err != nil {
-			panic("unimplemented")
+			vm.io.Write(task.NewError(err))
+			return
 		}
 		vm.io.Write(NewResult(result.(process.Value)))
 		return
 	}
 	if ret.Intent() == nil {
-		log.Printf("[debug] (vm %v) process is waiting = %v", vm.addr, proc.ID)
+		log.Printf("[debug] (vm %v) process is waiting = %v", vm.index, proc.ID)
 		return
 	}
 
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.rng.Channel().Send(rng.NewGenerateRn(rng.Nonce(proc.Nonce())))
+		vm.rng.Channel().Send(rng.NewSignalGenerateRn(task.MessageID(proc.Nonce())))
 
 	case process.IntentToMultiply:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.mul.Channel().Send(mul.NewMul(mul.Nonce(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.mul.Channel().Send(mul.NewSignalMul(task.MessageID(proc.Nonce()), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
 		vm.processIntents[proc.Nonce()] = intent
-		vm.open.Channel().Send(open.NewOpen(open.Nonce(proc.Nonce()), intent.Value))
+		vm.open.Channel().Send(open.NewSignal(task.MessageID(proc.Nonce()), intent.Value))
 
 	case process.IntentToError:
-		log.Printf("[error] (vm %v) %v", vm.addr, intent.Error())
+		vm.io.Write(task.NewError(intent))
+		return
 
 	default:
 		panic("unimplemented")
@@ -167,13 +162,13 @@ func (vm *VM) exec(exec Exec) {
 func (vm *VM) invoke(message RemoteProcedureCall) {
 	switch message := message.Message.(type) {
 
-	case rng.ProposeRn, rng.LocalRnShares, rng.ProposeGlobalRnShare:
+	case rng.RnShares, rng.ProposeRnShare:
 		vm.rng.Channel().Send(message)
 
-	case mul.BroadcastIntermediateShare:
+	case mul.OpenMul:
 		vm.mul.Channel().Send(message)
 
-	case open.BroadcastShare:
+	case open.Open:
 		vm.open.Channel().Send(message)
 
 	default:
@@ -181,20 +176,12 @@ func (vm *VM) invoke(message RemoteProcedureCall) {
 	}
 }
 
-func (vm *VM) proposeRn(message rng.ProposeRn) {
+func (vm *VM) recvInternalRnShares(message rng.RnShares) {
 	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
-func (vm *VM) handleRngLocalRnShares(message rng.LocalRnShares) {
-	vm.io.Write(NewRemoteProcedureCall(message))
-}
-
-func (vm *VM) handleRngProposeGlobalRnShare(message rng.ProposeGlobalRnShare) {
-	vm.io.Write(NewRemoteProcedureCall(message))
-}
-
-func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
-	intent, ok := vm.processIntents[message.Nonce]
+func (vm *VM) recvInternalRngResult(message rng.Result) {
+	intent, ok := vm.processIntents[message.MessageID]
 	if !ok {
 		return
 	}
@@ -203,13 +190,13 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 	case process.IntentToGenerateRn:
 
 		select {
-		case intent.Rho <- message.RhoShare:
+		case intent.Rho <- message.Rho:
 		default:
 			log.Printf("[error] (vm, rng, ρ) unavailable intent")
 		}
 
 		select {
-		case intent.Sigma <- message.SigmaShare:
+		case intent.Sigma <- message.Sigma:
 		default:
 			log.Printf("[error] (vm, rng, σ) unavailable intent")
 		}
@@ -219,19 +206,19 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 		return
 	}
 
-	delete(vm.processIntents, message.Nonce)
+	delete(vm.processIntents, message.MessageID)
 
 	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	copy(pid[:], message.MessageID[1:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
-func (vm *VM) handleMulOpen(message mul.BroadcastIntermediateShare) {
+func (vm *VM) recvInternalOpenMul(message mul.OpenMul) {
 	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
-func (vm *VM) handleMulResult(message mul.Result) {
-	intent, ok := vm.processIntents[message.Nonce]
+func (vm *VM) recvInternalMulResult(message mul.Result) {
+	intent, ok := vm.processIntents[message.MessageID]
 	if !ok {
 		return
 	}
@@ -245,23 +232,23 @@ func (vm *VM) handleMulResult(message mul.Result) {
 		}
 	default:
 		// FIXME: Handle intent transitioning correctly.
-		log.Printf("[error] (vm, mul) <%v> unexpected intent type %T", vm.addr, intent)
+		log.Printf("[error] (vm, mul) <%v> unexpected intent type %T", vm.index, intent)
 		return
 	}
 
-	delete(vm.processIntents, message.Nonce)
+	delete(vm.processIntents, message.MessageID)
 
 	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	copy(pid[:], message.MessageID[1:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
-func (vm *VM) handleOpenBroadcastShare(message open.BroadcastShare) {
+func (vm *VM) recvInternalOpen(message open.Open) {
 	vm.io.Write(NewRemoteProcedureCall(message))
 }
 
-func (vm *VM) handleOpenResult(message open.Result) {
-	intent, ok := vm.processIntents[(message.Nonce)]
+func (vm *VM) recvInternalOpenResult(message open.Result) {
+	intent, ok := vm.processIntents[(message.MessageID)]
 	if !ok {
 		return
 	}
@@ -279,9 +266,9 @@ func (vm *VM) handleOpenResult(message open.Result) {
 		return
 	}
 
-	delete(vm.processIntents, (message.Nonce))
+	delete(vm.processIntents, message.MessageID)
 
 	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	copy(pid[:], message.MessageID[1:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }

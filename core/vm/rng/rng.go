@@ -64,7 +64,7 @@ func (rnger *rnger) recv(message task.Message) {
 		rnger.signalGenerateRn(message)
 
 	case RnShares:
-		rnger.tryBuildRnShares(message)
+		rnger.tryBuildRnShareProposals(message)
 
 	case ProposeRnShare:
 		rnger.acceptRnShare(message)
@@ -103,7 +103,7 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) {
 	rnger.io.Write(NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index))
 }
 
-func (rnger *rnger) tryBuildRnShares(message RnShares) {
+func (rnger *rnger) tryBuildRnShareProposals(message RnShares) {
 	// Do not continue if we have already completed the opening
 	if _, ok := rnger.results[message.MessageID]; ok {
 		return
@@ -125,32 +125,7 @@ func (rnger *rnger) tryBuildRnShares(message RnShares) {
 		return
 	}
 
-	rnShareProposals := make([]ProposeRnShare, rnger.n)
-	for j := uint64(1); j <= rnger.n; j++ {
-		// FIXME: Implement the VSS commitments correctly.
-
-		ρShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
-		ρt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
-		ρ := vss.New([]algebra.FpElement{}, ρShare, ρt)
-
-		σShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
-		σt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
-		σ := vss.New([]algebra.FpElement{}, σShare, σt)
-
-		for _, rnShares := range rnger.rnShares[message.MessageID] {
-			// TODO: Remember, we need an additively homomorphic encryption
-			// scheme for these shares to ensure that this technique works.
-
-			ρFromShares := rnShares.Rho[j-1]
-			ρ = ρ.Add(&ρFromShares)
-
-			σFromShares := rnShares.Sigma[j-1]
-			σ = σ.Add(&σFromShares)
-		}
-
-		rnShareProposals[j-1] = NewProposeRnShare(message.MessageID, ρ, σ)
-	}
-
+	rnShareProposals := rnger.buildRnShareProposals(message.MessageID)
 	rnger.acceptRnShare(rnShareProposals[rnger.index-1])
 
 	for i, rnShareProposal := range rnShareProposals {
@@ -169,4 +144,46 @@ func (rnger *rnger) acceptRnShare(message ProposeRnShare) {
 	delete(rnger.rnShares, message.MessageID)
 
 	rnger.io.Write(result)
+}
+
+func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []ProposeRnShare {
+
+	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
+	one := rnger.scheme.SecretField().NewInField(big.NewInt(1))
+
+	ρCommitments := make(algebra.FpElements, rnger.k/2-1)
+	for i := 0; i < len(ρCommitments); i++ {
+		ρCommitments[i] = one
+	}
+	σCommitments := make(algebra.FpElements, rnger.k-1)
+	for i := 0; i < len(σCommitments); i++ {
+		σCommitments[i] = one
+	}
+
+	rnShareProposals := make([]ProposeRnShare, rnger.n)
+	for j := uint64(1); j <= rnger.n; j++ {
+
+		ρShare := shamir.New(j, zero)
+		ρt := shamir.New(j, zero)
+		ρ := vss.New(ρCommitments, ρShare, ρt)
+
+		σShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		σt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		σ := vss.New(σCommitments, σShare, σt)
+
+		for _, rnShares := range rnger.rnShares[messageID] {
+			// TODO: Remember, we need an additively homomorphic encryption
+			// scheme for these shares to ensure that this technique works.
+
+			ρFromShares := rnShares.Rho[j-1]
+			ρ = ρ.Add(&ρFromShares)
+
+			σFromShares := rnShares.Sigma[j-1]
+			σ = σ.Add(&σFromShares)
+		}
+
+		rnShareProposals[j-1] = NewProposeRnShare(messageID, ρ, σ)
+	}
+
+	return rnShareProposals
 }

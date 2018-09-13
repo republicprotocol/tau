@@ -4,10 +4,7 @@ import (
 	"fmt"
 
 	"github.com/republicprotocol/oro-go/core/task"
-	"github.com/republicprotocol/oro-go/core/vm/mul"
-	"github.com/republicprotocol/oro-go/core/vm/open"
 	"github.com/republicprotocol/oro-go/core/vm/process"
-	"github.com/republicprotocol/oro-go/core/vm/rng"
 )
 
 type Exec struct {
@@ -56,39 +53,40 @@ func (message RemoteProcedureCall) IsMessage() {
 }
 
 func (message RemoteProcedureCall) String() (ret string) {
-	switch msg := message.Message.(type) {
-	case rng.Nominate:
-		ret = msg.String()
-	case rng.GenerateRn:
-		ret = msg.String()
-	case rng.ProposeRn:
-		ret = msg.String()
-	case rng.LocalRnShares:
-		ret = msg.String()
-	case rng.ProposeGlobalRnShare:
-		ret = msg.String()
-	case rng.GlobalRnShare:
-		ret = msg.String()
-	case rng.VoteGlobalRnShare:
-		ret = msg.String()
-	case rng.CheckDeadline:
-		ret = msg.String()
-	case rng.Err:
-		ret = msg.String()
+	// switch msg := message.Message.(type) {
+	// case rng.Nominate:
+	// 	ret = msg.String()
+	// case rng.GenerateRn:
+	// 	ret = msg.String()
+	// case rng.ProposeRn:
+	// 	ret = msg.String()
+	// case rng.LocalRnShares:
+	// 	ret = msg.String()
+	// case rng.ProposeGlobalRnShare:
+	// 	ret = msg.String()
+	// case rng.GlobalRnShare:
+	// 	ret = msg.String()
+	// case rng.VoteGlobalRnShare:
+	// 	ret = msg.String()
+	// case rng.CheckDeadline:
+	// 	ret = msg.String()
+	// case rng.Err:
+	// 	ret = msg.String()
 
-	case open.Open:
-		ret = msg.String()
-	case open.BroadcastShare:
-		ret = msg.String()
-	case open.Result:
-		ret = msg.String()
+	// case open.Open:
+	// 	ret = msg.String()
+	// case open.BroadcastShare:
+	// 	ret = msg.String()
+	// case open.Result:
+	// 	ret = msg.String()
 
-	case mul.Mul:
-		ret = msg.String()
-	case mul.BroadcastIntermediateShare:
-		ret = msg.String()
-	case mul.Result:
-		ret = msg.String()
-	}
-	return ret
+	// case mul.Mul:
+	// 	ret = msg.String()
+	// case mul.BroadcastIntermediateShare:
+	// 	ret = msg.String()
+	// case mul.Result:
+	// 	ret = msg.String()
+	// }
+	// return ret
+	return "rpc"
 }

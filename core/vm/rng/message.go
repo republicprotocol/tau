@@ -8,13 +8,11 @@ import (
 
 type SignalGenerateRn struct {
 	task.MessageID
-
-	isLeader bool
 }
 
 // NewSignalGenerateRn creates a new SignalGenerateRn message.
-func NewSignalGenerateRn(id task.MessageID, isLeader bool) SignalGenerateRn {
-	return SignalGenerateRn{id, isLeader}
+func NewSignalGenerateRn(id task.MessageID) SignalGenerateRn {
+	return SignalGenerateRn{id}
 }
 
 // IsMessage implements the Message interface.
