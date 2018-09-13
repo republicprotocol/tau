@@ -17,7 +17,11 @@ type opener struct {
 }
 
 func New(n, k uint64, cap int) task.Task {
-	opener := &opener{
+	return task.New(task.NewIO(cap), newOpener(n, k, cap))
+}
+
+func newOpener(n, k uint64, cap int) *opener {
+	return &opener{
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
 
@@ -25,10 +29,9 @@ func New(n, k uint64, cap int) task.Task {
 		opens:   map[task.MessageID]map[uint64]Open{},
 		results: map[task.MessageID]Result{},
 	}
-	return task.New(cap, opener.reduce)
 }
 
-func (opener *opener) reduce(message task.Message) task.Message {
+func (opener *opener) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case Signal:

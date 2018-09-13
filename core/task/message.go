@@ -18,6 +18,15 @@ type Message interface {
 	IsMessage()
 }
 
+type Messages []Message
+
+func NewMessages(messages ...Message) Message {
+	return Messages(messages)
+}
+
+func (message Messages) IsMessage() {
+}
+
 type Error struct {
 	error
 }

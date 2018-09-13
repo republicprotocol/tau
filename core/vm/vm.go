@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/mul"
 	"github.com/republicprotocol/oro-go/core/vm/open"
@@ -14,21 +13,25 @@ import (
 )
 
 type VM struct {
-	io task.IO
-
-	index uint64
-
-	rng            task.Task
-	mul            task.Task
-	open           task.Task
+	index          uint64
 	processes      map[process.ID]process.Process
 	processIntents map[task.MessageID]process.Intent
+
+	rng  task.Task
+	mul  task.Task
+	open task.Task
 }
 
-func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
-	vm := VM{
-		io: task.NewIO(cap),
+func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
+	return newTask(newVM(scheme, index, n, k, cap), cap)
+}
 
+func newTask(vm *VM, cap int) task.Task {
+	return task.New(cap, vm, vm.rng, vm.mul, vm.open)
+}
+
+func newVM(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
+	return &VM{
 		index: index,
 
 		rng:            rng.New(scheme, index, n, k, n-k, cap),
@@ -37,47 +40,9 @@ func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[task.MessageID]process.Intent{},
 	}
-	return vm
 }
 
-func (vm *VM) Channel() task.Channel {
-	return vm.io.Channel()
-}
-
-func (vm *VM) Run(done <-chan struct{}) {
-	defer log.Printf("[info] (vm) terminating")
-
-	co.ParBegin(
-		func() {
-			vm.runBackgroundGoroutines(done)
-		},
-		func() {
-			for {
-				message, ok := vm.io.Flush(done, vm.rng.Channel(), vm.mul.Channel(), vm.open.Channel())
-				if !ok {
-					return
-				}
-				if message != nil {
-					vm.recv(message)
-				}
-			}
-		})
-}
-
-func (vm *VM) runBackgroundGoroutines(done <-chan struct{}) {
-	co.ParBegin(
-		func() {
-			vm.rng.Run(done)
-		},
-		func() {
-			vm.mul.Run(done)
-		},
-		func() {
-			vm.open.Run(done)
-		})
-}
-
-func (vm *VM) recv(message task.Message) {
+func (vm *VM) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case Exec:
@@ -112,7 +77,7 @@ func (vm *VM) recv(message task.Message) {
 	}
 }
 
-func (vm *VM) exec(exec Exec) {
+func (vm *VM) exec(exec Exec) task.Message {
 	proc := exec.proc
 	vm.processes[proc.ID] = proc
 
@@ -140,23 +105,24 @@ func (vm *VM) exec(exec Exec) {
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
-		vm.rng.Channel().Send(rng.NewSignalGenerateRn(pidToMsgid(proc.ID, proc.PC)))
+		vm.rng.Send(rng.NewSignalGenerateRn(pidToMsgid(proc.ID, proc.PC)))
 
 	case process.IntentToMultiply:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
-		vm.mul.Channel().Send(mul.NewSignalMul(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.mul.Send(mul.NewSignalMul(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
-		vm.open.Channel().Send(open.NewSignal(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.Value))
+		vm.open.Send(open.NewSignal(task.MessageID(pidToMsgid(proc.ID, proc.PC)), intent.Value))
 
 	case process.IntentToError:
-		vm.io.Write(task.NewError(intent))
-		return
+		return task.NewError(intent)
 
 	default:
 		panic("unimplemented")
 	}
+
+	return nil
 }
 
 func (vm *VM) invoke(message RemoteProcedureCall) {

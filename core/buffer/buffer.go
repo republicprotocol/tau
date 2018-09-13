@@ -4,13 +4,17 @@ package buffer
 type Element interface {
 }
 
+// Peeker is a read-only channel that holds an Element. It is returned from a
+// Buffer to peek at the Element that will be dequeued next.
+type Peeker (<-chan Element)
+
 // A Buffer is a FIFO queue of Elements with a limitied capacity. It will not
 // Enqueue Elements when it is full, and will not Dequeue Elements when it is
 // empty.
 type Buffer interface {
+	Peek() Peeker
 	Enqueue(Element) bool
 	Dequeue() bool
-	Peek() <-chan Element
 	IsFull() bool
 	IsEmpty() bool
 }
@@ -35,6 +39,20 @@ func New(cap int) Buffer {
 		empty: true,
 		elems: make([]Element, cap, cap),
 	}
+}
+
+// Peek clones the Element at the front of the Buffer and returns a read-only
+// channel that will produce this Element. The Element is not popped from the
+// Buffer.
+func (buf *buffer) Peek() Peeker {
+	if buf.IsEmpty() {
+		return nil
+	}
+
+	peek := make(chan Element, 1)
+	peek <- buf.elems[buf.top]
+
+	return peek
 }
 
 // Enqueue an Element onto the end of the Buffer. Returns true if the Buffer
@@ -66,20 +84,6 @@ func (buf *buffer) Dequeue() bool {
 	buf.empty = buf.top == buf.free
 
 	return true
-}
-
-// Peek clones the Element at the front of the Buffer and returns a read-only
-// channel that will produce this Element. The Element is not popped from the
-// Buffer.
-func (buf *buffer) Peek() <-chan Element {
-	if buf.IsEmpty() {
-		return nil
-	}
-
-	peek := make(chan Element, 1)
-	peek <- buf.elems[buf.top]
-
-	return peek
 }
 
 // IsFull returns true if the Buffer is full, otherwise it return false. If the
