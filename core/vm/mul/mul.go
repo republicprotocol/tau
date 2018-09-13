@@ -78,6 +78,9 @@ func (multiplier *multiplier) signalMul(message SignalMul) {
 }
 
 func (multiplier *multiplier) tryOpenMul(message OpenMul) {
+	if _, ok := multiplier.results[message.MessageID]; ok {
+		return
+	}
 	if _, ok := multiplier.opens[message.MessageID]; !ok {
 		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
 	}

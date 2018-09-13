@@ -27,6 +27,20 @@ func InstPush(value Value) Inst {
 func (inst instPush) IsInst() {
 }
 
+type instCopy struct {
+	depth uint64
+}
+
+// InstCopy will push a copy of the top element of the stack to the stack. This
+// Inst is synchronous.
+func InstCopy(depth uint64) Inst {
+	return instCopy{depth}
+}
+
+// IsInst implements the Inst interface.
+func (inst instCopy) IsInst() {
+}
+
 type instStore struct {
 	addr Addr
 }
@@ -55,6 +69,20 @@ func InstLoad(addr Addr) Inst {
 func (inst instLoad) IsInst() {
 }
 
+type instLoadStack struct {
+	offset uint64
+}
+
+// InstLoadStack will load a Value from the stack and push it to the top of the
+// Stack. This Inst is synchronous.
+func InstLoadStack(offset uint64) Inst {
+	return instLoadStack{offset}
+}
+
+// IsInst implements the Inst interface.
+func (inst instLoadStack) IsInst() {
+}
+
 type instAdd struct {
 }
 
@@ -66,6 +94,18 @@ func InstAdd() Inst {
 
 // IsInst implements the Inst interface.
 func (inst instAdd) IsInst() {
+}
+
+type instNeg struct {
+}
+
+// InstNeg will negate an element on the stack. This Inst is synchronous.
+func InstNeg() Inst {
+	return instNeg{}
+}
+
+// IsInst implements the Inst interface.
+func (inst instNeg) IsInst() {
 }
 
 type instSub struct {
@@ -148,4 +188,18 @@ func InstOpen() Inst {
 
 // IsInst implements the Inst interface.
 func (inst instOpen) IsInst() {
+}
+
+type instMacro struct {
+	code Code
+}
+
+// InstMacro will insert code into the list of instructions. This Inst is
+// synchronous.
+func InstMacro(code Code) Inst {
+	return instMacro{code}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMacro) IsInst() {
 }

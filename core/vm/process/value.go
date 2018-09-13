@@ -36,6 +36,11 @@ func (lhs ValuePublic) Add(rhs Value) (ret Value) {
 	return
 }
 
+func (lhs ValuePublic) Neg() Value {
+	return ValuePublic{lhs.Value.Neg()}
+
+}
+
 func (lhs ValuePublic) Sub(rhs Value) (ret Value) {
 	switch rhs := rhs.(type) {
 	case ValuePublic:
@@ -83,6 +88,11 @@ func (lhs ValuePrivate) Add(rhs Value) (ret Value) {
 		panic("unimplemented")
 	}
 	return
+}
+
+func (lhs ValuePrivate) Neg() Value {
+	return ValuePrivate{shamir.New(lhs.Share.Index(), lhs.Share.Value().Neg())}
+
 }
 
 func (lhs ValuePrivate) Sub(rhs Value) (ret Value) {
