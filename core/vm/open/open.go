@@ -8,8 +8,6 @@ import (
 )
 
 type opener struct {
-	io task.IO
-
 	n, k        uint64
 	sharesCache shamir.Shares
 
@@ -19,9 +17,7 @@ type opener struct {
 }
 
 func New(n, k uint64, cap int) task.Task {
-	return &opener{
-		io: task.NewIO(cap),
-
+	opener := &opener{
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
 
@@ -29,51 +25,36 @@ func New(n, k uint64, cap int) task.Task {
 		opens:   map[task.MessageID]map[uint64]Open{},
 		results: map[task.MessageID]Result{},
 	}
+	return task.New(cap, opener.reduce)
 }
 
-func (opener *opener) Channel() task.Channel {
-	return opener.io.Channel()
-}
-
-func (opener *opener) Run(done <-chan struct{}) {
-	for {
-		message, ok := opener.io.Flush(done)
-		if !ok {
-			return
-		}
-		if message != nil {
-			opener.recv(message)
-		}
-	}
-}
-
-func (opener *opener) recv(message task.Message) {
+func (opener *opener) reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case Signal:
-		opener.signal(message)
+		return opener.signal(message)
 
 	case Open:
-		opener.tryOpen(message)
+		return opener.tryOpen(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
-func (opener *opener) signal(message Signal) {
+func (opener *opener) signal(message Signal) task.Message {
 	if result, ok := opener.results[message.MessageID]; ok {
-		opener.io.Write(result)
-		return
+		return result
 	}
 	opener.signals[message.MessageID] = message
 
-	opener.tryOpen(NewOpen(message.MessageID, message.Share))
+	open := NewOpen(message.MessageID, message.Share)
+	opener.tryOpen(open)
 
-	opener.io.Write(NewOpen(message.MessageID, message.Share))
+	return open
 }
 
-func (opener *opener) tryOpen(message Open) {
+func (opener *opener) tryOpen(message Open) task.Message {
 	if _, ok := opener.opens[message.MessageID]; !ok {
 		opener.opens[message.MessageID] = map[uint64]Open{}
 	}
@@ -81,15 +62,15 @@ func (opener *opener) tryOpen(message Open) {
 
 	// Do not continue if there is an insufficient number of shares
 	if uint64(len(opener.opens[message.MessageID])) < opener.k {
-		return
+		return nil
 	}
 	// Do not continue if we have not received a signal to open
 	if _, ok := opener.signals[message.MessageID]; !ok {
-		return
+		return nil
 	}
 	// Do not continue if we have already completed the opening
 	if _, ok := opener.results[message.MessageID]; ok {
-		return
+		return nil
 	}
 
 	n := 0
@@ -99,8 +80,7 @@ func (opener *opener) tryOpen(message Open) {
 	}
 	value, err := shamir.Join(opener.sharesCache[:n])
 	if err != nil {
-		opener.io.Write(task.NewError(err))
-		return
+		return task.NewError(err)
 	}
 	result := NewResult(message.MessageID, value)
 
@@ -108,5 +88,5 @@ func (opener *opener) tryOpen(message Open) {
 	delete(opener.signals, message.MessageID)
 	delete(opener.opens, message.MessageID)
 
-	opener.io.Write(result)
+	return result
 }
