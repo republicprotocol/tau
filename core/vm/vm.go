@@ -208,8 +208,8 @@ func (vm *VM) recvInternalRngResult(message rng.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [31]byte{}
-	copy(pid[:], message.MessageID[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
@@ -238,8 +238,8 @@ func (vm *VM) recvInternalMulResult(message mul.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [31]byte{}
-	copy(pid[:], message.MessageID[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
@@ -268,7 +268,7 @@ func (vm *VM) recvInternalOpenResult(message open.Result) {
 
 	delete(vm.processIntents, message.MessageID)
 
-	pid := [31]byte{}
-	copy(pid[:], message.MessageID[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }

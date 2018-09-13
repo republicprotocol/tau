@@ -2,6 +2,8 @@ package stack
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 var (
@@ -64,6 +66,16 @@ func (stack *Stack) Pop() (Element, error) {
 	return elem, nil
 }
 
+func (stack *Stack) Peek(offset int) (Element, error) {
+	if offset < 0 {
+		return nil, ErrStackOverflow
+	}
+	if offset >= stack.free {
+		return nil, ErrStackUnderflow
+	}
+	return stack.elems[stack.free-offset-1], nil
+}
+
 // IsFull returns true when the Stack is full, otherwise it returns false.
 // Pushing to a full Stack will result in a stack overflow.
 func (stack *Stack) IsFull() bool {
@@ -74,4 +86,12 @@ func (stack *Stack) IsFull() bool {
 // Popping from an empty Stack will result in a stack underflow.
 func (stack *Stack) IsEmpty() bool {
 	return stack.free == 0
+}
+
+func (stack *Stack) String() string {
+	types := []string{}
+	for _, elem := range stack.elems {
+		types = append(types, fmt.Sprintf("%T", elem))
+	}
+	return fmt.Sprintf("[%v]", strings.Join(types, ", "))
 }
