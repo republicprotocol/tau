@@ -3,7 +3,10 @@ package task
 import (
 	"fmt"
 	"runtime/debug"
+	"time"
 )
+
+type MessageID [32]byte
 
 type Message interface {
 	IsMessage()
@@ -18,4 +21,15 @@ func NewError(err error) Message {
 }
 
 func (message Error) IsMessage() {
+}
+
+type Tick struct {
+	time.Time
+}
+
+func NewTick(time time.Time) Message {
+	return Tick{time}
+}
+
+func (message Tick) IsMessage() {
 }

@@ -3,24 +3,45 @@ package open
 import (
 	"fmt"
 
+	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
-type Nonce [32]byte
-
-// An Open message signals to an Opener that it should open shares with other
-// Openers. Before receiving an Open message for a particular Nonce, an Opener
-// will still accept BroadcastShare messages related to the Nonce. However, an
-// Opener will not produce a Result for a particular Nonce until the respective
-// Open message is received.
-type Open struct {
-	Nonce
+// A Signal message signals to an Opener that it should open shares with other
+// Openers. Before receiving a Signal message for a particular task.MessageID,
+// an Opener will still accept Open messages related to the task.MessageID.
+// However, an Opener will not produce a Result for a particular task.MessageID
+// until the respective Signal message is received.
+type Signal struct {
+	task.MessageID
 	shamir.Share
 }
 
-func NewOpen(nonce Nonce, share shamir.Share) Open {
-	return Open{nonce, share}
+// NewSignal returns a new Signal message.
+func NewSignal(id task.MessageID, share shamir.Share) Signal {
+	return Signal{id, share}
+}
+
+// IsMessage implements the Message interface.
+func (message Signal) IsMessage() {
+}
+
+func (message Signal) String() string {
+	return fmt.Sprintf("open.Signal {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Share)
+}
+
+// An Open message is used by an Opener to accept and store shares so that the
+// respective secret can be opened. An Open message is related to other Open
+// messages, and to a Signal message, by its task.MessageID.
+type Open struct {
+	task.MessageID
+	shamir.Share
+}
+
+// NewOpen returns a new Open message.
+func NewOpen(id task.MessageID, share shamir.Share) Open {
+	return Open{id, share}
 }
 
 // IsMessage implements the Message interface.
@@ -28,43 +49,24 @@ func (message Open) IsMessage() {
 }
 
 func (message Open) String() string {
-	return fmt.Sprintf("open.Open {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
+	return fmt.Sprintf("open.Open {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Share)
 }
 
-// A BroadcastShare message is used by an Opener to accept and store shares so
-// that the respective secret can be opened. A BroadcastShare message is related
-// to other BroadcastShare messages, and to an Open message, by its Nonce.
-type BroadcastShare struct {
-	Nonce
-	shamir.Share
-}
-
-func NewBroadcastShare(nonce Nonce, share shamir.Share) BroadcastShare {
-	return BroadcastShare{nonce, share}
-}
-
-// IsMessage implements the Message interface.
-func (message BroadcastShare) IsMessage() {
-}
-
-func (message BroadcastShare) String() string {
-	return fmt.Sprintf("open.BroadcastShare {\n\tnonce: %v\n\tshare: %v\n}", message.Nonce, message.Share)
-}
-
-// A Result message is produced by an Opener after it has received (a) an Open
-// message, and (b) a sufficient threshold of BroadcastShare messages with the
-// same Nonce. The order in which it receives the Open message and the
-// BroadcastShare messages does not affect the production of a Result. A Result
-// message is related to an Open message by its Nonce.
+// A Result message is produced by an Opener after it has received (a) a Signal
+// message, and (b) a sufficient threshold of Open messages with the same task.MessageID.
+// The order in which it receives the Signal message and the Open messages does
+// not affect the production of a Result. A Result message is related to a
+// Signal message by its task.MessageID.
 type Result struct {
-	Nonce
+	task.MessageID
 
 	Value algebra.FpElement
 }
 
-func NewResult(nonce Nonce, value algebra.FpElement) Result {
+// NewResult returns a new Result message.
+func NewResult(id task.MessageID, value algebra.FpElement) Result {
 	return Result{
-		nonce, value,
+		id, value,
 	}
 }
 
@@ -73,5 +75,5 @@ func (message Result) IsMessage() {
 }
 
 func (message Result) String() string {
-	return fmt.Sprintf("open.Result {\n\tnonce: %v\n\tvalue: %v\n}", message.Nonce, message.Value)
+	return fmt.Sprintf("open.Result {\n\tid: %v\n\tvalue: %v\n}", message.MessageID, message.Value)
 }

@@ -1,7 +1,7 @@
 package open
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -10,24 +10,24 @@ import (
 type opener struct {
 	io task.IO
 
-	n, k        uint
+	n, k        uint64
 	sharesCache shamir.Shares
 
-	opens       map[Nonce]Open
-	broadcasts  map[Nonce]map[uint64]BroadcastShare
-	completions map[Nonce]struct{}
+	signals map[task.MessageID]Signal
+	opens   map[task.MessageID]map[uint64]Open
+	results map[task.MessageID]Result
 }
 
-func New(n, k uint, cap int) task.Task {
+func New(n, k uint64, cap int) task.Task {
 	return &opener{
 		io: task.NewIO(cap),
 
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
 
-		opens:       map[Nonce]Open{},
-		broadcasts:  map[Nonce]map[uint64]BroadcastShare{},
-		completions: map[Nonce]struct{}{},
+		signals: map[task.MessageID]Signal{},
+		opens:   map[task.MessageID]map[uint64]Open{},
+		results: map[task.MessageID]Result{},
 	}
 }
 
@@ -43,69 +43,70 @@ func (opener *opener) Run(done <-chan struct{}) {
 		if !ok {
 			return
 		}
-		opener.recvMessage(message)
+		opener.recv(message)
 	}
 }
 
-func (opener *opener) recvMessage(message task.Message) {
+func (opener *opener) recv(message task.Message) {
 	switch message := message.(type) {
 
-	case Open:
-		opener.open(message)
+	case Signal:
+		opener.signal(message)
 
-	case BroadcastShare:
-		opener.recvBroadcastShare(message)
+	case Open:
+		opener.tryOpen(message)
 
 	default:
-		log.Printf("[error] unexpected message type %T", message)
+		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
-// TODO:
-// * Do we delete the openings from memory once we have received enough to open
-//   the secret?
-// * Do we produce duplicate results when we receive more than `k` openings?
-func (opener *opener) open(message Open) {
-	if _, ok := opener.opens[message.Nonce]; ok {
+func (opener *opener) signal(message Signal) {
+	if result, ok := opener.results[message.MessageID]; ok {
+		opener.io.Write(result)
 		return
 	}
-	opener.opens[message.Nonce] = message
-	opener.recvBroadcastShare(NewBroadcastShare(message.Nonce, message.Share))
-	opener.io.Write(NewBroadcastShare(message.Nonce, message.Share))
+	opener.signals[message.MessageID] = message
+
+	opener.tryOpen(NewOpen(message.MessageID, message.Share))
+
+	opener.io.Write(NewOpen(message.MessageID, message.Share))
 }
 
-func (opener *opener) recvBroadcastShare(message BroadcastShare) {
-	if _, ok := opener.broadcasts[message.Nonce]; !ok {
-		opener.broadcasts[message.Nonce] = map[uint64]BroadcastShare{}
+func (opener *opener) tryOpen(message Open) {
+	if _, ok := opener.opens[message.MessageID]; !ok {
+		opener.opens[message.MessageID] = map[uint64]Open{}
 	}
-	opener.broadcasts[message.Nonce][message.Index()] = message
+	opener.opens[message.MessageID][message.Index()] = message
 
 	// Do not continue if there is an insufficient number of shares
-	if uint(len(opener.broadcasts[message.Nonce])) < opener.k {
+	if uint64(len(opener.opens[message.MessageID])) < opener.k {
 		return
 	}
 	// Do not continue if we have not received a signal to open
-	if _, ok := opener.opens[message.Nonce]; !ok {
+	if _, ok := opener.signals[message.MessageID]; !ok {
 		return
 	}
 	// Do not continue if we have already completed the opening
-	if _, ok := opener.completions[message.Nonce]; ok {
+	if _, ok := opener.results[message.MessageID]; ok {
 		return
 	}
 
 	n := 0
-	for _, broadcastShare := range opener.broadcasts[message.Nonce] {
-		opener.sharesCache[n] = broadcastShare.Share
+	for _, opening := range opener.opens[message.MessageID] {
+		opener.sharesCache[n] = opening.Share
 		n++
 	}
-	result, err := shamir.Join(opener.sharesCache[:n])
+	value, err := shamir.Join(opener.sharesCache[:n])
 	if err != nil {
-		panic("unimplemented")
+		opener.io.Write(task.NewError(err))
+		return
 	}
+	result := NewResult(message.MessageID, value)
 
-	delete(opener.opens, message.Nonce)
-	delete(opener.broadcasts, message.Nonce)
-	opener.completions[message.Nonce] = struct{}{}
+	opener.results[message.MessageID] = result
+	delete(opener.signals, message.MessageID)
+	delete(opener.opens, message.MessageID)
 
-	opener.io.Write(NewResult(message.Nonce, result))
+	opener.io.Write(result)
 }

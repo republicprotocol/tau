@@ -1,96 +1,43 @@
 package rng
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
-	"time"
+
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+
+	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss"
-	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
-// A Nonce is used to uniquely identify the generation of a secure random
-// number. All players in the secure multi-party computation network must use
-// the same nonce to identify the same generation.
-type Nonce [32]byte
-
-// An Address identifies a unique player within the secure multi-party
-// computation network.
-type Address uint64
-
-// State enumerates the possible states that the player can be in for a
-// particular computation (nonce).
-type State uint
-
-const (
-	// StateNil is the initial default state for a computation (nonce).
-	StateNil State = iota
-
-	// StateWaitingForLocalRnShares is the state that the computation leader is
-	// in once they have sent out ProposeRn and are waiting for the compute
-	// nodes to respond with their shares of their local random number.
-	StateWaitingForLocalRnShares
-
-	// StateWaitingForGlobalRnShares is the state that the compute nodes are in
-	// once they have sent out the shares of their local random number and are
-	// waiting to receive the shares for the global random number form the
-	// computation leader.
-	StateWaitingForGlobalRnShares
-
-	// StateFinished is the state that a player is in once they have completed
-	// the computation for a given nonce. This is achieved once they have
-	// received their global random number shares and have added the together to
-	// produce their single global random number share.
-	StateFinished
-)
-
-// A VoteTable stores all votes received for a nonce and the timestamp at which
-// the first vote was received.
-type VoteTable struct {
-	StartedAt time.Time
-	Table     map[Address]VoteGlobalRnShare
-}
-
 type rnger struct {
-	io         task.IO
-	ioExternal task.IO
+	io task.IO
 
-	addr, leader Address
-	ped          pedersen.Pedersen
-	n, k, t      uint
+	scheme pedersen.Pedersen
+	index  uint64
 
-	states  map[Nonce]State
-	leaders map[Nonce]Address
+	n, k, t uint64
 
-	rns            map[Nonce]GenerateRn
-	localRnShares  map[Nonce](map[Address]LocalRnShares)
-	globalRnShares map[Nonce]GlobalRnShare
+	signals  map[task.MessageID]SignalGenerateRn
+	rnShares map[task.MessageID]map[uint64]RnShares
+	results  map[task.MessageID]Result
 }
 
-// New returns an Rnger that is identified as the i-th player in a network with
-// n players and k threshold. The Rnger will allocate a buffer for its output
-// messages and this buffer will grow indefinitely if the messages output from
-// the Rnger are not consumed.
-func New(addr, leader Address, ped pedersen.Pedersen, n, k, t uint, cap int) task.Task {
+func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
 	return &rnger{
 		io: task.NewIO(cap),
 
-		addr:   addr,
-		leader: leader,
-		ped:    ped,
-		n:      n,
-		k:      k,
-		t:      t,
+		scheme: scheme,
+		index:  index,
 
-		states:  map[Nonce]State{},
-		leaders: map[Nonce]Address{},
+		n: n, k: k, t: t,
 
-		rns:            map[Nonce]GenerateRn{},
-		localRnShares:  map[Nonce](map[Address]LocalRnShares){},
-		globalRnShares: map[Nonce]GlobalRnShare{},
+		signals:  map[task.MessageID]SignalGenerateRn{},
+		rnShares: map[task.MessageID]map[uint64]RnShares{},
+		results:  map[task.MessageID]Result{},
 	}
 }
 
@@ -98,213 +45,128 @@ func (rnger *rnger) Channel() task.Channel {
 	return rnger.io.Channel()
 }
 
-// Run implements the Rnger interface. Calls to Rnger.Run are blocking and
-// should be run in a background goroutine. It is recommended that the input and
-// output channels are buffered, however it is not required.
 func (rnger *rnger) Run(done <-chan struct{}) {
-	// defer log.Printf("[info] (rng) terminating")
-
 	for {
 		message, ok := rnger.io.Flush(done)
 		if !ok {
 			return
 		}
-		rnger.recvMessage(message)
+		if message != nil {
+			rnger.recv(message)
+		}
 	}
 }
 
-func (rnger *rnger) isLeader(nonce Nonce) bool {
-	return rnger.leaders[nonce] == rnger.addr
-}
-
-func (rnger *rnger) recvMessage(message task.Message) {
+func (rnger *rnger) recv(message task.Message) {
 	switch message := message.(type) {
-	case Nominate:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleNominate(message)
 
-	case GenerateRn:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleGenerateRn(message)
+	case SignalGenerateRn:
+		rnger.signalGenerateRn(message)
 
-	case LocalRnShares:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleLocalRnShares(message)
+	case RnShares:
+		rnger.tryBuildRnShares(message)
 
-	case ProposeRn:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleProposeRn(message)
-
-	case ProposeGlobalRnShare:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleProposeGlobalRnShare(message)
-
-	case VoteGlobalRnShare:
-		// log.Printf("[debug] player %v received message of type %T", rnger.addr, message)
-		rnger.handleVoteGlobalRnShare(message)
+	case ProposeRnShare:
+		rnger.acceptRnShare(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected message type %T", message))
-		// case CheckDeadline:
-		// 	rnger.handleCheckDeadline(message)
 	}
 }
 
-func (rnger *rnger) handleNominate(message Nominate) {
-	rnger.leader = message.Leader
-}
-
-func (rnger *rnger) handleGenerateRn(message GenerateRn) {
-	// If the rnger has already contructed a global share, short circuit
-	rnger.rns[message.Nonce] = message
-	if globalRnShare, ok := rnger.globalRnShares[message.Nonce]; ok {
-		rnger.io.Write(globalRnShare)
-		rnger.states[message.Nonce] = StateFinished
+func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) {
+	// Short circuit when results have already been computed
+	rnger.signals[message.MessageID] = message
+	if result, ok := rnger.results[message.MessageID]; ok {
+		rnger.io.Write(result)
 		return
 	}
 
-	if rnger.addr == rnger.leader {
-		// Set rnger to leader for this nonce
-		rnger.leaders[message.Nonce] = rnger.addr
+	rn := rnger.scheme.SecretField().Random()
 
-		// Write a ProposeRn message to every other Rnger in the network
-		for j := uint(0); j < rnger.n; j++ {
-			rnger.io.Write(NewProposeRn(message.Nonce, Address(j), rnger.addr))
+	// Generate k threshold shares for the random number
+	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
+	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	for _, ρShare := range ρShares {
+		share := ρShare.Share()
+		ρSharesMap[share.Index()] = ρShare
+	}
+
+	// Generate k/2 threshold shares for the same random number
+	σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	for _, σShare := range σShares {
+		share := σShare.Share()
+		σSharesMap[share.Index()] = σShare
+	}
+
+	rnger.io.Write(NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index))
+}
+
+func (rnger *rnger) tryBuildRnShares(message RnShares) {
+	// Do not continue if we have already completed the opening
+	if _, ok := rnger.results[message.MessageID]; ok {
+		return
+	}
+
+	// Store the received message
+	if _, ok := rnger.rnShares[message.MessageID]; !ok {
+		rnger.rnShares[message.MessageID] = map[uint64]RnShares{}
+	}
+	rnger.rnShares[message.MessageID][message.Index] = message
+
+	// Do not continue if there is an insufficient number of messages
+	if uint64(len(rnger.rnShares[message.MessageID])) < rnger.t {
+		return
+	}
+	// Do not continue if we have not received a signal to generate a random
+	// number
+	if _, ok := rnger.signals[message.MessageID]; !ok {
+		return
+	}
+
+	rnShareProposals := make([]ProposeRnShare, rnger.n)
+	for j := uint64(1); j <= rnger.n; j++ {
+		// FIXME: Implement the VSS commitments correctly.
+
+		ρShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		ρt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		ρ := vss.New([]algebra.FpElement{}, ρShare, ρt)
+
+		σShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		σt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		σ := vss.New([]algebra.FpElement{}, σShare, σt)
+
+		for _, rnShares := range rnger.rnShares[message.MessageID] {
+			// TODO: Remember, we need an additively homomorphic encryption
+			// scheme for these shares to ensure that this technique works.
+
+			ρFromShares := rnShares.Rho[j-1]
+			ρ = ρ.Add(&ρFromShares)
+
+			σFromShares := rnShares.Sigma[j-1]
+			σ = σ.Add(&σFromShares)
 		}
 
-		// Transition to a new state
-		rnger.states[message.Nonce] = StateWaitingForLocalRnShares
-	}
-}
-
-func (rnger *rnger) handleLocalRnShares(message LocalRnShares) {
-	// Verify the current state of the Rnger
-	if !rnger.isLeader(message.Nonce) {
-		rnger.io.Write(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: must be the leader")))
-		return
-	}
-	if rnger.states[message.Nonce] != StateWaitingForLocalRnShares {
-		// rnger.io.Write(NewErr(message.Nonce, errors.New("cannot accept LocalRnShares: not waiting for LocalRnShares")))
-		return
+		rnShareProposals[j-1] = NewProposeRnShare(message.MessageID, ρ, σ)
 	}
 
-	// TODO: Verify that the shares are well formed.
-	if _, ok := rnger.localRnShares[message.Nonce]; !ok {
-		rnger.localRnShares[message.Nonce] = map[Address]LocalRnShares{}
-	}
-	rnger.localRnShares[message.Nonce][message.From] = message
+	rnger.acceptRnShare(rnShareProposals[rnger.index-1])
 
-	// Check whether or not this Rnger has received enough LocalRnShares to
-	// securely build a GlobalRnShare for every Rnger in the network
-	if len(rnger.localRnShares[message.Nonce]) <= int(rnger.t) {
-		return
-	}
-
-	globalRnShares := rnger.buildProposeGlobalRnShares(message.Nonce)
-	for j := uint(0); j < rnger.n; j++ {
-		rnger.io.Write(globalRnShares[j])
-	}
-
-	// Progress state
-	rnger.states[message.Nonce] = StateFinished
-}
-
-func (rnger *rnger) handleProposeRn(message ProposeRn) {
-	// TODO: Logic for whether or not to accept a leader for a nonce.
-	if _, ok := rnger.leaders[message.Nonce]; !ok {
-		rnger.leaders[message.Nonce] = message.From
-	}
-	// TODO: Protection (if wanted) against multiple proposals from the same
-	// leader for the same nonce
-	if message.From != rnger.leaders[message.Nonce] {
-		rnger.io.Write(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: already have a leader")))
-		return
-	}
-
-	// Verify that the internal state is correct
-	if rnger.states[message.Nonce] != StateNil && !rnger.isLeader(message.Nonce) {
-		rnger.io.Write(NewErr(message.Nonce, errors.New("cannot accept ProposeRn: not in initial state")))
-		return
-	}
-
-	rn := rnger.ped.SecretField().Random()
-	rhoRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k))
-	sigmaRnShares := vss.Share(&rnger.ped, rn, uint64(rnger.n), uint64(rnger.k/2))
-
-	rhoShares := ShareMap{}
-	sigmaShares := ShareMap{}
-	for i := range rhoRnShares {
-		// log.Printf("[debug] <replica %v>: sending share %v", rnger.addr, share.SShare)
-		rhoShares[Address(i)] = rhoRnShares[i]
-		sigmaShares[Address(i)] = sigmaRnShares[i]
-	}
-
-	localRnShares := LocalRnShares{
-		Nonce:       message.Nonce,
-		To:          rnger.leader,
-		From:        rnger.addr,
-		RhoShares:   rhoShares,
-		SigmaShares: sigmaShares,
-	}
-	rnger.io.Write(localRnShares)
-
-	// Progress state if rnger is not the leader for this nonce
-	if !rnger.isLeader(message.Nonce) {
-		rnger.states[message.Nonce] = StateWaitingForGlobalRnShares
-	}
-}
-
-func (rnger *rnger) handleProposeGlobalRnShare(message ProposeGlobalRnShare) {
-
-	globalRnShare := GlobalRnShare{
-		Nonce:      message.Nonce,
-		RhoShare:   shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
-		SigmaShare: shamir.New(uint64(rnger.addr)+1, rnger.ped.SecretField().NewInField(big.NewInt(0))),
-		From:       rnger.addr,
-	}
-	for addr, share := range message.RhoShares {
-		// log.Printf("[debug] <replica %v>: received share %v", rnger.addr, share.SShare)
-
-		// Check that the share is correct
-		if !vss.Verify(&rnger.ped, share) {
-			// log.Println("[debug] replica received a malformed share")
-			rnger.io.Write(NewErr(message.Nonce, errors.New("cannot accept incorrect share")))
-			return
+	for i, rnShareProposal := range rnShareProposals {
+		if uint64(i) == rnger.index-1 {
+			continue
 		}
-
-		rhoShare := message.RhoShares[addr]
-		sigmaShare := message.SigmaShares[addr]
-
-		globalRnShare.RhoShare = globalRnShare.RhoShare.Add(rhoShare.Share())
-		globalRnShare.SigmaShare = globalRnShare.SigmaShare.Add(sigmaShare.Share())
+		rnger.io.Write(rnShareProposal)
 	}
-	// log.Printf("[debug] <replica %v>: final share %v", rnger.addr, globalRnShare.Share)
-	rnger.globalRnShares[message.Nonce] = globalRnShare
-	if _, ok := rnger.rns[message.Nonce]; ok {
-		rnger.io.Write(globalRnShare)
-	}
-
-	// Progress state
-	rnger.states[message.Nonce] = StateFinished
 }
 
-func (rnger *rnger) handleVoteGlobalRnShare(message VoteGlobalRnShare) {
-}
+func (rnger *rnger) acceptRnShare(message ProposeRnShare) {
 
-func (rnger *rnger) buildProposeGlobalRnShares(nonce Nonce) []ProposeGlobalRnShare {
-	globalRnShares := make([]ProposeGlobalRnShare, rnger.n)
+	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share())
+	rnger.results[message.MessageID] = result
+	delete(rnger.signals, message.MessageID)
+	delete(rnger.rnShares, message.MessageID)
 
-	for j := uint(0); j < rnger.n; j++ {
-		rhoShares := ShareMap{}
-		sigmaShares := ShareMap{}
-
-		for addr, shareMapFromAddr := range rnger.localRnShares[nonce] {
-			rhoShares[addr] = shareMapFromAddr.RhoShares[Address(j)]
-			sigmaShares[addr] = shareMapFromAddr.SigmaShares[Address(j)]
-		}
-
-		globalRnShares[j] = NewProposeGlobalRnShare(nonce, Address(j), rnger.addr, rhoShares, sigmaShares)
-	}
-
-	return globalRnShares
+	rnger.io.Write(result)
 }

@@ -1,7 +1,7 @@
 package mul
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -10,24 +10,24 @@ import (
 type multiplier struct {
 	io task.IO
 
-	n, k        uint
+	n, k        uint64
 	sharesCache shamir.Shares
 
-	muls        map[Nonce]Mul
-	broadcasts  map[Nonce]map[uint64]BroadcastIntermediateShare
-	completions map[Nonce]shamir.Share
+	signals map[task.MessageID]SignalMul
+	opens   map[task.MessageID]map[uint64]OpenMul
+	results map[task.MessageID]Result
 }
 
-func New(n, k uint, cap int) task.Task {
+func New(n, k uint64, cap int) task.Task {
 	return &multiplier{
 		io: task.NewIO(cap),
 
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
 
-		muls:        map[Nonce]Mul{},
-		broadcasts:  map[Nonce]map[uint64]BroadcastIntermediateShare{},
-		completions: map[Nonce]shamir.Share{},
+		signals: map[task.MessageID]SignalMul{},
+		opens:   map[task.MessageID]map[uint64]OpenMul{},
+		results: map[task.MessageID]Result{},
 	}
 }
 
@@ -43,77 +43,75 @@ func (multiplier *multiplier) Run(done <-chan struct{}) {
 		if !ok {
 			return
 		}
-		multiplier.recvMessage(message)
+		multiplier.recv(message)
 	}
 }
 
-func (multiplier *multiplier) recvMessage(message task.Message) {
+func (multiplier *multiplier) recv(message task.Message) {
 	switch message := message.(type) {
 
-	case Mul:
-		multiplier.multiply(message)
+	case SignalMul:
+		multiplier.signalMul(message)
 
-	case BroadcastIntermediateShare:
-		multiplier.recvBroadcastIntermediateShare(message)
+	case OpenMul:
+		multiplier.tryOpenMul(message)
 
 	default:
-		log.Printf("[error] unexpected message type %T", message)
+		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
-func (multiplier *multiplier) multiply(message Mul) {
-	if share, ok := multiplier.completions[message.Nonce]; ok {
-		multiplier.io.Write(NewResult(message.Nonce, share))
+func (multiplier *multiplier) signalMul(message SignalMul) {
+	if result, ok := multiplier.results[message.MessageID]; ok {
+		multiplier.io.Write(result)
+		return
 	}
+	multiplier.signals[message.MessageID] = message
+
 	share := message.x.Mul(message.y)
 	share = share.Add(message.ρ)
+	multiplier.tryOpenMul(NewOpenMul(message.MessageID, share))
 
-	multiplier.muls[message.Nonce] = message
-	multiplier.recvMessage(NewBroadcastIntermediateShare(message.Nonce, share))
-	multiplier.io.Write(NewBroadcastIntermediateShare(message.Nonce, share))
+	multiplier.io.Write(NewOpenMul(message.MessageID, share))
 }
 
-// TODO:
-// * Do we delete the pendings/openings from memory once we have received
-//   enough to open the secret?
-// * Do we produce duplicate results when we receive more than `k` openings?
-func (multiplier *multiplier) recvBroadcastIntermediateShare(message BroadcastIntermediateShare) {
-	if _, ok := multiplier.broadcasts[message.Nonce]; !ok {
-		multiplier.broadcasts[message.Nonce] = map[uint64]BroadcastIntermediateShare{}
+func (multiplier *multiplier) tryOpenMul(message OpenMul) {
+	if _, ok := multiplier.opens[message.MessageID]; !ok {
+		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
 	}
-	multiplier.broadcasts[message.Nonce][message.Index()] = message
+	multiplier.opens[message.MessageID][message.Index()] = message
 
 	// Do not continue if there is an insufficient number of shares
-	if uint(len(multiplier.broadcasts[message.Nonce])) < multiplier.k {
+	if uint64(len(multiplier.opens[message.MessageID])) < multiplier.k {
 		return
 	}
 	// Do not continue if we have not received a signal to open
-	if _, ok := multiplier.muls[message.Nonce]; !ok {
+	if _, ok := multiplier.signals[message.MessageID]; !ok {
 		return
 	}
 	// Do not continue if we have already completed the opening
-	if _, ok := multiplier.completions[message.Nonce]; ok {
+	if _, ok := multiplier.results[message.MessageID]; ok {
 		return
 	}
 
 	n := 0
-	for _, broadcastIntermediateShare := range multiplier.broadcasts[message.Nonce] {
-		multiplier.sharesCache[n] = broadcastIntermediateShare.Share
+	for _, opening := range multiplier.opens[message.MessageID] {
+		multiplier.sharesCache[n] = opening.Share
 		n++
 	}
 	value, err := shamir.Join(multiplier.sharesCache[:n])
 	if err != nil {
-		log.Printf("[error] (mul) join error = %v", multiplier, err)
+		multiplier.io.Write(task.NewError(err))
 		return
 	}
+	σ := multiplier.signals[message.MessageID].σ
+	share := shamir.New(σ.Index(), value)
+	share = share.Sub(σ)
+	result := NewResult(message.MessageID, share)
 
-	σ := multiplier.muls[message.Nonce].σ
-	result := shamir.New(σ.Index(), value)
-	result = result.Sub(σ)
+	multiplier.results[message.MessageID] = result
+	delete(multiplier.signals, message.MessageID)
+	delete(multiplier.opens, message.MessageID)
 
-	delete(multiplier.muls, message.Nonce)
-	delete(multiplier.broadcasts, message.Nonce)
-	multiplier.completions[message.Nonce] = result
-
-	multiplier.io.Write(NewResult(message.Nonce, result))
+	multiplier.io.Write(result)
 }
