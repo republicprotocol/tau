@@ -27,8 +27,7 @@ func (ch *channel) Send(message Message) bool {
 }
 
 type IO interface {
-	Write(message Message)
-	Flush(done <-chan struct{}, channels ...Channel) (Message, bool)
+	Flush(done <-chan struct{}, callback func(Message) Message, channels ...Channel) bool
 	Channel() Channel
 }
 
@@ -53,13 +52,7 @@ func NewIO(cap int) IO {
 	}
 }
 
-func (io *inputOutput) Write(message Message) {
-	if !io.buf.Enqueue(message) {
-		log.Printf("[error] (io) buffer overflow")
-	}
-}
-
-func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message, bool) {
+func (io *inputOutput) Flush(done <-chan struct{}, callback func(Message) Message, channels ...Channel) bool {
 
 	cases := []reflect.SelectCase{
 		// Read from the done channel
@@ -104,7 +97,7 @@ func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message
 
 	// Done was selected
 	if chosen == 0 || !recvOk {
-		return nil, false
+		return false
 	}
 
 	// Reading from the io output buffer was selected, so an element is dequeued
@@ -112,16 +105,21 @@ func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message
 	if chosen == 1 {
 		select {
 		case <-done:
-			return nil, false
+			return false
 
 		case io.w <- recv.Interface().(Message):
-			return nil, io.buf.Dequeue()
+			return io.buf.Dequeue()
 		}
 	}
 	// Reading from the io input was selected, so an element is read from the io
 	// input and returned
 	if chosen == 2 {
-		return recv.Interface().(Message), recvOk
+		// TODO: Remove duplication!
+		message := recv.Interface().(Message)
+		if message = callback(message); message != nil {
+			io.write(message)
+		}
+		return recvOk
 	}
 
 	// An input buffer was selected from one of the channels, so an element is
@@ -130,18 +128,29 @@ func (io *inputOutput) Flush(done <-chan struct{}, channels ...Channel) (Message
 		ch := channels[(chosen-3)/2].(*channel)
 		select {
 		case <-done:
-			return nil, false
+			return false
 
 		case ch.w <- recv.Interface().(Message):
-			return nil, ch.buf.Dequeue()
+			return ch.buf.Dequeue()
 		}
 	}
 
+	// TODO: Remove duplication!
 	// An output was selected from one of the channels, so an element is read
 	// from the channel output and returned
-	return recv.Interface().(Message), recvOk
+	message := recv.Interface().(Message)
+	if message = callback(message); message != nil {
+		io.write(message)
+	}
+	return recvOk
 }
 
 func (io *inputOutput) Channel() Channel {
 	return io.ch
+}
+
+func (io *inputOutput) write(message Message) {
+	if !io.buf.Enqueue(message) {
+		log.Printf("[error] (io) buffer overflow")
+	}
 }

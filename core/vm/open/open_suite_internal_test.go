@@ -1,4 +1,4 @@
-package open_test
+package open
 
 import (
 	"testing"
