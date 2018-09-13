@@ -121,9 +121,9 @@ var _ = Describe("Virtual Machine", func() {
 	// 	return SecretField.NewInField(big.NewInt(rand.Int63n(2)))
 	// }
 
-	idFromUint64 := func(n uint64) [31]byte {
-		ret := [31]byte{0x0}
-		id := make([]byte, 8)
+	idFromUint64 := func(n uint64) [30]byte {
+		ret := [30]byte{0x0}
+		id := make([]byte, 16)
 		binary.LittleEndian.PutUint64(id, n)
 		for i, b := range id {
 			ret[i] = b
@@ -137,9 +137,9 @@ var _ = Describe("Virtual Machine", func() {
 			n, k      uint
 			bufferCap int
 		}{
-			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, // {3, 2, BufferLimit * 4},
-			// {6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
-			// {12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
+			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, {3, 2, BufferLimit * 4},
+			{6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
+			{12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
 			// {24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
 		}
 
@@ -160,7 +160,7 @@ var _ = Describe("Virtual Machine", func() {
 							defer GinkgoRecover()
 							defer close(done)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 							a, b := SecretField.Random(), SecretField.Random()
 							valueA, valueB := process.NewValuePublic(a), process.NewValuePublic(b)
 							expected := process.NewValuePublic(a.Add(b))
@@ -205,7 +205,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 							a, b := SecretField.Random(), SecretField.Random()
 							polyA := algebra.NewRandomPolynomial(SecretField, entry.k-1, a)
 							polyB := algebra.NewRandomPolynomial(SecretField, entry.k-1, b)
@@ -262,7 +262,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 							pub, priv := SecretField.Random(), SecretField.Random()
 							poly := algebra.NewRandomPolynomial(SecretField, entry.k-1, priv)
 							shares := shamir.Split(poly, uint64(entry.n))
@@ -317,7 +317,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 
 							for i := range vms {
 								stack := stack.New(100)
@@ -388,7 +388,7 @@ var _ = Describe("Virtual Machine", func() {
 								valueA := process.NewValuePrivate(sharesA[i])
 								valueB := process.NewValuePrivate(sharesB[i])
 
-								id := [31]byte{0x69}
+								id := [30]byte{0x69}
 								stack := stack.New(100)
 								mem := process.Memory{}
 								code := process.Code{
@@ -439,7 +439,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 
 							a0i, a1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
 							b0i, b1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
@@ -1167,7 +1167,7 @@ var _ = Describe("Virtual Machine", func() {
 
 							results := routeMessages(done, ins, outs)
 
-							id := [31]byte{0x69}
+							id := [30]byte{0x69}
 
 							a := big.NewInt(0).SetUint64(rand.Uint64())
 							b := big.NewInt(0).SetUint64(rand.Uint64()) // Set(a)

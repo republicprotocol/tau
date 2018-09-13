@@ -134,11 +134,11 @@ func (vm *VM) exec(exec Exec) {
 	// log.Printf("[debug] (vm %v) <%p> done = %v", vm.addr, vm.mul, proc.Nonce())
 
 	if ret.IsReady() {
-		log.Printf("[error] (vm %v) process is ready after execution = %v", vm.addr, proc.ID)
+		log.Printf("[error] (vm %v) process is ready after execution = %v pc = %v", vm.addr, proc.ID, proc.PC)
 		return
 	}
 	if ret.IsTerminated() {
-		// log.Printf("[debug] (vm %v) process is terminated = %v", vm.addr, proc.ID)
+		log.Printf("[debug] (vm %v) process is terminated = %v pc = %v", vm.addr, proc.ID, proc.PC)
 		result, err := proc.Stack.Pop()
 		if err != nil {
 			panic("unimplemented")
@@ -229,8 +229,8 @@ func (vm *VM) handleRngResult(message rng.GlobalRnShare) {
 
 	delete(vm.processIntents, message.Nonce)
 
-	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
@@ -259,8 +259,8 @@ func (vm *VM) handleMulResult(message mul.Result) {
 
 	delete(vm.processIntents, message.Nonce)
 
-	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
 
@@ -289,7 +289,7 @@ func (vm *VM) handleOpenResult(message open.Result) {
 
 	delete(vm.processIntents, (message.Nonce))
 
-	pid := [31]byte{}
-	copy(pid[:], message.Nonce[1:])
+	pid := [30]byte{}
+	copy(pid[:], message.Nonce[2:])
 	vm.exec(NewExec(vm.processes[process.ID(pid)]))
 }
