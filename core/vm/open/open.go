@@ -36,8 +36,6 @@ func (opener *opener) Channel() task.Channel {
 }
 
 func (opener *opener) Run(done <-chan struct{}) {
-	// defer log.Printf("[info] (open) terminating")
-
 	for {
 		message, ok := opener.io.Flush(done)
 		if !ok {
