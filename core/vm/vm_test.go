@@ -137,10 +137,10 @@ var _ = Describe("Virtual Machine", func() {
 			n, k      uint
 			bufferCap int
 		}{
-			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, {3, 2, BufferLimit * 4},
-			{6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
-			{12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
-			{24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
+			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, // {3, 2, BufferLimit * 4},
+			// {6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
+			// {12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
+			// {24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
 		}
 
 		for _, entry := range table {
@@ -1169,18 +1169,23 @@ var _ = Describe("Virtual Machine", func() {
 
 							id := [31]byte{0x69}
 
-							a := big.NewInt(0)
-							b := big.NewInt(0)
+							a := big.NewInt(0).SetUint64(rand.Uint64())
+							b := big.NewInt(0).SetUint64(rand.Uint64()) // Set(a)
+							notB := ^b.Uint64()
+							notB += 1
+
+							aTemp := big.NewInt(0).Set(a)
+							bTemp := big.NewInt(0).SetUint64(notB)
 
 							aBits := make([]algebra.FpElement, 64)
 							bBits := make([]algebra.FpElement, 64)
 							for i := range aBits {
-								ar := big.NewInt(rand.Int63n(2))
-								br := big.NewInt(rand.Int63n(2))
+								ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
+								br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
 								aBits[i] = SecretField.NewInField(ar)
 								bBits[i] = SecretField.NewInField(br)
-								a.Add(a, big.NewInt(0).Mul(ar, big.NewInt(0).SetUint64(uint64(1)<<uint(i))))
-								b.Add(b, big.NewInt(0).Mul(br, big.NewInt(0).SetUint64(uint64(1)<<uint(i))))
+								aTemp.Div(aTemp, big.NewInt(2))
+								bTemp.Div(bTemp, big.NewInt(2))
 							}
 
 							aVals := make([][]process.ValuePrivate, entry.n)
@@ -1207,17 +1212,14 @@ var _ = Describe("Virtual Machine", func() {
 							for i := range vms {
 								stack := stack.New(100)
 								mem := process.NewMemory(300)
-								code := make(process.Code, 0)
 								for j := 0; j < 64; j++ {
-									c := process.Code{
-										process.InstPush(aVals[i][j]),
-										process.InstStore(process.Addr(10 + 2*j)),
-										process.InstPush(bVals[i][j]),
-										process.InstStore(process.Addr(11 + 2*j)),
-									}
-									code = append(code, c...)
+									mem[process.Addr(10+2*j)] = aVals[i][j]
+									mem[process.Addr(11+2*j)] = bVals[i][j]
 								}
-								code = append(code, process.MacroCmp64(SecretField, process.Addr(10)), process.InstOpen())
+								code := process.Code{
+									process.MacroBitwiseCOut(SecretField, process.Addr(10), 64),
+									process.InstOpen(),
+								}
 								proc := process.New(id, stack, mem, code)
 								init := NewExec(proc)
 
@@ -1230,9 +1232,9 @@ var _ = Describe("Virtual Machine", func() {
 								res, ok := actual.result.Value.(process.ValuePublic)
 								Expect(ok).To(BeTrue())
 								if a.Cmp(b) == -1 {
-									Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
-								} else {
 									Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
+								} else {
+									Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
 								}
 							}
 						})
