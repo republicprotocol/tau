@@ -135,7 +135,7 @@ func (proc *Process) execInstCopy(inst instCopy) Return {
 		if err != nil {
 			return NotReady(ErrorExecution(err, proc.PC))
 		}
-		values[i] = value
+		values[len(values)-i-1] = value
 	}
 
 	values = append(values, values...)
@@ -172,27 +172,12 @@ func (proc *Process) execInstLoad(inst instLoad) Return {
 }
 
 func (proc *Process) execInstLoadStack(inst instLoadStack) Return {
-	values := make([]stack.Element, inst.offset+1)
-	for i := uint64(0); i < inst.offset; i++ {
-		value, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		values[i+1] = value
-	}
-
-	toLoad, err := proc.Stack.Pop()
+	value, err := proc.Stack.Peek(int(inst.offset))
 	if err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
 	}
-	if err := proc.Stack.Push(toLoad); err != nil {
+	if err := proc.Stack.Push(value); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
-	}
-	values[0] = toLoad
-	for i := uint64(0); i < inst.offset+1; i++ {
-		if err := proc.Stack.Push(values[inst.offset-i]); err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
 	}
 	proc.PC++
 	return Ready()
