@@ -51,7 +51,7 @@ func (ret Return) IsTerminated() bool {
 	return ret.terminated
 }
 
-type ID [31]byte
+type ID [30]byte
 
 type Process struct {
 	ID
@@ -62,6 +62,7 @@ type Process struct {
 }
 
 func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
+	expandMacros(&code)
 	return Process{
 		ID:     id,
 		Stack:  stack,
@@ -73,8 +74,9 @@ func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
 
 func (proc *Process) Nonce() [32]byte {
 	n := [32]byte{}
-	copy(n[1:], proc.ID[:])
+	copy(n[2:], proc.ID[:])
 	n[0] = byte(proc.PC)
+	n[1] = byte(proc.PC >> 8)
 	return n
 }
 
@@ -89,12 +91,18 @@ func (proc *Process) Exec() Return {
 		switch inst := proc.Code[proc.PC].(type) {
 		case instPush:
 			ret = proc.execInstPush(inst)
+		case instCopy:
+			ret = proc.execInstCopy(inst)
 		case instStore:
 			ret = proc.execInstStore(inst)
 		case instLoad:
 			ret = proc.execInstLoad(inst)
+		case instLoadStack:
+			ret = proc.execInstLoadStack(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
+		case instNeg:
+			ret = proc.execInstNeg(inst)
 		case instSub:
 			ret = proc.execInstSub(inst)
 		case instGenerateRn:
@@ -103,6 +111,7 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstMul(inst)
 		case instOpen:
 			ret = proc.execInstOpen(inst)
+
 		default:
 			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
 		}
@@ -114,6 +123,27 @@ func (proc *Process) Exec() Return {
 func (proc *Process) execInstPush(inst instPush) Return {
 	if err := proc.Stack.Push(inst.value); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstCopy(inst instCopy) Return {
+	values := make([]stack.Element, inst.depth)
+	for i := range values {
+		value, err := proc.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
+		values[len(values)-i-1] = value
+	}
+
+	values = append(values, values...)
+	for _, value := range values {
+		if err := proc.Stack.Push(value); err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
 	}
 
 	proc.PC++
@@ -142,6 +172,18 @@ func (proc *Process) execInstLoad(inst instLoad) Return {
 	return Ready()
 }
 
+func (proc *Process) execInstLoadStack(inst instLoadStack) Return {
+	value, err := proc.Stack.Peek(int(inst.offset))
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	if err := proc.Stack.Push(value); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	proc.PC++
+	return Ready()
+}
+
 func (proc *Process) execInstAdd(inst instAdd) Return {
 	rhs, err := proc.Stack.Pop()
 	if err != nil {
@@ -159,6 +201,29 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 		ret = lhs.Add(rhs.(Value))
 	case ValuePrivate:
 		ret = lhs.Add(rhs.(Value))
+	default:
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+	}
+	if err := proc.Stack.Push(ret); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstNeg(inst instNeg) Return {
+	lhs, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	ret := Value(nil)
+	switch lhs := lhs.(type) {
+	case ValuePublic:
+		ret = lhs.Neg()
+	case ValuePrivate:
+		ret = lhs.Neg()
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
@@ -230,10 +295,12 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 		}
 	}
 
-	proc.Push(ValuePrivateRn{
+	if err := proc.Push(ValuePrivateRn{
 		Rho:   inst.ρ,
 		Sigma: inst.σ,
-	})
+	}); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
 
 	proc.PC++
 	return Ready()
@@ -330,4 +397,14 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 	proc.PC++
 	return Ready()
+}
+
+func expandMacros(code *Code) {
+	for i := 0; i < len(*code); i++ {
+		if inst, ok := (*code)[i].(instMacro); ok {
+			temp := append(inst.code, (*code)[i+1:]...)
+			*code = append((*code)[:i], temp...)
+			i--
+		}
+	}
 }
