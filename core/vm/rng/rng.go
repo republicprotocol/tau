@@ -14,8 +14,6 @@ import (
 )
 
 type rnger struct {
-	io task.IO
-
 	scheme pedersen.Pedersen
 	index  uint64
 
@@ -27,9 +25,11 @@ type rnger struct {
 }
 
 func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
-	return &rnger{
-		io: task.NewIO(cap),
+	return task.New(task.NewIO(cap), newRnger(scheme, index, n, k, t, cap))
+}
 
+func newRnger(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) *rnger {
+	return &rnger{
 		scheme: scheme,
 		index:  index,
 
@@ -41,45 +41,28 @@ func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
 	}
 }
 
-func (rnger *rnger) Channel() task.Channel {
-	return rnger.io.Channel()
-}
-
-func (rnger *rnger) Run(done <-chan struct{}) {
-	for {
-		message, ok := rnger.io.Flush(done)
-		if !ok {
-			return
-		}
-		if message != nil {
-			rnger.recv(message)
-		}
-	}
-}
-
-func (rnger *rnger) recv(message task.Message) {
+func (rnger *rnger) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case SignalGenerateRn:
-		rnger.signalGenerateRn(message)
+		return rnger.signalGenerateRn(message)
 
 	case RnShares:
-		rnger.tryBuildRnShareProposals(message)
+		return rnger.tryBuildRnShareProposals(message)
 
 	case ProposeRnShare:
-		rnger.acceptRnShare(message)
+		return rnger.acceptRnShare(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
-func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) {
+func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
 	// Short circuit when results have already been computed
 	rnger.signals[message.MessageID] = message
 	if result, ok := rnger.results[message.MessageID]; ok {
-		rnger.io.Write(result)
-		return
+		return result
 	}
 
 	rn := rnger.scheme.SecretField().Random()
@@ -100,13 +83,13 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) {
 		σSharesMap[share.Index()] = σShare
 	}
 
-	rnger.io.Write(NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index))
+	return NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index)
 }
 
-func (rnger *rnger) tryBuildRnShareProposals(message RnShares) {
+func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 	// Do not continue if we have already completed the opening
 	if _, ok := rnger.results[message.MessageID]; ok {
-		return
+		return nil
 	}
 
 	// Store the received message
@@ -117,36 +100,28 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) {
 
 	// Do not continue if there is an insufficient number of messages
 	if uint64(len(rnger.rnShares[message.MessageID])) < rnger.t {
-		return
+		return nil
 	}
 	// Do not continue if we have not received a signal to generate a random
 	// number
 	if _, ok := rnger.signals[message.MessageID]; !ok {
-		return
+		return nil
 	}
 
-	rnShareProposals := rnger.buildRnShareProposals(message.MessageID)
-	rnger.acceptRnShare(rnShareProposals[rnger.index-1])
-
-	for i, rnShareProposal := range rnShareProposals {
-		if uint64(i) == rnger.index-1 {
-			continue
-		}
-		rnger.io.Write(rnShareProposal)
-	}
+	return rnger.buildRnShareProposals(message.MessageID)
 }
 
-func (rnger *rnger) acceptRnShare(message ProposeRnShare) {
+func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 
-	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share())
+	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share(), nil)
 	rnger.results[message.MessageID] = result
 	delete(rnger.signals, message.MessageID)
 	delete(rnger.rnShares, message.MessageID)
 
-	rnger.io.Write(result)
+	return result
 }
 
-func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []ProposeRnShare {
+func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) Result {
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
 	one := rnger.scheme.SecretField().NewInField(big.NewInt(1))
@@ -160,7 +135,13 @@ func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []ProposeRnS
 		σCommitments[i] = one
 	}
 
-	rnShareProposals := make([]ProposeRnShare, rnger.n)
+	result := NewResult(
+		messageID,
+		shamir.New(rnger.index, zero),
+		shamir.New(rnger.index, zero),
+		make(map[uint64]ProposeRnShare, rnger.n-1),
+	)
+
 	for j := uint64(1); j <= rnger.n; j++ {
 
 		ρShare := shamir.New(j, zero)
@@ -182,8 +163,13 @@ func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []ProposeRnS
 			σ = σ.Add(&σFromShares)
 		}
 
-		rnShareProposals[j-1] = NewProposeRnShare(messageID, ρ, σ)
+		if j == rnger.index {
+			result.Rho = ρ.Share()
+			result.Sigma = σ.Share()
+			continue
+		}
+		result.ProposeRnShares[j-1] = NewProposeRnShare(messageID, ρ, σ)
 	}
 
-	return rnShareProposals
+	return result
 }

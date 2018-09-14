@@ -8,8 +8,6 @@ import (
 )
 
 type multiplier struct {
-	io task.IO
-
 	n, k        uint64
 	sharesCache shamir.Shares
 
@@ -19,9 +17,11 @@ type multiplier struct {
 }
 
 func New(n, k uint64, cap int) task.Task {
-	return &multiplier{
-		io: task.NewIO(cap),
+	return task.New(task.NewIO(cap), newMultiplier(n, k, cap))
+}
 
+func newMultiplier(n, k uint64, cap int) *multiplier {
+	return &multiplier{
 		n: n, k: k,
 		sharesCache: make(shamir.Shares, n),
 
@@ -31,55 +31,36 @@ func New(n, k uint64, cap int) task.Task {
 	}
 }
 
-func (multiplier *multiplier) Channel() task.Channel {
-	return multiplier.io.Channel()
-}
-
-func (multiplier *multiplier) Run(done <-chan struct{}) {
-	// defer log.Printf("[info] (mul) terminating")
-
-	for {
-		message, ok := multiplier.io.Flush(done)
-		if !ok {
-			return
-		}
-		if message != nil {
-			multiplier.recv(message)
-		}
-	}
-}
-
-func (multiplier *multiplier) recv(message task.Message) {
+func (multiplier *multiplier) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case SignalMul:
-		multiplier.signalMul(message)
+		return multiplier.signalMul(message)
 
 	case OpenMul:
-		multiplier.tryOpenMul(message)
+		return multiplier.tryOpenMul(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected message type %T", message))
 	}
 }
 
-func (multiplier *multiplier) signalMul(message SignalMul) {
+func (multiplier *multiplier) signalMul(message SignalMul) task.Message {
 	if result, ok := multiplier.results[message.MessageID]; ok {
-		multiplier.io.Write(result)
-		return
+		return result
 	}
 	multiplier.signals[message.MessageID] = message
 
 	share := message.x.Mul(message.y)
-	share = share.Add(message.ρ)
-	multiplier.tryOpenMul(NewOpenMul(message.MessageID, share))
+	mul := NewOpenMul(message.MessageID, share.Add(message.ρ))
+	multiplier.tryOpenMul(mul)
 
-	multiplier.io.Write(NewOpenMul(message.MessageID, share))
+	return mul
 }
 
-func (multiplier *multiplier) tryOpenMul(message OpenMul) {
+func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 	if _, ok := multiplier.results[message.MessageID]; ok {
-		return
+		return nil
 	}
 	if _, ok := multiplier.opens[message.MessageID]; !ok {
 		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
@@ -88,15 +69,15 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) {
 
 	// Do not continue if there is an insufficient number of shares
 	if uint64(len(multiplier.opens[message.MessageID])) < multiplier.k {
-		return
+		return nil
 	}
 	// Do not continue if we have not received a signal to open
 	if _, ok := multiplier.signals[message.MessageID]; !ok {
-		return
+		return nil
 	}
 	// Do not continue if we have already completed the opening
 	if _, ok := multiplier.results[message.MessageID]; ok {
-		return
+		return nil
 	}
 
 	n := 0
@@ -106,8 +87,7 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) {
 	}
 	value, err := shamir.Join(multiplier.sharesCache[:n])
 	if err != nil {
-		multiplier.io.Write(task.NewError(err))
-		return
+		return task.NewError(err)
 	}
 	σ := multiplier.signals[message.MessageID].σ
 	share := shamir.New(σ.Index(), value)
@@ -118,5 +98,5 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) {
 	delete(multiplier.signals, message.MessageID)
 	delete(multiplier.opens, message.MessageID)
 
-	multiplier.io.Write(result)
+	return result
 }

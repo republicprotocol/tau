@@ -4,7 +4,9 @@ import (
 	"github.com/republicprotocol/co-go"
 )
 
-type Reduce func(Message) Message
+type Reducer interface {
+	Reduce(Message) Message
+}
 
 type Task interface {
 
@@ -15,24 +17,26 @@ type Task interface {
 	Run(done <-chan struct{})
 
 	Send(Message)
+
+	IO() IO
 }
 
 type Children []Task
 
 type task struct {
 	io       IO
-	reduce   Reduce
+	reducer  Reducer
 	children Children
 }
 
-func New(cap int, reduce Reduce, children ...Task) Task {
-	return &task{NewIO(cap), reduce, children}
+func New(io IO, reducer Reducer, children ...Task) Task {
+	return &task{io, reducer, children}
 }
 
 func (task *task) Run(done <-chan struct{}) {
 	co.ParBegin(
 		func() {
-			for task.io.Flush(done, task.reduce) {
+			for task.io.Flush(done, task.reducer, task.children) {
 			}
 		},
 		func() {
@@ -43,5 +47,9 @@ func (task *task) Run(done <-chan struct{}) {
 }
 
 func (task *task) Send(message Message) {
-	task.io.Channel().Send(message)
+	task.io.WriteIn(message)
+}
+
+func (task *task) IO() IO {
+	return task.io
 }

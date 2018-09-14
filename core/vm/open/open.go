@@ -17,11 +17,7 @@ type opener struct {
 }
 
 func New(n, k uint64, cap int) task.Task {
-	return newTask(newOpener(n, k), cap)
-}
-
-func newTask(opener *opener, cap int) task.Task {
-	return task.New(cap, opener.reduce)
+	return task.New(task.NewIO(cap), newOpener(n, k))
 }
 
 func newOpener(n, k uint64) *opener {
@@ -35,7 +31,7 @@ func newOpener(n, k uint64) *opener {
 	}
 }
 
-func (opener *opener) reduce(message task.Message) task.Message {
+func (opener *opener) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case Signal:

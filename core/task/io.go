@@ -1,42 +1,30 @@
 package task
 
 import (
-	"fmt"
-	"log"
 	"reflect"
 
 	"github.com/republicprotocol/oro-go/core/buffer"
 )
 
-type Channel interface {
-	Send(message Message) bool
-}
-
-type channel struct {
-	r   <-chan Message
-	w   chan<- Message
-	buf buffer.Buffer
-}
-
-func newChannel(r <-chan Message, w chan<- Message, buf buffer.Buffer) Channel {
-	return &channel{r, w, buf}
-}
-
-func (ch *channel) Send(message Message) bool {
-	return ch.buf.Enqueue(message)
-}
-
 type IO interface {
-	Flush(done <-chan struct{}, callback func(Message) Message, channels ...Channel) bool
-	Channel() Channel
+	Flush(done <-chan struct{}, reducer Reducer, children Children) bool
+
+	WriteIn(message Message) bool
+	WriteOut(message Message) bool
+
+	InputBuffer() buffer.Buffer
+	InputWriter() chan<- Message
+
+	OutputBuffer() buffer.Buffer
+	OutputWriter() chan<- Message
 }
 
 type inputOutput struct {
-	ch Channel
+	ibuf buffer.Buffer
+	r    chan Message
 
-	r   <-chan Message
-	w   chan<- Message
-	buf buffer.Buffer
+	obuf buffer.Buffer
+	w    chan Message
 }
 
 func NewIO(cap int) IO {
@@ -44,15 +32,15 @@ func NewIO(cap int) IO {
 	w := make(chan Message, cap)
 
 	return &inputOutput{
-		newChannel(w, r, buffer.New(cap)),
+		ibuf: buffer.New(cap),
+		r:    r,
 
-		r,
-		w,
-		buffer.New(cap),
+		obuf: buffer.New(cap),
+		w:    w,
 	}
 }
 
-func (io *inputOutput) Flush(done <-chan struct{}, callback func(Message) Message, channels ...Channel) bool {
+func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Children) bool {
 
 	cases := []reflect.SelectCase{
 		// Read from the done channel
@@ -61,9 +49,9 @@ func (io *inputOutput) Flush(done <-chan struct{}, callback func(Message) Messag
 			Dir:  reflect.SelectRecv,
 		},
 
-		// Read from own writer buffer
+		// Read from own output buffer
 		reflect.SelectCase{
-			Chan: reflect.ValueOf(io.buf.Peek()),
+			Chan: reflect.ValueOf(io.obuf.Peek()),
 			Dir:  reflect.SelectRecv,
 		},
 
@@ -74,20 +62,17 @@ func (io *inputOutput) Flush(done <-chan struct{}, callback func(Message) Messag
 		},
 	}
 
-	for _, ch := range channels {
-		if _, ok := ch.(*channel); !ok {
-			panic(fmt.Sprintf("unexpected channel type %T", ch))
-		}
+	for _, child := range children {
 		cases = append(cases,
-			// Read from channel writer buffer
+			// Read from child input buffer
 			reflect.SelectCase{
-				Chan: reflect.ValueOf(ch.(*channel).buf.Peek()),
+				Chan: reflect.ValueOf(child.IO().InputBuffer().Peek()),
 				Dir:  reflect.SelectRecv,
 			},
 
-			// Read from channel reader
+			// Read from child writer
 			reflect.SelectCase{
-				Chan: reflect.ValueOf(ch.(*channel).r),
+				Chan: reflect.ValueOf(child.IO().OutputWriter()),
 				Dir:  reflect.SelectRecv,
 			},
 		)
@@ -100,57 +85,63 @@ func (io *inputOutput) Flush(done <-chan struct{}, callback func(Message) Messag
 		return false
 	}
 
-	// Reading from the io output buffer was selected, so an element is dequeued
-	// from the buffer and flushed to the io output
+	// Select reading from own output buffer
 	if chosen == 1 {
 		select {
 		case <-done:
 			return false
 
 		case io.w <- recv.Interface().(Message):
-			return io.buf.Dequeue()
+			return io.obuf.Dequeue()
 		}
 	}
-	// Reading from the io input was selected, so an element is read from the io
-	// input and returned
+	// Select reading from owner reader
 	if chosen == 2 {
-		// TODO: Remove duplication!
-		message := recv.Interface().(Message)
-		if message = callback(message); message != nil {
-			io.write(message)
+		if message := reducer.Reduce(recv.Interface().(Message)); message != nil {
+			io.WriteOut(message)
 		}
 		return recvOk
 	}
 
-	// An input buffer was selected from one of the channels, so an element is
-	// dequeued from the input buffer and flushed to the channel input
+	// Select reading from one of the child input buffers
 	if (chosen-3)%2 == 0 {
-		ch := channels[(chosen-3)/2].(*channel)
+		child := children[(chosen-3)/2]
 		select {
 		case <-done:
 			return false
 
-		case ch.w <- recv.Interface().(Message):
-			return ch.buf.Dequeue()
+		case child.IO().InputWriter() <- recv.Interface().(Message):
+			return child.IO().InputBuffer().Dequeue()
 		}
 	}
 
-	// TODO: Remove duplication!
-	// An output was selected from one of the channels, so an element is read
-	// from the channel output and returned
-	message := recv.Interface().(Message)
-	if message = callback(message); message != nil {
-		io.write(message)
+	// Select reading from one of the child writers
+	if message := reducer.Reduce(recv.Interface().(Message)); message != nil {
+		io.WriteOut(message)
 	}
 	return recvOk
 }
 
-func (io *inputOutput) Channel() Channel {
-	return io.ch
+func (io *inputOutput) WriteIn(message Message) bool {
+	return io.ibuf.Enqueue(message)
 }
 
-func (io *inputOutput) write(message Message) {
-	if !io.buf.Enqueue(message) {
-		log.Printf("[error] (io) buffer overflow")
-	}
+func (io *inputOutput) WriteOut(message Message) bool {
+	return io.obuf.Enqueue(message)
+}
+
+func (io *inputOutput) InputBuffer() buffer.Buffer {
+	return io.ibuf
+}
+
+func (io *inputOutput) InputWriter() chan<- Message {
+	return io.r
+}
+
+func (io *inputOutput) OutputBuffer() buffer.Buffer {
+	return io.obuf
+}
+
+func (io *inputOutput) OutputWriter() chan<- Message {
+	return io.w
 }

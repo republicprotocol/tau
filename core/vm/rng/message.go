@@ -57,11 +57,13 @@ type Result struct {
 
 	Rho   shamir.Share
 	Sigma shamir.Share
+
+	ProposeRnShares map[uint64]ProposeRnShare
 }
 
 // NewResult returns a new Result message.
-func NewResult(id task.MessageID, ρ, σ shamir.Share) Result {
-	return Result{id, ρ, σ}
+func NewResult(id task.MessageID, ρ, σ shamir.Share, proposeRnShares map[uint64]ProposeRnShare) Result {
+	return Result{id, ρ, σ, proposeRnShares}
 }
 
 // IsMessage implements the Message interface.
