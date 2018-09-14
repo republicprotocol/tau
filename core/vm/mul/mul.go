@@ -53,15 +53,12 @@ func (multiplier *multiplier) signalMul(message SignalMul) task.Message {
 
 	share := message.x.Mul(message.y)
 	mul := NewOpenMul(message.MessageID, share.Add(message.ρ))
-	multiplier.tryOpenMul(mul)
+	result := multiplier.tryOpenMul(mul)
 
-	return mul
+	return task.NewMessageBatch(mul, result)
 }
 
 func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
-	if _, ok := multiplier.results[message.MessageID]; ok {
-		return nil
-	}
 	if _, ok := multiplier.opens[message.MessageID]; !ok {
 		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
 	}
@@ -75,7 +72,7 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 	if _, ok := multiplier.signals[message.MessageID]; !ok {
 		return nil
 	}
-	// Do not continue if we have already completed the opening
+	// Do not continue if we have already completed the multiplication
 	if _, ok := multiplier.results[message.MessageID]; ok {
 		return nil
 	}
