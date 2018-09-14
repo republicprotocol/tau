@@ -25,10 +25,10 @@ type rnger struct {
 }
 
 func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
-	return task.New(task.NewIO(cap), newRnger(scheme, index, n, k, t, cap))
+	return task.New(task.NewIO(cap), newRnger(scheme, index, n, k, t))
 }
 
-func newRnger(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) *rnger {
+func newRnger(scheme pedersen.Pedersen, index, n, k, t uint64) *rnger {
 	return &rnger{
 		scheme: scheme,
 		index:  index,
@@ -108,12 +108,15 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 		return nil
 	}
 
-	return rnger.buildRnShareProposals(message.MessageID)
+	messages := rnger.buildRnShareProposals(message.MessageID)
+	messages[rnger.index-1] = rnger.acceptRnShare(messages[rnger.index-1].(ProposeRnShare))
+
+	return task.NewMessageBatch(messages...)
 }
 
 func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 
-	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share(), nil)
+	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share())
 	rnger.results[message.MessageID] = result
 	delete(rnger.signals, message.MessageID)
 	delete(rnger.rnShares, message.MessageID)
@@ -121,26 +124,24 @@ func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 	return result
 }
 
-func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) Result {
+func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []task.Message {
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
-	one := rnger.scheme.SecretField().NewInField(big.NewInt(1))
 
-	ρCommitments := make(algebra.FpElements, rnger.k/2-1)
+	// TODO: Create more efficient way to get the one element (in the larger
+	// field, not the secret field).
+	one := rnger.scheme.Commit(zero, zero)
+
+	ρCommitments := make(algebra.FpElements, rnger.k)
 	for i := 0; i < len(ρCommitments); i++ {
 		ρCommitments[i] = one
 	}
-	σCommitments := make(algebra.FpElements, rnger.k-1)
+	σCommitments := make(algebra.FpElements, rnger.k/2)
 	for i := 0; i < len(σCommitments); i++ {
 		σCommitments[i] = one
 	}
 
-	result := NewResult(
-		messageID,
-		shamir.New(rnger.index, zero),
-		shamir.New(rnger.index, zero),
-		make(map[uint64]ProposeRnShare, rnger.n-1),
-	)
+	rnShareProposals := make([]task.Message, rnger.n)
 
 	for j := uint64(1); j <= rnger.n; j++ {
 
@@ -156,20 +157,15 @@ func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) Result {
 			// TODO: Remember, we need an additively homomorphic encryption
 			// scheme for these shares to ensure that this technique works.
 
-			ρFromShares := rnShares.Rho[j-1]
+			ρFromShares := rnShares.Rho[j]
 			ρ = ρ.Add(&ρFromShares)
 
-			σFromShares := rnShares.Sigma[j-1]
+			σFromShares := rnShares.Sigma[j]
 			σ = σ.Add(&σFromShares)
 		}
 
-		if j == rnger.index {
-			result.Rho = ρ.Share()
-			result.Sigma = σ.Share()
-			continue
-		}
-		result.ProposeRnShares[j-1] = NewProposeRnShare(messageID, ρ, σ)
+		rnShareProposals[j-1] = NewProposeRnShare(messageID, ρ, σ)
 	}
 
-	return result
+	return rnShareProposals
 }
