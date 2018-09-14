@@ -23,20 +23,20 @@ type VM struct {
 }
 
 func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
-	return newTask(newVM(scheme, index, n, k, cap), cap)
+	rng := rng.New(scheme, index, n, k, n-k, cap)
+	mul := mul.New(n, k, cap)
+	open := open.New(n, k, cap)
+	vm := newVM(scheme, index, rng, mul, open)
+	return task.New(task.NewIO(cap), vm, vm.rng, vm.mul, vm.open)
 }
 
-func newTask(vm *VM, cap int) task.Task {
-	return task.New(cap, vm, vm.rng, vm.mul, vm.open)
-}
-
-func newVM(scheme pedersen.Pedersen, index, n, k uint64, cap int) VM {
+func newVM(scheme pedersen.Pedersen, index uint64, rng, mul, open task.Task) *VM {
 	return &VM{
 		index: index,
 
-		rng:            rng.New(scheme, index, n, k, n-k, cap),
-		mul:            mul.New(n, k, cap),
-		open:           open.New(n, k, cap),
+		rng:            rng,
+		mul:            mul,
+		open:           open,
 		processes:      map[process.ID]process.Process{},
 		processIntents: map[task.MessageID]process.Intent{},
 	}
@@ -46,31 +46,34 @@ func (vm *VM) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
 	case Exec:
-		vm.exec(message)
+		return vm.exec(message)
 
 	case RemoteProcedureCall:
-		vm.invoke(message)
+		return vm.invoke(message)
 
 	case rng.RnShares:
-		vm.recvInternalRnShares(message)
+		return vm.recvInternalRnShares(message)
+
+	case rng.ProposeRnShare:
+		return vm.recvInternalRngProposeRnShare(message)
 
 	case rng.Result:
-		vm.recvInternalRngResult(message)
+		return vm.recvInternalRngResult(message)
 
 	case mul.OpenMul:
-		vm.recvInternalOpenMul(message)
+		return vm.recvInternalOpenMul(message)
 
 	case mul.Result:
-		vm.recvInternalMulResult(message)
+		return vm.recvInternalMulResult(message)
 
 	case open.Open:
-		vm.recvInternalOpen(message)
+		return vm.recvInternalOpen(message)
 
 	case open.Result:
-		vm.recvInternalOpenResult(message)
+		return vm.recvInternalOpenResult(message)
 
 	case task.Error:
-		log.Printf("[error] (vm) %v", message.Error())
+		return task.NewError(fmt.Errorf("[error] (vm) %v", message.Error()))
 
 	default:
 		panic(fmt.Sprintf("unexpected message type %T", message))
@@ -85,21 +88,18 @@ func (vm *VM) exec(exec Exec) task.Message {
 	vm.processes[proc.ID] = proc
 
 	if ret.IsReady() {
-		vm.io.Write(task.NewError(fmt.Errorf("process is ready after execution = %v", proc.ID)))
-		return
+		return task.NewError(fmt.Errorf("process %v is ready after execution", proc.ID))
 	}
 	if ret.IsTerminated() {
 		result, err := proc.Stack.Pop()
 		if err != nil {
-			vm.io.Write(task.NewError(err))
-			return
+			return task.NewError(err)
 		}
-		vm.io.Write(NewResult(result.(process.Value)))
-		return
+		return NewResult(result.(process.Value))
 	}
 	if ret.Intent() == nil {
 		log.Printf("[debug] (vm %v) process is waiting = %v", vm.index, proc.ID)
-		return
+		return nil
 	}
 
 	switch intent := ret.Intent().(type) {
@@ -125,31 +125,37 @@ func (vm *VM) exec(exec Exec) task.Message {
 	return nil
 }
 
-func (vm *VM) invoke(message RemoteProcedureCall) {
+func (vm *VM) invoke(message RemoteProcedureCall) task.Message {
 	switch message := message.Message.(type) {
 
 	case rng.RnShares, rng.ProposeRnShare:
-		vm.rng.Channel().Send(message)
+		vm.rng.Send(message)
 
 	case mul.OpenMul:
-		vm.mul.Channel().Send(message)
+		vm.mul.Send(message)
 
 	case open.Open:
-		vm.open.Channel().Send(message)
+		vm.open.Send(message)
 
 	default:
 		panic(fmt.Sprintf("unexpected rpc type %T", message))
 	}
+
+	return nil
 }
 
-func (vm *VM) recvInternalRnShares(message rng.RnShares) {
-	vm.io.Write(NewRemoteProcedureCall(message))
+func (vm *VM) recvInternalRnShares(message rng.RnShares) task.Message {
+	return NewRemoteProcedureCall(message)
 }
 
-func (vm *VM) recvInternalRngResult(message rng.Result) {
+func (vm *VM) recvInternalRngProposeRnShare(message rng.ProposeRnShare) task.Message {
+	return NewRemoteProcedureCall(message)
+}
+
+func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	intent, ok := vm.processIntents[message.MessageID]
 	if !ok {
-		return
+		return nil
 	}
 
 	switch intent := intent.(type) {
@@ -158,34 +164,33 @@ func (vm *VM) recvInternalRngResult(message rng.Result) {
 		select {
 		case intent.Rho <- message.Rho:
 		default:
-			log.Printf("[error] (vm, rng, ρ) unavailable intent")
+			return task.NewError(fmt.Errorf("(vm, rng, ρ) unavailable intent"))
 		}
 
 		select {
 		case intent.Sigma <- message.Sigma:
 		default:
-			log.Printf("[error] (vm, rng, σ) unavailable intent")
+			return task.NewError(fmt.Errorf("[error] (vm, rng, σ) unavailable intent"))
 		}
 
 	default:
 		// FIXME: Handle intent transitioning correctly.
-		log.Printf("[error] (vm, rng) unexpected intent type %T", intent)
-		return
+		return task.NewError(fmt.Errorf("[error] (vm, rng) unexpected intent type %T", intent))
 	}
 
 	delete(vm.processIntents, message.MessageID)
 
-	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
+	return vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
 }
 
-func (vm *VM) recvInternalOpenMul(message mul.OpenMul) {
-	vm.io.Write(NewRemoteProcedureCall(message))
+func (vm *VM) recvInternalOpenMul(message mul.OpenMul) task.Message {
+	return NewRemoteProcedureCall(message)
 }
 
-func (vm *VM) recvInternalMulResult(message mul.Result) {
+func (vm *VM) recvInternalMulResult(message mul.Result) task.Message {
 	intent, ok := vm.processIntents[message.MessageID]
 	if !ok {
-		return
+		return nil
 	}
 
 	switch intent := intent.(type) {
@@ -193,27 +198,26 @@ func (vm *VM) recvInternalMulResult(message mul.Result) {
 		select {
 		case intent.Ret <- message.Share:
 		default:
-			log.Printf("[error] (vm, mul) unavailable intent")
+			return task.NewError(fmt.Errorf("[error] (vm, mul) unavailable intent"))
 		}
 	default:
 		// FIXME: Handle intent transitioning correctly.
-		log.Printf("[error] (vm, mul) <%v> unexpected intent type %T", vm.index, intent)
-		return
+		return task.NewError(fmt.Errorf("[error] (vm, mul) <%v> unexpected intent type %T", vm.index, intent))
 	}
 
 	delete(vm.processIntents, message.MessageID)
 
-	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
+	return vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
 }
 
-func (vm *VM) recvInternalOpen(message open.Open) {
-	vm.io.Write(NewRemoteProcedureCall(message))
+func (vm *VM) recvInternalOpen(message open.Open) task.Message {
+	return NewRemoteProcedureCall(message)
 }
 
-func (vm *VM) recvInternalOpenResult(message open.Result) {
+func (vm *VM) recvInternalOpenResult(message open.Result) task.Message {
 	intent, ok := vm.processIntents[(message.MessageID)]
 	if !ok {
-		return
+		return nil
 	}
 
 	switch intent := intent.(type) {
@@ -221,17 +225,15 @@ func (vm *VM) recvInternalOpenResult(message open.Result) {
 		select {
 		case intent.Ret <- message.Value:
 		default:
-			log.Printf("[error] (vm, open) unavailable intent")
-			return
+			return task.NewError(fmt.Errorf("[error] (vm, open) unavailable intent"))
 		}
 	default:
-		log.Printf("[error] (vm, open) unexpected intent type %T", intent)
-		return
+		return task.NewError(fmt.Errorf("[error] (vm, open) unexpected intent type %T", intent))
 	}
 
 	delete(vm.processIntents, message.MessageID)
 
-	vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
+	return vm.exec(NewExec(vm.processes[msgidToPid(message.MessageID)]))
 }
 
 func pidToMsgid(pid process.ID, pc process.PC) task.MessageID {
