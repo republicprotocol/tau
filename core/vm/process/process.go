@@ -1,6 +1,7 @@
 package process
 
 import (
+	"encoding/base64"
 	"log"
 
 	"github.com/republicprotocol/oro-go/core/stack"
@@ -52,6 +53,12 @@ func (ret Return) IsTerminated() bool {
 }
 
 type ID [32]byte
+
+func (id ID) String() string {
+	idBase64 := base64.StdEncoding.EncodeToString(id[:])
+	idRunes := []rune(idBase64)
+	return string(idRunes[16:])
+}
 
 type Process struct {
 	ID
