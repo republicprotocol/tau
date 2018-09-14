@@ -1,6 +1,7 @@
 package task
 
 import (
+	"log"
 	"reflect"
 
 	"github.com/republicprotocol/oro-go/core/buffer"
@@ -16,7 +17,7 @@ type IO interface {
 	InputWriter() chan<- Message
 
 	OutputBuffer() buffer.Buffer
-	OutputWriter() chan<- Message
+	OutputReader() <-chan Message
 }
 
 type inputOutput struct {
@@ -72,7 +73,7 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 
 			// Read from child writer
 			reflect.SelectCase{
-				Chan: reflect.ValueOf(child.IO().OutputWriter()),
+				Chan: reflect.ValueOf(child.IO().OutputReader()),
 				Dir:  reflect.SelectRecv,
 			},
 		)
@@ -85,6 +86,10 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 		return false
 	}
 
+	if _, ok := recv.Interface().(Message); !ok {
+		return true
+	}
+
 	// Select reading from own output buffer
 	if chosen == 1 {
 		select {
@@ -95,9 +100,11 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 			return io.obuf.Dequeue()
 		}
 	}
+
 	// Select reading from owner reader
 	if chosen == 2 {
-		if message := reducer.Reduce(recv.Interface().(Message)); message != nil {
+		message := io.reduceMessage(reducer, recv.Interface().(Message))
+		if message != nil {
 			io.WriteOut(message)
 		}
 		return recvOk
@@ -116,18 +123,27 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 	}
 
 	// Select reading from one of the child writers
-	if message := reducer.Reduce(recv.Interface().(Message)); message != nil {
+	message := io.reduceMessage(reducer, recv.Interface().(Message))
+	if message != nil {
 		io.WriteOut(message)
 	}
 	return recvOk
 }
 
 func (io *inputOutput) WriteIn(message Message) bool {
-	return io.ibuf.Enqueue(message)
+	ok := io.ibuf.Enqueue(message)
+	if !ok {
+		log.Printf("[error] (io, write) buffer overflow")
+	}
+	return ok
 }
 
 func (io *inputOutput) WriteOut(message Message) bool {
-	return io.obuf.Enqueue(message)
+	ok := io.obuf.Enqueue(message)
+	if !ok {
+		log.Printf("[error] (io, write) buffer overflow")
+	}
+	return ok
 }
 
 func (io *inputOutput) InputBuffer() buffer.Buffer {
@@ -142,6 +158,21 @@ func (io *inputOutput) OutputBuffer() buffer.Buffer {
 	return io.obuf
 }
 
-func (io *inputOutput) OutputWriter() chan<- Message {
+func (io *inputOutput) OutputReader() <-chan Message {
 	return io.w
+}
+
+func (io *inputOutput) reduceMessage(reducer Reducer, message Message) Message {
+	log.Printf("[debug] reducing message %T", message)
+	if messages, ok := message.(MessageBatch); ok {
+		for i, message := range messages {
+			if message == nil {
+				messages[i] = nil
+				continue
+			}
+			messages[i] = io.reduceMessage(reducer, message)
+		}
+		return messages
+	}
+	return reducer.Reduce(message)
 }
