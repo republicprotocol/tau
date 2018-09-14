@@ -8,6 +8,18 @@ type Reducer interface {
 	Reduce(Message) Message
 }
 
+type reducer struct {
+	reduce func(Message) Message
+}
+
+func NewReducer(reduce func(Message) Message) Reducer {
+	return &reducer{reduce}
+}
+
+func (reducer *reducer) Reduce(message Message) Message {
+	return reducer.reduce(message)
+}
+
 type Task interface {
 
 	// Run the Task until its terminates. This blocks the current goroutine. The
