@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/base64"
 	"fmt"
 	"runtime/debug"
 	"time"
@@ -14,17 +15,23 @@ import (
 // Messages in the same series.
 type MessageID [40]byte
 
+func (id MessageID) String() string {
+	idBase64 := base64.StdEncoding.EncodeToString(id[:])
+	idRunes := []rune(idBase64)
+	return string(idRunes[24:])
+}
+
 type Message interface {
 	IsMessage()
 }
 
-type Messages []Message
+type MessageBatch []Message
 
-func NewMessages(messages ...Message) Message {
-	return Messages(messages)
+func NewMessageBatch(messages ...Message) Message {
+	return MessageBatch(messages)
 }
 
-func (message Messages) IsMessage() {
+func (message MessageBatch) IsMessage() {
 }
 
 type Error struct {
