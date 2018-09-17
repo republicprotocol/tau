@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/republicprotocol/co-go"
+
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"
@@ -66,22 +68,25 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
 	}
 
 	rn := rnger.scheme.SecretField().Random()
-
-	// Generate k threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
 	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	for _, ρShare := range ρShares {
-		share := ρShare.Share()
-		ρSharesMap[share.Index()] = ρShare
-	}
-
-	// Generate k/2 threshold shares for the same random number
-	σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
 	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	for _, σShare := range σShares {
-		share := σShare.Share()
-		σSharesMap[share.Index()] = σShare
-	}
+	co.ParBegin(
+		func() {
+			// Generate k threshold shares for the random number
+			ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
+			for _, ρShare := range ρShares {
+				share := ρShare.Share()
+				ρSharesMap[share.Index()] = ρShare
+			}
+		},
+		func() {
+			// Generate k/2 threshold shares for the same random number
+			σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+			for _, σShare := range σShares {
+				share := σShare.Share()
+				σSharesMap[share.Index()] = σShare
+			}
+		})
 
 	return NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index)
 }
@@ -143,29 +148,30 @@ func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []task.Messa
 
 	rnShareProposals := make([]task.Message, rnger.n)
 
-	for j := uint64(1); j <= rnger.n; j++ {
+	co.ForAll(int(rnger.n), func(j int) {
+		index := uint64(j) + 1
 
-		ρShare := shamir.New(j, zero)
-		ρt := shamir.New(j, zero)
+		ρShare := shamir.New(index, zero)
+		ρt := shamir.New(index, zero)
 		ρ := vss.New(ρCommitments, ρShare, ρt)
 
-		σShare := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
-		σt := shamir.New(j, rnger.scheme.SecretField().NewInField(big.NewInt(0)))
+		σShare := shamir.New(index, zero)
+		σt := shamir.New(index, zero)
 		σ := vss.New(σCommitments, σShare, σt)
 
 		for _, rnShares := range rnger.rnShares[messageID] {
 			// TODO: Remember, we need an additively homomorphic encryption
 			// scheme for these shares to ensure that this technique works.
 
-			ρFromShares := rnShares.Rho[j]
+			ρFromShares := rnShares.Rho[index]
 			ρ = ρ.Add(&ρFromShares)
 
-			σFromShares := rnShares.Sigma[j]
+			σFromShares := rnShares.Sigma[index]
 			σ = σ.Add(&σFromShares)
 		}
 
-		rnShareProposals[j-1] = NewProposeRnShare(messageID, ρ, σ)
-	}
+		rnShareProposals[j] = NewProposeRnShare(messageID, ρ, σ)
+	})
 
 	return rnShareProposals
 }
