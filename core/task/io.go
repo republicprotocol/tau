@@ -163,14 +163,20 @@ func (io *inputOutput) OutputReader() <-chan Message {
 }
 
 func (io *inputOutput) reduceMessage(reducer Reducer, message Message) Message {
-	log.Printf("[debug] reducing message %T", message)
+	// log.Printf("[debug] reducing message %T", message)
 	if messages, ok := message.(MessageBatch); ok {
-		for i, message := range messages {
-			if message == nil {
-				messages[i] = nil
-				continue
+		for i := 0; i < len(messages); i++ {
+			if messages[i] != nil {
+				messages[i] = io.reduceMessage(reducer, messages[i])
 			}
-			messages[i] = io.reduceMessage(reducer, message)
+			if messages[i] == nil {
+				messages[i] = messages[len(messages)-1]
+				messages = messages[:len(messages)-1]
+				i--
+			}
+		}
+		if len(messages) == 0 {
+			return nil
 		}
 		return messages
 	}
