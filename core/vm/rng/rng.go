@@ -21,9 +21,11 @@ type rnger struct {
 
 	n, k, t uint64
 
-	signals  map[task.MessageID]SignalGenerateRn
-	rnShares map[task.MessageID]map[uint64]RnShares
-	results  map[task.MessageID]Result
+	genRns      map[task.MessageID]GenerateRn
+	genRnTuples map[task.MessageID]GenerateRnTuple
+	genRnZeros  map[task.MessageID]GenerateRnZero
+	rnShares    map[task.MessageID]map[uint64]RnShares
+	results     map[task.MessageID]Result
 }
 
 func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
@@ -37,17 +39,25 @@ func newRnger(scheme pedersen.Pedersen, index, n, k, t uint64) *rnger {
 
 		n: n, k: k, t: t,
 
-		signals:  map[task.MessageID]SignalGenerateRn{},
-		rnShares: map[task.MessageID]map[uint64]RnShares{},
-		results:  map[task.MessageID]Result{},
+		genRns:      map[task.MessageID]GenerateRn{},
+		genRnTuples: map[task.MessageID]GenerateRnTuple{},
+		genRnZeros:  map[task.MessageID]GenerateRnZero{},
+		rnShares:    map[task.MessageID]map[uint64]RnShares{},
+		results:     map[task.MessageID]Result{},
 	}
 }
 
 func (rnger *rnger) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
-	case SignalGenerateRn:
-		return rnger.signalGenerateRn(message)
+	case GenerateRn:
+		return rnger.generateRn(message)
+
+	case GenerateRnTuple:
+		return rnger.generateRnTuple(message)
+
+	case GenerateRnZero:
+		return rnger.generateRnZero(message)
 
 	case RnShares:
 		return rnger.tryBuildRnShareProposals(message)
@@ -60,9 +70,30 @@ func (rnger *rnger) Reduce(message task.Message) task.Message {
 	}
 }
 
-func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
+func (rnger *rnger) generateRn(message GenerateRn) task.Message {
 	// Short circuit when results have already been computed
-	rnger.signals[message.MessageID] = message
+	rnger.genRns[message.MessageID] = message
+	if result, ok := rnger.results[message.MessageID]; ok {
+		return result
+	}
+
+	rn := rnger.scheme.SecretField().Random()
+	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+
+	// TODO: Remove duplication.
+	// Generate k threshold shares for the random number
+	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
+	for _, ρShare := range ρShares {
+		share := ρShare.Share()
+		ρSharesMap[share.Index()] = ρShare
+	}
+
+	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+}
+
+func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
+	// Short circuit when results have already been computed
+	rnger.genRnTuples[message.MessageID] = message
 	if result, ok := rnger.results[message.MessageID]; ok {
 		return result
 	}
@@ -72,6 +103,7 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
 	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
 	co.ParBegin(
 		func() {
+			// TODO: Remove duplication.
 			// Generate k threshold shares for the random number
 			ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
 			for _, ρShare := range ρShares {
@@ -80,6 +112,7 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
 			}
 		},
 		func() {
+			// TODO: Remove duplication.
 			// Generate k/2 threshold shares for the same random number
 			σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
 			for _, σShare := range σShares {
@@ -88,7 +121,40 @@ func (rnger *rnger) signalGenerateRn(message SignalGenerateRn) task.Message {
 			}
 		})
 
-	return NewRnShares(message.MessageID, ρSharesMap, σSharesMap, rnger.index)
+	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, σSharesMap)
+}
+
+func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
+	// Short circuit when results have already been computed
+	rnger.genRnZeros[message.MessageID] = message
+	if result, ok := rnger.results[message.MessageID]; ok {
+		return result
+	}
+
+	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
+	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	co.ParBegin(
+		func() {
+			// TODO: Remove duplication.
+			// Generate k threshold shares for the random number
+			ρShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
+			for _, ρShare := range ρShares {
+				share := ρShare.Share()
+				ρSharesMap[share.Index()] = ρShare
+			}
+		},
+		func() {
+			// TODO: Remove duplication.
+			// Generate k/2 threshold shares for the same random number
+			σShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
+			for _, σShare := range σShares {
+				share := σShare.Share()
+				σSharesMap[share.Index()] = σShare
+			}
+		})
+
+	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, σSharesMap)
 }
 
 func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
@@ -109,11 +175,15 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 	}
 	// Do not continue if we have not received a signal to generate a random
 	// number
-	if _, ok := rnger.signals[message.MessageID]; !ok {
-		return nil
+	if _, ok := rnger.genRns[message.MessageID]; !ok {
+		if _, ok := rnger.genRnTuples[message.MessageID]; !ok {
+			if _, ok := rnger.genRnZeros[message.MessageID]; !ok {
+				return nil
+			}
+		}
 	}
 
-	messages := rnger.buildRnShareProposals(message.MessageID)
+	messages := rnger.buildRnShareProposals(message)
 	messages[rnger.index-1] = rnger.acceptRnShare(messages[rnger.index-1].(ProposeRnShare))
 
 	return task.NewMessageBatch(messages...)
@@ -121,15 +191,17 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 
 func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 
-	result := NewResult(message.MessageID, message.Rho.Share(), message.Sigma.Share())
+	result := NewResult(message.MessageID, message.Rho, message.Sigma)
 	rnger.results[message.MessageID] = result
-	delete(rnger.signals, message.MessageID)
+	delete(rnger.genRns, message.MessageID)
+	delete(rnger.genRnTuples, message.MessageID)
+	delete(rnger.genRnZeros, message.MessageID)
 	delete(rnger.rnShares, message.MessageID)
 
 	return result
 }
 
-func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []task.Message {
+func (rnger *rnger) buildRnShareProposals(message RnShares) []task.Message {
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
 
@@ -159,18 +231,30 @@ func (rnger *rnger) buildRnShareProposals(messageID task.MessageID) []task.Messa
 		σt := shamir.New(index, zero)
 		σ := vss.New(σCommitments, σShare, σt)
 
-		for _, rnShares := range rnger.rnShares[messageID] {
+		for _, rnShares := range rnger.rnShares[message.MessageID] {
 			// TODO: Remember, we need an additively homomorphic encryption
 			// scheme for these shares to ensure that this technique works.
 
-			ρFromShares := rnShares.Rho[index]
-			ρ = ρ.Add(&ρFromShares)
-
-			σFromShares := rnShares.Sigma[index]
-			σ = σ.Add(&σFromShares)
+			if rnShares.Rho != nil {
+				ρFromShares := rnShares.Rho[index]
+				ρ = ρ.Add(&ρFromShares)
+			}
+			if rnShares.Sigma != nil {
+				σFromShares := rnShares.Sigma[index]
+				σ = σ.Add(&σFromShares)
+			}
 		}
 
-		rnShareProposals[j] = NewProposeRnShare(messageID, ρ, σ)
+		var ρPtr *vss.VShare
+		var σPtr *vss.VShare
+		if message.Rho != nil {
+			ρPtr = &ρ
+		}
+		if message.Sigma != nil {
+			σPtr = &σ
+		}
+
+		rnShareProposals[j] = NewProposeRnShare(message.MessageID, ρPtr, σPtr)
 	})
 
 	return rnShareProposals
