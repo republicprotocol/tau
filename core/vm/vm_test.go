@@ -120,6 +120,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -138,9 +139,8 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
@@ -158,6 +158,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -182,9 +183,8 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
@@ -202,6 +202,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -224,10 +225,8 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
@@ -245,6 +244,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -258,9 +258,8 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					rhoShares := make(shamir.Shares, entry.n)
 					sigmaShares := make(shamir.Shares, entry.n)
@@ -293,6 +292,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -321,14 +321,12 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 5).Should(Receive(&actual))
-						log.Printf("[debug] received value!")
 
 						res, ok := actual.result.Value.(process.ValuePublic)
 						Expect(ok).To(BeTrue())
@@ -342,6 +340,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -421,9 +420,8 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
@@ -441,13 +439,13 @@ var _ = Describe("Virtual Machine", func() {
 				}, 5)
 
 				Context("when using macros", func() {
-					FIt("should compute a not gate", func(doneT Done) {
+					It("should compute a not gate", func(doneT Done) {
 						defer close(doneT)
 						defer GinkgoRecover()
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						var results <-chan TestResult = nil
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -475,11 +473,7 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
-							}
-
-							if results == nil {
-								results = runVMs(done, vms)
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
 
 							for _ = range vms {
@@ -500,6 +494,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -533,12 +528,9 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
-						}
-						results := runVMs(done, vms)
 
-						for _, assignment := range logicTable {
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 1).Should(Receive(&actual))
@@ -557,6 +549,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -590,12 +583,9 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
-						}
-						results := runVMs(done, vms)
 
-						for _, assignment := range logicTable {
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 1).Should(Receive(&actual))
@@ -614,6 +604,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -647,12 +638,9 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
-						}
-						results := runVMs(done, vms)
 
-						for _, assignment := range logicTable {
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 1).Should(Receive(&actual))
@@ -671,6 +659,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -698,9 +687,8 @@ var _ = Describe("Virtual Machine", func() {
 							}
 							proc := process.New(id, stack, mem, code)
 
-							vms[j].Send(NewExec(proc))
+							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
-						results := runVMs(done, vms)
 
 						for _ = range vms {
 							var actual TestResult
@@ -729,7 +717,7 @@ var _ = Describe("Virtual Machine", func() {
 							}
 							proc := process.New(id, stack, mem, code)
 
-							vms[j].Send(NewExec(proc))
+							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
 
 						for _ = range vms {
@@ -749,6 +737,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -783,12 +772,9 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
-						}
-						results := runVMs(done, vms)
 
-						for i, assignment := range logicTable {
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 5).Should(Receive(&actual))
@@ -799,17 +785,12 @@ var _ = Describe("Virtual Machine", func() {
 								Expect(res.Value.Eq(assignment.g)).To(BeTrue())
 							}
 
-							polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-							sharesX := shamir.Split(polyX, uint64(entry.n))
-							sharesY := shamir.Split(polyY, uint64(entry.n))
-
-							// Check that computing the porpagator is correct
+							// Check that computing the propagator is correct
 							for j := range vms {
 								valueX := process.NewValuePrivate(sharesX[j])
 								valueY := process.NewValuePrivate(sharesY[j])
 
-								id := idFromUint64(uint64(i + 4))
+								id := idFromUint64(uint64(i + 44))
 								stack := stack.New(100)
 								mem := process.NewMemory(10)
 								code := process.Code{
@@ -821,7 +802,7 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
 
 							for _ = range vms {
@@ -842,6 +823,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						done := make(chan (struct{}))
 						vms := initVMs(entry.n, entry.k, entry.bufferCap)
+						results := runVMs(done, vms)
 
 						defer close(done)
 
@@ -896,12 +878,9 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
-						}
-						results := runVMs(done, vms)
 
-						for i, assignment := range logicTable {
 							for _ = range vms {
 								var actual TestResult
 								Eventually(results, 10).Should(Receive(&actual))
@@ -911,15 +890,6 @@ var _ = Describe("Virtual Machine", func() {
 
 								Expect(res.Value.Eq(assignment.gg)).To(BeTrue())
 							}
-
-							polyP1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p1)
-							polyG1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g1)
-							polyP2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p2)
-							polyG2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g2)
-							sharesP1 := shamir.Split(polyP1, uint64(entry.n))
-							sharesG1 := shamir.Split(polyG1, uint64(entry.n))
-							sharesP2 := shamir.Split(polyP2, uint64(entry.n))
-							sharesG2 := shamir.Split(polyG2, uint64(entry.n))
 
 							// Check that computing the porpagator is correct
 							for j := range vms {
@@ -942,7 +912,7 @@ var _ = Describe("Virtual Machine", func() {
 								}
 								proc := process.New(id, stack, mem, code)
 
-								vms[j].Send(NewExec(proc))
+								vms[j].IO().InputWriter() <- NewExec(proc)
 							}
 
 							for _ = range vms {
@@ -964,6 +934,7 @@ var _ = Describe("Virtual Machine", func() {
 
 					done := make(chan (struct{}))
 					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
 					defer close(done)
 
@@ -1022,13 +993,12 @@ var _ = Describe("Virtual Machine", func() {
 						}
 						proc := process.New(id, stack, mem, code)
 
-						vms[i].Send(NewExec(proc))
+						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
-					results := runVMs(done, vms)
 
 					for _ = range vms {
 						var actual TestResult
-						Eventually(results, 5).Should(Receive(&actual))
+						Eventually(results, 10).Should(Receive(&actual))
 						res, ok := actual.result.Value.(process.ValuePublic)
 						Expect(ok).To(BeTrue())
 						if a.Cmp(b) == -1 {
@@ -1037,7 +1007,7 @@ var _ = Describe("Virtual Machine", func() {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
 						}
 					}
-				}, 5)
+				}, 10)
 			})
 		}
 	})
