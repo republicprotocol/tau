@@ -25,7 +25,6 @@ type Message interface {
 	IsMessage()
 }
 
-<<<<<<< HEAD
 type MessageBatch []Message
 
 func NewMessageBatch(messages ...Message) Message {
@@ -35,8 +34,6 @@ func NewMessageBatch(messages ...Message) Message {
 func (message MessageBatch) IsMessage() {
 }
 
-=======
->>>>>>> 56182d4c72de0de0c90843107ccaed777c016924
 type Error struct {
 	error
 }
