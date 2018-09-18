@@ -105,7 +105,15 @@ func (vm *VM) exec(exec Exec) task.Message {
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
-		vm.rng.Send(rng.NewSignalGenerateRn(pidToMsgid(proc.ID, proc.PC)))
+		vm.rng.Send(rng.NewGenerateRn(pidToMsgid(proc.ID, proc.PC)))
+
+	case process.IntentToGenerateRnZero:
+		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
+		vm.rng.Send(rng.NewGenerateRnZero(pidToMsgid(proc.ID, proc.PC)))
+
+	case process.IntentToGenerateRnTuple:
+		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
+		vm.rng.Send(rng.NewGenerateRnTuple(pidToMsgid(proc.ID, proc.PC)))
 
 	case process.IntentToMultiply:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
@@ -162,13 +170,29 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	case process.IntentToGenerateRn:
 
 		select {
-		case intent.Rho <- message.Rho:
+		case intent.Sigma <- message.Sigma.Share():
+		default:
+			return task.NewError(fmt.Errorf("(vm, rng, ρ) unavailable intent"))
+		}
+
+	case process.IntentToGenerateRnZero:
+
+		select {
+		case intent.Sigma <- message.Sigma.Share():
+		default:
+			return task.NewError(fmt.Errorf("(vm, rng, ρ) unavailable intent"))
+		}
+
+	case process.IntentToGenerateRnTuple:
+
+		select {
+		case intent.Rho <- message.Rho.Share():
 		default:
 			return task.NewError(fmt.Errorf("(vm, rng, ρ) unavailable intent"))
 		}
 
 		select {
-		case intent.Sigma <- message.Sigma:
+		case intent.Sigma <- message.Sigma.Share():
 		default:
 			return task.NewError(fmt.Errorf("[error] (vm, rng, σ) unavailable intent"))
 		}

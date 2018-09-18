@@ -3,33 +3,58 @@ package rng
 import (
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss"
-	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
-type SignalGenerateRn struct {
+type GenerateRn struct {
 	task.MessageID
 }
 
-// NewSignalGenerateRn creates a new SignalGenerateRn message.
-func NewSignalGenerateRn(id task.MessageID) SignalGenerateRn {
-	return SignalGenerateRn{id}
+// NewGenerateRn creates a new GenerateRn message.
+func NewGenerateRn(id task.MessageID) GenerateRn {
+	return GenerateRn{id}
 }
 
 // IsMessage implements the Message interface.
-func (message SignalGenerateRn) IsMessage() {
+func (message GenerateRn) IsMessage() {
+}
+
+type GenerateRnZero struct {
+	task.MessageID
+}
+
+// NewGenerateRnZero creates a new GenerateRnZero message.
+func NewGenerateRnZero(id task.MessageID) GenerateRnZero {
+	return GenerateRnZero{id}
+}
+
+// IsMessage implements the Message interface.
+func (message GenerateRnZero) IsMessage() {
+}
+
+type GenerateRnTuple struct {
+	task.MessageID
+}
+
+// NewGenerateRnTuple creates a new GenerateRnTuple message.
+func NewGenerateRnTuple(id task.MessageID) GenerateRnTuple {
+	return GenerateRnTuple{id}
+}
+
+// IsMessage implements the Message interface.
+func (message GenerateRnTuple) IsMessage() {
 }
 
 type RnShares struct {
 	task.MessageID
 
+	Index uint64
 	Rho   map[uint64]vss.VShare
 	Sigma map[uint64]vss.VShare
-	Index uint64
 }
 
 // NewRnShares returns a new RnShares message.
-func NewRnShares(id task.MessageID, ρ, σ map[uint64]vss.VShare, index uint64) RnShares {
-	return RnShares{id, ρ, σ, index}
+func NewRnShares(id task.MessageID, index uint64, ρ, σ map[uint64]vss.VShare) RnShares {
+	return RnShares{id, index, ρ, σ}
 }
 
 // IsMessage implements the Message interface.
@@ -39,12 +64,12 @@ func (message RnShares) IsMessage() {
 type ProposeRnShare struct {
 	task.MessageID
 
-	Rho   vss.VShare
-	Sigma vss.VShare
+	Rho   *vss.VShare
+	Sigma *vss.VShare
 }
 
 // NewProposeRnShare returns a new ProposeRnShare message.
-func NewProposeRnShare(id task.MessageID, ρ, σ vss.VShare) ProposeRnShare {
+func NewProposeRnShare(id task.MessageID, ρ, σ *vss.VShare) ProposeRnShare {
 	return ProposeRnShare{id, ρ, σ}
 }
 
@@ -55,12 +80,12 @@ func (message ProposeRnShare) IsMessage() {
 type Result struct {
 	task.MessageID
 
-	Rho   shamir.Share
-	Sigma shamir.Share
+	Rho   *vss.VShare
+	Sigma *vss.VShare
 }
 
 // NewResult returns a new Result message.
-func NewResult(id task.MessageID, ρ, σ shamir.Share) Result {
+func NewResult(id task.MessageID, ρ, σ *vss.VShare) Result {
 	return Result{id, ρ, σ}
 }
 

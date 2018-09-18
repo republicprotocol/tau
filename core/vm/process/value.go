@@ -122,11 +122,3 @@ func (lhs ValuePrivate) Sub(rhs Value) (ret Value) {
 
 func (lhs ValuePrivate) IsValue() {
 }
-
-type ValuePrivateRn struct {
-	Rho   shamir.Share
-	Sigma shamir.Share
-}
-
-func (lhs ValuePrivateRn) IsValue() {
-}
