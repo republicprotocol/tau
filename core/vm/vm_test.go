@@ -689,7 +689,7 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
-				FIt("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
