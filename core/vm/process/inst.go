@@ -14,82 +14,57 @@ type Inst interface {
 	IsInst()
 }
 
-type instPush struct {
-	value Value
+type instMacro struct {
+	code Code
 }
 
-// InstPush will push a Value to the Stack. This Inst is synchronous.
-func InstPush(value Value) Inst {
-	return instPush{value}
+// InstMacro stores Code that is expanded by the Process before execution.
+func InstMacro(code Code) Inst {
+	return instMacro{code}
 }
 
 // IsInst implements the Inst interface.
-func (inst instPush) IsInst() {
+func (inst instMacro) IsInst() {
 }
 
 type instCopy struct {
-	depth uint64
+	dst Addr
+	src Addr
 }
 
-// InstCopy will push a copy of the top element of the stack to the stack. This
-// Inst is synchronous.
-func InstCopy(depth uint64) Inst {
-	return instCopy{depth}
+// InstCopy a Value from a source Addr to a destination Addr.
+func InstCopy(dst, src Addr) Inst {
+	return instCopy{dst, src}
 }
 
 // IsInst implements the Inst interface.
 func (inst instCopy) IsInst() {
 }
 
-type instStore struct {
-	addr Addr
+type instMove struct {
+	dst Addr
+	val Value
 }
 
-// InstStore will pop a Value from the Stack and store it in Memory. This Inst
-// is synchronous.
-func InstStore(addr Addr) Inst {
-	return instStore{addr}
-}
-
-// IsInst implements the Inst interface.
-func (inst instStore) IsInst() {
-}
-
-type instLoad struct {
-	addr Addr
-}
-
-// InstLoad will load a Value from Memory and push it to the Stack. This Inst is
-// synchronous.
-func InstLoad(addr Addr) Inst {
-	return instLoad{addr}
+// InstMove a Value to a destination Addr.
+func InstMove(dst Addr, val Value) Inst {
+	return instMove{dst, val}
 }
 
 // IsInst implements the Inst interface.
-func (inst instLoad) IsInst() {
-}
-
-type instLoadStack struct {
-	offset uint64
-}
-
-// InstLoadStack will load a Value from the stack and push it to the top of the
-// Stack. This Inst is synchronous.
-func InstLoadStack(offset uint64) Inst {
-	return instLoadStack{offset}
-}
-
-// IsInst implements the Inst interface.
-func (inst instLoadStack) IsInst() {
+func (inst instMove) IsInst() {
 }
 
 type instAdd struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
 }
 
-// InstAdd will pop two Values from the Stack, add them, and then push the
-// result to the Stack. This Inst is synchronous.
-func InstAdd() Inst {
-	return instAdd{}
+// InstAdd a left-hand Value to a right-hand Value and move the result to a
+// destination Addr.
+func InstAdd(dst, lhs, rhs Addr) Inst {
+	return instAdd{dst, lhs, rhs}
 }
 
 // IsInst implements the Inst interface.
@@ -97,11 +72,13 @@ func (inst instAdd) IsInst() {
 }
 
 type instNeg struct {
+	dst Addr
+	lhs Addr
 }
 
-// InstNeg will negate an element on the stack. This Inst is synchronous.
-func InstNeg() Inst {
-	return instNeg{}
+// InstNeg a Value and move the result to a destination Addr.
+func InstNeg(dst, lhs Addr) Inst {
+	return instNeg{dst, lhs}
 }
 
 // IsInst implements the Inst interface.
@@ -109,12 +86,15 @@ func (inst instNeg) IsInst() {
 }
 
 type instSub struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
 }
 
-// InstSub will pop two Values from the Stack, subtract them, and then push the
-// result to the Stack. This Inst is synchronous.
-func InstSub() Inst {
-	return instSub{}
+// InstSub a right-hand Value from a left-hand Value and move the result to a
+// destination Addr.
+func InstSub(dst, lhs, rhs Addr) Inst {
+	return instSub{dst, lhs, rhs}
 }
 
 // IsInst implements the Inst interface.
@@ -122,15 +102,17 @@ func (inst instSub) IsInst() {
 }
 
 type instGenerateRn struct {
+	dst    Addr
 	σReady bool
 	σCh    <-chan shamir.Share
 	σ      shamir.Share
 }
 
-// InstGenerateRn will generate a secure random number and push it to the Stack.
-// This Inst is asynchronous.
-func InstGenerateRn() Inst {
+// InstGenerateRn and move the private Value to a destination Addr. This
+// instruction is asynchronous.
+func InstGenerateRn(dst Addr) Inst {
 	return instGenerateRn{
+		dst:    dst,
 		σReady: false,
 		σCh:    nil,
 		σ:      shamir.Share{},
@@ -142,15 +124,17 @@ func (inst instGenerateRn) IsInst() {
 }
 
 type instGenerateRnZero struct {
+	dst    Addr
 	σReady bool
 	σCh    <-chan shamir.Share
 	σ      shamir.Share
 }
 
-// InstGenerateRnZero will generate a secure random zero and push it to the
-// Stack. This Inst is asynchronous.
-func InstGenerateRnZero() Inst {
+// InstGenerateRnZero and move the private Value to a destination Addr. This
+// instruction is asynchronous.
+func InstGenerateRnZero(dst Addr) Inst {
 	return instGenerateRnZero{
+		dst:    dst,
 		σReady: false,
 		σCh:    nil,
 		σ:      shamir.Share{},
@@ -162,23 +146,27 @@ func (inst instGenerateRnZero) IsInst() {
 }
 
 type instGenerateRnTuple struct {
+	ρDst   Addr
 	ρReady bool
 	ρCh    <-chan shamir.Share
 	ρ      shamir.Share
 
+	σDst   Addr
 	σReady bool
 	σCh    <-chan shamir.Share
 	σ      shamir.Share
 }
 
-// InstGenerateRnTuple will generate a secure random number tuple and push the
-// tuple to the Stack. This Inst is asynchronous.
-func InstGenerateRnTuple() Inst {
+// InstGenerateRnTuple and move the private Values to two destination Addrs.
+// This instruction is asynchronous.
+func InstGenerateRnTuple(ρDst, σDst Addr) Inst {
 	return instGenerateRnTuple{
+		ρDst:   ρDst,
 		ρReady: false,
 		ρCh:    nil,
 		ρ:      shamir.Share{},
 
+		σDst:   σDst,
 		σReady: false,
 		σCh:    nil,
 		σ:      shamir.Share{}}
@@ -189,17 +177,26 @@ func (inst instGenerateRnTuple) IsInst() {
 }
 
 type instMul struct {
+	dst      Addr
+	lhs      Addr
+	rhs      Addr
+	ρ        Addr
+	σ        Addr
 	retReady bool
 	retCh    <-chan shamir.Share
 	ret      shamir.Share
 }
 
-// InstMul will pop a private random number tuple from the Stack, and then pop
-// two Values from the Stack. It will use the private random number tuple to
-// multiply the two Values, and then push the result to the Stack. This Inst is
-// asynchronous.
-func InstMul() Inst {
+// InstMul a left-hand private Value with a right-hand private Value and move
+// the result to a destination Addr. Executing a multiplication also requires a
+// random number tuple. This instruction is asynchronous.
+func InstMul(dst, lhs, rhs, ρ, σ Addr) Inst {
 	return instMul{
+		dst:      dst,
+		lhs:      lhs,
+		rhs:      rhs,
+		ρ:        ρ,
+		σ:        σ,
 		retReady: false,
 		retCh:    nil,
 		ret:      shamir.Share{},
@@ -210,16 +207,47 @@ func InstMul() Inst {
 func (inst instMul) IsInst() {
 }
 
-type instOpen struct {
+type instMulPub struct {
+	dst      Addr
+	lhs      Addr
+	rhs      Addr
 	retReady bool
 	retCh    <-chan algebra.FpElement
 	ret      algebra.FpElement
 }
 
-// InstOpen will pop a private Value from the Stack, and open it into a public
-// Value. This Inst is asynchronous.
-func InstOpen() Inst {
+// InstMulPub a left-hand private Value with a right-hand private Value and open
+// the result into a public Value. The public Value is moved to a destination
+// Addr. This instruction is asynchronous.
+func InstMulPub(dst, lhs, rhs Addr) Inst {
+	return instMul{
+		dst:      dst,
+		lhs:      lhs,
+		rhs:      rhs,
+		retReady: false,
+		retCh:    nil,
+		ret:      shamir.Share{},
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMulPub) IsInst() {
+}
+
+type instOpen struct {
+	dst      Addr
+	src      Addr
+	retReady bool
+	retCh    <-chan algebra.FpElement
+	ret      algebra.FpElement
+}
+
+// InstOpen a private Value and move the resulting public Value to a destination
+// Addr.
+func InstOpen(dst, src Addr) Inst {
 	return instOpen{
+		dst:      dst,
+		src:      src,
 		retReady: false,
 		retCh:    nil,
 		ret:      algebra.FpElement{},
@@ -230,16 +258,15 @@ func InstOpen() Inst {
 func (inst instOpen) IsInst() {
 }
 
-type instMacro struct {
-	code Code
+type instExit struct {
+	src Addr
 }
 
-// InstMacro will insert code into the list of instructions. This Inst is
-// synchronous.
-func InstMacro(code Code) Inst {
-	return instMacro{code}
+// InstExit the Process and return the result at the source Addr.
+func InstExit(src Addr) Inst {
+	return instExit{src}
 }
 
 // IsInst implements the Inst interface.
-func (inst instMacro) IsInst() {
+func (inst instExit) IsInst() {
 }
