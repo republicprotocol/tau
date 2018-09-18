@@ -76,7 +76,6 @@ type instNeg struct {
 	lhs Addr
 }
 
-// InstNeg a Value and move the result to a destination Addr.
 func InstNeg(dst, lhs Addr) Inst {
 	return instNeg{dst, lhs}
 }
@@ -115,6 +114,19 @@ func InstExp(dst, lhs, rhs Addr) Inst {
 
 // IsInst implements the Inst interface.
 func (inst instExp) IsInst() {
+}
+
+type instInv struct {
+	dst Addr
+	lhs Addr
+}
+
+func InstInv(dst, lhs Addr) Inst {
+	return instInv{dst, lhs}
+}
+
+// IsInst implements the Inst interface.
+func (inst instInv) IsInst() {
 }
 
 type instGenerateRn struct {
@@ -192,6 +204,24 @@ func InstGenerateRnTuple(ρDst, σDst Addr) Inst {
 func (inst instGenerateRnTuple) IsInst() {
 }
 
+type instMulPub struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
+}
+
+func InstMulPub(dst, lhs, rhs Addr) Inst {
+	return instMulPub{
+		dst: dst,
+		lhs: lhs,
+		rhs: rhs,
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMulPub) IsInst() {
+}
+
 type instMul struct {
 	dst      Addr
 	lhs      Addr
@@ -223,7 +253,7 @@ func InstMul(dst, lhs, rhs, ρ, σ Addr) Inst {
 func (inst instMul) IsInst() {
 }
 
-type instMulPub struct {
+type instMulOpen struct {
 	dst      Addr
 	lhs      Addr
 	rhs      Addr
@@ -232,22 +262,22 @@ type instMulPub struct {
 	ret      algebra.FpElement
 }
 
-// InstMulPub a left-hand private Value with a right-hand private Value and open
-// the result into a public Value. The public Value is moved to a destination
-// Addr. This instruction is asynchronous.
-func InstMulPub(dst, lhs, rhs Addr) Inst {
-	return instMul{
+// InstMulOpen a left-hand private Value with a right-hand private Value and
+// open the result into a public Value. The public Value is moved to a
+// destination Addr. This instruction is asynchronous.
+func InstMulOpen(dst, lhs, rhs Addr) Inst {
+	return instMulOpen{
 		dst:      dst,
 		lhs:      lhs,
 		rhs:      rhs,
 		retReady: false,
 		retCh:    nil,
-		ret:      shamir.Share{},
+		ret:      algebra.FpElement{},
 	}
 }
 
 // IsInst implements the Inst interface.
-func (inst instMulPub) IsInst() {
+func (inst instMulOpen) IsInst() {
 }
 
 type instOpen struct {

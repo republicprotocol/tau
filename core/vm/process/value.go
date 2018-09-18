@@ -62,6 +62,11 @@ func (lhs ValuePublic) Exp(rhs ValuePublic) (ret ValuePublic) {
 	return ValuePublic{lhs.Value.Exp(rhs.Value)}
 }
 
+func (lhs ValuePublic) Inv() Value {
+	return ValuePublic{lhs.Value.Inv()}
+
+}
+
 func (lhs ValuePublic) IsValue() {
 }
 
@@ -118,6 +123,12 @@ func (lhs ValuePrivate) Sub(rhs Value) (ret Value) {
 		panic("unimplemented")
 	}
 	return
+}
+
+func (lhs ValuePrivate) Mul(rhs ValuePublic) Value {
+	return ValuePrivate{
+		Share: shamir.New(lhs.Share.Index(), lhs.Share.Value().Mul(rhs.Value)),
+	}
 }
 
 func (lhs ValuePrivate) IsValue() {

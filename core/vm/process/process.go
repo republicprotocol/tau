@@ -97,16 +97,20 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstSub(inst)
 		case instExp:
 			ret = proc.execInstExp(inst)
+		case instInv:
+			ret = proc.execInstInv(inst)
 		case instGenerateRn:
 			ret = proc.execInstGenerateRn(inst)
 		case instGenerateRnZero:
 			ret = proc.execInstGenerateRnZero(inst)
 		case instGenerateRnTuple:
 			ret = proc.execInstGenerateRnTuple(inst)
-		case instMul:
-			ret = proc.execInstMul(inst)
 		case instMulPub:
 			ret = proc.execInstMulPub(inst)
+		case instMul:
+			ret = proc.execInstMul(inst)
+		case instMulOpen:
+			ret = proc.execInstMulOpen(inst)
 		case instOpen:
 			ret = proc.execInstOpen(inst)
 		case instExit:
@@ -201,12 +205,27 @@ func (proc *Process) execInstExp(inst instExp) Return {
 		if rhs, ok := rhs.(ValuePublic); ok {
 			ret = lhs.Exp(rhs)
 		} else {
-			return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC))
 		}
 	} else {
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
 
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstInv(inst instInv) Return {
+	lhs := *inst.lhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePublic); !ok {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+	} else {
+		ret = lhs.Inv()
+	}
 	*inst.dst = ret
 
 	proc.PC++
@@ -302,6 +321,27 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 	return Ready()
 }
 
+func (proc *Process) execInstMulPub(inst instMulPub) Return {
+	lhs := *inst.lhs
+	rhs := *inst.rhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePrivate); ok {
+		if rhs, ok := rhs.(ValuePublic); ok {
+			ret = lhs.Mul(rhs)
+		} else {
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC))
+		}
+	} else {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+	}
+
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
 func (proc *Process) execInstMul(inst instMul) Return {
 	if inst.retCh == nil {
 
@@ -347,7 +387,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 	return Ready()
 }
 
-func (proc *Process) execInstMulPub(inst instMulPub) Return {
+func (proc *Process) execInstMulOpen(inst instMulOpen) Return {
 	if inst.retCh == nil {
 
 		x, ok := (*inst.lhs).(ValuePrivate)
