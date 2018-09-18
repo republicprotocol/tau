@@ -126,10 +126,45 @@ func MacroBitwiseLT(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
 
 	code := make(Code, 0)
 	for i := uint(0); i < bits; i++ {
-		code = append(code, MacroBitwiseNot(&tmps[i], (*Value)(unsafe.Pointer(uintptr(rhsPtr)+size*uintptr(i))), field))
+		code = append(code,
+			MacroBitwiseNot(
+				&tmps[i],
+				(*Value)(unsafe.Pointer(uintptr(rhsPtr)+size*uintptr(i))),
+				field,
+			))
 	}
 
 	code = append(code, MacroBitwiseCOut(dst, lhs, &tmps[0], true, field, bits))
 
+	return InstMacro(code)
+}
+
+func MacroRandBit(dst Addr, field algebra.Fp) Inst {
+	tmp1 := new(Value)
+	tmp2 := new(Value)
+
+	// We need (q+1)/4, where q is the prime determining the field. This is
+	// equivalent to (q-3)/4 + 1. We can get q-3 in the field because it is
+	// simply -3, and we can perform the division by using the fact that since
+	// q-3 is divisible by 4, multiplication by the (field) inverse of 4 is
+	// equivalent to normal division.
+	e := field.NewInField(big.NewInt(3)).Neg()
+	twoInv := field.NewInField(big.NewInt(2)).Inv()
+	fourInv := field.NewInField(big.NewInt(4)).Inv()
+	e = e.Mul(fourInv)
+	e = e.Add(field.NewInField(big.NewInt(1)))
+
+	code := Code{
+		InstGenerateRn(dst),
+		InstMulOpen(tmp1, dst, dst),
+		InstMove(tmp2, NewValuePublic(e)),
+		InstExp(tmp2, tmp1, tmp2),
+		InstInv(tmp2, tmp2),
+		InstMulPub(tmp2, dst, tmp2),
+		InstMove(tmp1, NewValuePublic(field.NewInField(big.NewInt(1)))),
+		InstAdd(tmp2, tmp1, tmp2),
+		InstMove(tmp1, NewValuePublic(twoInv)),
+		InstMulPub(dst, tmp2, tmp1),
+	}
 	return InstMacro(code)
 }

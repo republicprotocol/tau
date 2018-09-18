@@ -61,7 +61,7 @@ var _ = Describe("Virtual Machine", func() {
 					tasks[0].Send(NewRemoteProcedureCall(message))
 
 				case rng.ProposeRnShare:
-					share := message.Rho.Share()
+					share := message.Sigma.Share()
 					tasks[share.Index()-1].Send(NewRemoteProcedureCall(message))
 
 				default:
@@ -77,7 +77,7 @@ var _ = Describe("Virtual Machine", func() {
 				}
 
 			default:
-				log.Fatalf("unexpected message type %T", message)
+				log.Fatalf("unexpected message type %T: %v", message, message)
 			}
 
 			return nil
@@ -689,7 +689,7 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
-				FIt("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -702,8 +702,7 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 
 					a := big.NewInt(0).SetUint64(rand.Uint64())
-					b := big.NewInt(0).SetUint64(rand.Uint64()) // Set(a)
-					// notB := ^b.Uint64()
+					b := big.NewInt(0).SetUint64(rand.Uint64())
 
 					aTemp := big.NewInt(0).Set(a)
 					bTemp := big.NewInt(0).Set(b)
@@ -769,6 +768,49 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
+				FIt("should generate random bits", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					id := [32]byte{0x69}
+					for i := range vms {
+						// Generate 10 random bits
+						mem := process.NewMemory(10)
+						memLocations := make([]*process.Value, 10)
+						code := make(process.Code, 0, 21)
+						for j := 0; j < 10; j++ {
+							memLocations[j] = mem.At(j)
+							code = append(code,
+								process.MacroRandBit(mem.At(j), SecretField),
+								process.InstOpen(mem.At(j), mem.At(j)),
+							)
+						}
+						code = append(code, process.InstExit(memLocations...))
+						proc := process.New(id, mem, code)
+
+						vms[i].IO().InputWriter() <- NewExec(proc)
+					}
+
+					for _ = range vms {
+						var actual TestResult
+						Eventually(results, 10).Should(Receive(&actual))
+						for _, value := range actual.result.Values {
+							res, ok := value.(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							// Expect the result to be zero or one
+							if !res.Value.IsZero() {
+								Expect(res.Value.IsOne()).To(BeTrue())
+							}
+						}
+					}
+				})
 			})
 		}
 	})
