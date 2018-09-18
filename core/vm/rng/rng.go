@@ -78,17 +78,17 @@ func (rnger *rnger) generateRn(message GenerateRn) task.Message {
 	}
 
 	rn := rnger.scheme.SecretField().Random()
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
 
 	// TODO: Remove duplication.
 	// Generate k/2 threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
-	for _, ρShare := range ρShares {
-		share := ρShare.Share()
-		ρSharesMap[share.Index()] = ρShare
+	σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+	for _, σShare := range σShares {
+		share := σShare.Share()
+		σSharesMap[share.Index()] = σShare
 	}
 
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+	return NewRnShares(message.MessageID, rnger.index, nil, σSharesMap)
 }
 
 func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
@@ -99,17 +99,17 @@ func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
 	}
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
 
 	// TODO: Remove duplication.
 	// Generate k/2 threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
-	for _, ρShare := range ρShares {
-		share := ρShare.Share()
-		ρSharesMap[share.Index()] = ρShare
+	σShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
+	for _, σShare := range σShares {
+		share := σShare.Share()
+		σSharesMap[share.Index()] = σShare
 	}
 
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+	return NewRnShares(message.MessageID, rnger.index, nil, σSharesMap)
 }
 
 func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
