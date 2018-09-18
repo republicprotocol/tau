@@ -122,6 +122,46 @@ func (inst instSub) IsInst() {
 }
 
 type instGenerateRn struct {
+	σReady bool
+	σCh    <-chan shamir.Share
+	σ      shamir.Share
+}
+
+// InstGenerateRn will generate a secure random number and push it to the Stack.
+// This Inst is asynchronous.
+func InstGenerateRn() Inst {
+	return instGenerateRn{
+		σReady: false,
+		σCh:    nil,
+		σ:      shamir.Share{},
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instGenerateRn) IsInst() {
+}
+
+type instGenerateRnZero struct {
+	σReady bool
+	σCh    <-chan shamir.Share
+	σ      shamir.Share
+}
+
+// InstGenerateRnZero will generate a secure random zero and push it to the
+// Stack. This Inst is asynchronous.
+func InstGenerateRnZero() Inst {
+	return instGenerateRnZero{
+		σReady: false,
+		σCh:    nil,
+		σ:      shamir.Share{},
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instGenerateRnZero) IsInst() {
+}
+
+type instGenerateRnTuple struct {
 	ρReady bool
 	ρCh    <-chan shamir.Share
 	ρ      shamir.Share
@@ -131,10 +171,10 @@ type instGenerateRn struct {
 	σ      shamir.Share
 }
 
-// InstGenerateRn will generate a secure random number tuple and push the tuple
-// to the Stack. This Inst is asynchronous.
-func InstGenerateRn() Inst {
-	return instGenerateRn{
+// InstGenerateRnTuple will generate a secure random number tuple and push the
+// tuple to the Stack. This Inst is asynchronous.
+func InstGenerateRnTuple() Inst {
+	return instGenerateRnTuple{
 		ρReady: false,
 		ρCh:    nil,
 		ρ:      shamir.Share{},
@@ -145,7 +185,7 @@ func InstGenerateRn() Inst {
 }
 
 // IsInst implements the Inst interface.
-func (inst instGenerateRn) IsInst() {
+func (inst instGenerateRnTuple) IsInst() {
 }
 
 type instMul struct {

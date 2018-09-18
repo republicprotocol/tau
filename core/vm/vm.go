@@ -105,7 +105,7 @@ func (vm *VM) exec(exec Exec) task.Message {
 	switch intent := ret.Intent().(type) {
 	case process.IntentToGenerateRn:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
-		vm.rng.Send(rng.NewSignalGenerateRn(pidToMsgid(proc.ID, proc.PC)))
+		vm.rng.Send(rng.NewGenerateRn(pidToMsgid(proc.ID, proc.PC)))
 
 	case process.IntentToMultiply:
 		vm.processIntents[pidToMsgid(proc.ID, proc.PC)] = intent
