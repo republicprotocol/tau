@@ -104,6 +104,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstNeg(inst)
 		case instSub:
 			ret = proc.execInstSub(inst)
+		case instExp:
+			ret = proc.execInstExp(inst)
 		case instGenerateRn:
 			ret = proc.execInstGenerateRn(inst)
 		case instMul:
@@ -253,6 +255,37 @@ func (proc *Process) execInstSub(inst instSub) Return {
 		ret = lhs.Sub(rhs.(Value))
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+	}
+	if err := proc.Stack.Push(ret); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstExp(inst instExp) Return {
+	exponent, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	base, err := proc.Stack.Pop()
+	if err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	ret := Value(nil)
+	switch base := base.(type) {
+	case ValuePublic:
+		switch exponent := exponent.(type) {
+		case ValuePublic:
+			ret = base.Exp(exponent)
+		default:
+			return NotReady(ErrorUnexpectedTypeConversion(exponent, nil, proc.PC))
+		}
+	default:
+		return NotReady(ErrorUnexpectedTypeConversion(base, nil, proc.PC))
 	}
 	if err := proc.Stack.Push(ret); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))

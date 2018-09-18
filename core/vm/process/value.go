@@ -58,6 +58,10 @@ func (lhs ValuePublic) Sub(rhs Value) (ret Value) {
 	return
 }
 
+func (lhs ValuePublic) Exp(rhs ValuePublic) (ret ValuePublic) {
+	return ValuePublic{lhs.Value.Exp(rhs.Value)}
+}
+
 func (lhs ValuePublic) IsValue() {
 }
 

@@ -121,6 +121,19 @@ func InstSub() Inst {
 func (inst instSub) IsInst() {
 }
 
+type instExp struct {
+}
+
+// InstExp will pop two public values form the stack, raise one to the power of
+// the other, and then push the result to the stack. This Inst is synchronous.
+func InstExp() Inst {
+	return instExp{}
+}
+
+// IsInst implements the Inst interface.
+func (inst instExp) IsInst() {
+}
+
 type instGenerateRn struct {
 	ρReady bool
 	ρCh    <-chan shamir.Share
