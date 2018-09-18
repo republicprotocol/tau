@@ -193,31 +193,21 @@ func (proc *Process) execInstSub(inst instSub) Return {
 }
 
 func (proc *Process) execInstExp(inst instExp) Return {
-	exponent, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-
-	base, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	lhs := *inst.lhs
+	rhs := *inst.rhs
 
 	ret := Value(nil)
-	switch base := base.(type) {
-	case ValuePublic:
-		switch exponent := exponent.(type) {
-		case ValuePublic:
-			ret = base.Exp(exponent)
-		default:
-			return NotReady(ErrorUnexpectedTypeConversion(exponent, nil, proc.PC))
+	if lhs, ok := lhs.(ValuePublic); ok {
+		if rhs, ok := rhs.(ValuePublic); ok {
+			ret = lhs.Exp(rhs)
+		} else {
+			return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 		}
-	default:
-		return NotReady(ErrorUnexpectedTypeConversion(base, nil, proc.PC))
+	} else {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
-	if err := proc.Stack.Push(ret); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+
+	*inst.dst = ret
 
 	proc.PC++
 	return Ready()

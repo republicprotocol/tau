@@ -102,12 +102,15 @@ func (inst instSub) IsInst() {
 }
 
 type instExp struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
 }
 
 // InstExp will pop two public values form the stack, raise one to the power of
 // the other, and then push the result to the stack. This Inst is synchronous.
-func InstExp() Inst {
-	return instExp{}
+func InstExp(dst, lhs, rhs Addr) Inst {
+	return instExp{dst, lhs, rhs}
 }
 
 // IsInst implements the Inst interface.
