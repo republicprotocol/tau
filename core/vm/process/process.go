@@ -106,6 +106,10 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstSub(inst)
 		case instGenerateRn:
 			ret = proc.execInstGenerateRn(inst)
+		case instGenerateRnZero:
+			ret = proc.execInstGenerateRnZero(inst)
+		case instGenerateRnTuple:
+			ret = proc.execInstGenerateRnTuple(inst)
 		case instMul:
 			ret = proc.execInstMul(inst)
 		case instOpen:
@@ -263,13 +267,71 @@ func (proc *Process) execInstSub(inst instSub) Return {
 }
 
 func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
+	if inst.σCh == nil {
+		σCh := make(chan shamir.Share, 1)
+		inst.σCh = σCh
+		proc.Code[proc.PC] = inst
+		return NotReady(GenerateRn(σCh))
+	}
+
+	if !inst.σReady {
+		select {
+		case σ := <-inst.σCh:
+			inst.σReady = true
+			inst.σ = σ
+			proc.Code[proc.PC] = inst
+		default:
+			return NotReady(nil)
+		}
+	}
+
+	if err := proc.Push(ValuePrivate{
+		Share: inst.σ,
+	}); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstGenerateRnZero(inst instGenerateRnZero) Return {
+	if inst.σCh == nil {
+		σCh := make(chan shamir.Share, 1)
+		inst.σCh = σCh
+		proc.Code[proc.PC] = inst
+		return NotReady(GenerateRnZero(σCh))
+	}
+
+	if !inst.σReady {
+		select {
+		case σ := <-inst.σCh:
+			inst.σReady = true
+			inst.σ = σ
+			proc.Code[proc.PC] = inst
+		default:
+			return NotReady(nil)
+		}
+	}
+
+	if err := proc.Push(ValuePrivate{
+		Share: inst.σ,
+	}); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 	if inst.ρCh == nil || inst.σCh == nil {
 		ρCh := make(chan shamir.Share, 1)
 		σCh := make(chan shamir.Share, 1)
 		inst.ρCh = ρCh
 		inst.σCh = σCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRn(ρCh, σCh))
+		return NotReady(GenerateRnTuple(ρCh, σCh))
 	}
 
 	if !inst.ρReady {
@@ -294,9 +356,13 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 		}
 	}
 
-	if err := proc.Push(ValuePrivateRn{
-		Rho:   inst.ρ,
-		Sigma: inst.σ,
+	if err := proc.Push(ValuePrivate{
+		Share: inst.ρ,
+	}); err != nil {
+		return NotReady(ErrorExecution(err, proc.PC))
+	}
+	if err := proc.Push(ValuePrivate{
+		Share: inst.σ,
 	}); err != nil {
 		return NotReady(ErrorExecution(err, proc.PC))
 	}
@@ -308,13 +374,22 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 func (proc *Process) execInstMul(inst instMul) Return {
 	if inst.retCh == nil {
 
-		rnValue, err := proc.Stack.Pop()
+		σValue, err := proc.Stack.Pop()
 		if err != nil {
 			return NotReady(ErrorExecution(err, proc.PC))
 		}
-		rn, ok := rnValue.(ValuePrivateRn)
+		σ, ok := σValue.(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(rnValue, ValuePrivateRn{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(σValue, ValuePrivate{}, proc.PC))
+		}
+
+		ρValue, err := proc.Stack.Pop()
+		if err != nil {
+			return NotReady(ErrorExecution(err, proc.PC))
+		}
+		ρ, ok := ρValue.(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(ρValue, ValuePrivate{}, proc.PC))
 		}
 
 		yValue, err := proc.Stack.Pop()
@@ -338,7 +413,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		retCh := make(chan shamir.Share, 1)
 		inst.retCh = retCh
 		proc.Code[proc.PC] = inst
-		return NotReady(Multiply(x.Share, y.Share, rn.Rho, rn.Sigma, retCh))
+		return NotReady(Multiply(x.Share, y.Share, ρ.Share, σ.Share, retCh))
 	}
 
 	if !inst.retReady {

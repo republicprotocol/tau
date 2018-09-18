@@ -18,19 +18,6 @@ func NewGenerateRn(id task.MessageID) GenerateRn {
 func (message GenerateRn) IsMessage() {
 }
 
-type GenerateRnTuple struct {
-	task.MessageID
-}
-
-// NewGenerateRnTuple creates a new GenerateRnTuple message.
-func NewGenerateRnTuple(id task.MessageID) GenerateRnTuple {
-	return GenerateRnTuple{id}
-}
-
-// IsMessage implements the Message interface.
-func (message GenerateRnTuple) IsMessage() {
-}
-
 type GenerateRnZero struct {
 	task.MessageID
 }
@@ -42,6 +29,19 @@ func NewGenerateRnZero(id task.MessageID) GenerateRnZero {
 
 // IsMessage implements the Message interface.
 func (message GenerateRnZero) IsMessage() {
+}
+
+type GenerateRnTuple struct {
+	task.MessageID
+}
+
+// NewGenerateRnTuple creates a new GenerateRnTuple message.
+func NewGenerateRnTuple(id task.MessageID) GenerateRnTuple {
+	return GenerateRnTuple{id}
+}
+
+// IsMessage implements the Message interface.
+func (message GenerateRnTuple) IsMessage() {
 }
 
 type RnShares struct {

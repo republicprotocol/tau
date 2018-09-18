@@ -81,8 +81,29 @@ func (rnger *rnger) generateRn(message GenerateRn) task.Message {
 	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
 
 	// TODO: Remove duplication.
-	// Generate k threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
+	// Generate k/2 threshold shares for the random number
+	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+	for _, ρShare := range ρShares {
+		share := ρShare.Share()
+		ρSharesMap[share.Index()] = ρShare
+	}
+
+	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+}
+
+func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
+	// Short circuit when results have already been computed
+	rnger.genRnZeros[message.MessageID] = message
+	if result, ok := rnger.results[message.MessageID]; ok {
+		return result
+	}
+
+	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
+	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+
+	// TODO: Remove duplication.
+	// Generate k/2 threshold shares for the random number
+	ρShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
 	for _, ρShare := range ρShares {
 		share := ρShare.Share()
 		ρSharesMap[share.Index()] = ρShare
@@ -115,39 +136,6 @@ func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
 			// TODO: Remove duplication.
 			// Generate k/2 threshold shares for the same random number
 			σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
-			for _, σShare := range σShares {
-				share := σShare.Share()
-				σSharesMap[share.Index()] = σShare
-			}
-		})
-
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, σSharesMap)
-}
-
-func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
-	// Short circuit when results have already been computed
-	rnger.genRnZeros[message.MessageID] = message
-	if result, ok := rnger.results[message.MessageID]; ok {
-		return result
-	}
-
-	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	co.ParBegin(
-		func() {
-			// TODO: Remove duplication.
-			// Generate k threshold shares for the random number
-			ρShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
-			for _, ρShare := range ρShares {
-				share := ρShare.Share()
-				ρSharesMap[share.Index()] = ρShare
-			}
-		},
-		func() {
-			// TODO: Remove duplication.
-			// Generate k/2 threshold shares for the same random number
-			σShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
 			for _, σShare := range σShares {
 				share := σShare.Share()
 				σSharesMap[share.Index()] = σShare

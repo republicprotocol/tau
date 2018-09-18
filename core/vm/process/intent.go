@@ -25,32 +25,32 @@ func GenerateRn(σ chan<- shamir.Share) IntentToGenerateRn {
 func (intent IntentToGenerateRn) IsIntent() {
 }
 
-type IntentToGenerateTuple struct {
+type IntentToGenerateRnTuple struct {
 	Rho   chan<- shamir.Share
 	Sigma chan<- shamir.Share
 }
 
-func GenerateRnTuple(ρ, σ chan<- shamir.Share) IntentToGenerateTuple {
-	return IntentToGenerateTuple{
+func GenerateRnTuple(ρ, σ chan<- shamir.Share) IntentToGenerateRnTuple {
+	return IntentToGenerateRnTuple{
 		Rho:   ρ,
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenerateTuple) IsIntent() {
+func (intent IntentToGenerateRnTuple) IsIntent() {
 }
 
-type IntentToGenerateZero struct {
+type IntentToGenerateRnZero struct {
 	Sigma chan<- shamir.Share
 }
 
-func GenerateRnZero(σ chan<- shamir.Share) IntentToGenerateZero {
-	return IntentToGenerateZero{
+func GenerateRnZero(σ chan<- shamir.Share) IntentToGenerateRnZero {
+	return IntentToGenerateRnZero{
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenerateZero) IsIntent() {
+func (intent IntentToGenerateRnZero) IsIntent() {
 }
 
 type IntentToMultiply struct {
