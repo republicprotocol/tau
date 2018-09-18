@@ -19,11 +19,12 @@ func MacroBitwiseNot(dst, src Addr, field algebra.Fp) Inst {
 func MacroBitwiseOr(dst, lhs, rhs Addr) Inst {
 	tmp1 := new(Value)
 	tmp2 := new(Value)
+	tmp3 := new(Value)
 	code := Code{
-		InstGenerateRnTuple(tmp1, tmp2),    // rand
-		InstMul(dst, lhs, rhs, tmp1, tmp2), // ab
-		InstSub(dst, lhs, dst),             // b - ab
-		InstAdd(dst, rhs, dst),             // a + b - ab
+		InstGenerateRnTuple(tmp1, tmp2),     // rand
+		InstMul(tmp3, lhs, rhs, tmp1, tmp2), // ab
+		InstSub(tmp3, rhs, tmp3),            // b - ab
+		InstAdd(dst, lhs, tmp3),             // a + b - ab
 	}
 	return InstMacro(code)
 }
@@ -50,19 +51,23 @@ func MacroBitwiseAnd(dst, lhs, rhs Addr) Inst {
 }
 
 func MacroBitwisePropGen(propDst, genDst, lhs, rhs Addr) Inst {
+	tmp1 := new(Value)
 	code := Code{
-		MacroBitwiseXor(propDst, lhs, rhs),
+		MacroBitwiseXor(tmp1, lhs, rhs),
 		MacroBitwiseAnd(genDst, lhs, rhs),
+		InstCopy(propDst, tmp1),
 	}
 	return InstMacro(code)
 }
 
 func MacroBitwiseOpCLA(propDst, genDst, prop1, gen1, prop2, gen2 Addr) Inst {
 	tmp1 := new(Value)
+	tmp2 := new(Value)
 	code := Code{
-		MacroBitwiseAnd(propDst, prop1, prop2),
-		MacroBitwiseAnd(tmp1, gen1, prop2),
-		MacroBitwiseOr(genDst, gen2, tmp1),
+		MacroBitwiseAnd(tmp1, prop1, prop2),
+		MacroBitwiseAnd(tmp2, gen1, prop2),
+		MacroBitwiseOr(genDst, gen2, tmp2),
+		InstCopy(propDst, tmp1),
 	}
 	return InstMacro(code)
 }

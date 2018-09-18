@@ -25,15 +25,15 @@ func (message Exec) IsMessage() {
 }
 
 type Result struct {
-	Value process.Value
+	Values []process.Value
 }
 
 func (message Result) String() string {
-	return fmt.Sprintf("vm.Result {\n\tvalue: %v\n}", message.Value)
+	return fmt.Sprintf("vm.Result {\n\tvalues: %v\n}", message.Values)
 }
 
-func NewResult(value process.Value) Result {
-	return Result{value}
+func NewResult(values []process.Value) Result {
+	return Result{values}
 }
 
 func (message Result) IsMessage() {

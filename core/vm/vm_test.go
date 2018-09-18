@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"math/rand"
 
-	"github.com/republicprotocol/oro-go/core/stack"
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/process"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
@@ -130,14 +129,14 @@ var _ = Describe("Virtual Machine", func() {
 					expected := process.NewValuePublic(a.Add(b))
 
 					for i := range vms {
-						stack := stack.New(100)
-						mem := process.Memory{}
+						mem := process.NewMemory(2)
 						code := process.Code{
-							process.InstPush(valueA),
-							process.InstPush(valueB),
-							process.InstAdd(),
+							process.InstMove(mem.At(0), valueA),
+							process.InstMove(mem.At(1), valueB),
+							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
+							process.InstExit(mem.At(0)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -146,7 +145,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Value.(process.ValuePublic)
+						res, ok := actual.result.Values[0].(process.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(expected.Value)).To(BeTrue())
 					}
@@ -173,15 +172,15 @@ var _ = Describe("Virtual Machine", func() {
 						valueA := process.NewValuePrivate(sharesA[i])
 						valueB := process.NewValuePrivate(sharesB[i])
 
-						stack := stack.New(100)
-						mem := process.Memory{}
+						mem := process.NewMemory(2)
 						code := process.Code{
-							process.InstPush(valueA),
-							process.InstPush(valueB),
-							process.InstAdd(),
-							process.InstOpen(),
+							process.InstMove(mem.At(0), valueA),
+							process.InstMove(mem.At(1), valueB),
+							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
+							process.InstOpen(mem.At(0), mem.At(0)),
+							process.InstExit(mem.At(0)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -190,7 +189,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Value.(process.ValuePublic)
+						res, ok := actual.result.Values[0].(process.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(a.Add(b))).To(BeTrue())
 					}
@@ -215,15 +214,15 @@ var _ = Describe("Virtual Machine", func() {
 						valuePub := process.NewValuePublic(pub)
 						valuePriv := process.NewValuePrivate(shares[i])
 
-						stack := stack.New(100)
-						mem := process.Memory{}
+						mem := process.NewMemory(2)
 						code := process.Code{
-							process.InstPush(valuePub),
-							process.InstPush(valuePriv),
-							process.InstAdd(),
-							process.InstOpen(),
+							process.InstMove(mem.At(0), valuePub),
+							process.InstMove(mem.At(1), valuePriv),
+							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
+							process.InstOpen(mem.At(0), mem.At(0)),
+							process.InstExit(mem.At(0)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -232,7 +231,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Value.(process.ValuePublic)
+						res, ok := actual.result.Values[0].(process.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(pub.Add(priv))).To(BeTrue())
 					}
@@ -251,12 +250,12 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 
 					for i := range vms {
-						stack := stack.New(100)
-						mem := process.Memory{}
+						mem := process.NewMemory(2)
 						code := process.Code{
-							process.InstGenerateRn(),
+							process.InstGenerateRnTuple(mem.At(0), mem.At(1)),
+							process.InstExit(mem.At(0), mem.At(1)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -267,10 +266,13 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Value.(process.ValuePrivateRn)
+						rho, ok := actual.result.Values[0].(process.ValuePrivate)
 						Expect(ok).To(BeTrue())
-						rhoShares[i] = res.Rho
-						sigmaShares[i] = res.Sigma
+						rhoShares[i] = rho.Share
+
+						sigma, ok := actual.result.Values[1].(process.ValuePrivate)
+						Expect(ok).To(BeTrue())
+						sigmaShares[i] = sigma.Share
 					}
 
 					rhoExpected, _ := shamir.Join(rhoShares)
@@ -307,19 +309,16 @@ var _ = Describe("Virtual Machine", func() {
 						valueB := process.NewValuePrivate(sharesB[i])
 
 						id := [32]byte{0x69}
-						stack := stack.New(100)
-						mem := process.Memory{}
+						mem := process.NewMemory(4)
 						code := process.Code{
-							process.InstPush(valueA),
-							process.InstPush(valueB),
-							process.InstGenerateRn(),
-							process.InstMul(),
-							process.InstPush(valueA),
-							process.InstGenerateRn(),
-							process.InstMul(),
-							process.InstOpen(),
+							process.InstMove(mem.At(0), valueA),
+							process.InstMove(mem.At(1), valueB),
+							process.InstGenerateRnTuple(mem.At(2), mem.At(3)),
+							process.InstMul(mem.At(0), mem.At(0), mem.At(1), mem.At(2), mem.At(3)),
+							process.InstOpen(mem.At(0), mem.At(0)),
+							process.InstExit(mem.At(0)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -328,13 +327,14 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 5).Should(Receive(&actual))
 
-						res, ok := actual.result.Value.(process.ValuePublic)
+						res, ok := actual.result.Values[0].(process.ValuePublic)
 						Expect(ok).To(BeTrue())
-						Expect(res.Value.Eq(a.Mul(a.Mul(b)))).To(BeTrue())
+						Expect(res.Value.Eq(a.Mul(b))).To(BeTrue())
 					}
 				}, 5)
 
-				It("should compare 2 bit numbers", func(doneT Done) {
+				// 			Context("when using macros", func() {
+				It("should compute a not gate", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -344,348 +344,84 @@ var _ = Describe("Virtual Machine", func() {
 
 					defer close(done)
 
-					id := [32]byte{0x69}
-
-					a0i, a1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
-					b0i, b1i := big.NewInt(rand.Int63n(2)), big.NewInt(rand.Int63n(2))
-					ai := big.NewInt(0).Add(big.NewInt(0).Mul(big.NewInt(2), a1i), a0i)
-					bi := big.NewInt(0).Add(big.NewInt(0).Mul(big.NewInt(2), b1i), b0i)
-
-					a0, a1 := SecretField.NewInField(a0i), SecretField.NewInField(a1i)
-					b0, b1 := SecretField.NewInField(b0i), SecretField.NewInField(b1i)
-					// a := SecretField.NewInField(big.NewInt(2)).Mul(a1).Add(a0)
-					// b := SecretField.NewInField(big.NewInt(2)).Mul(b1).Add(b0)
-
-					polyA0 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a0)
-					polyA1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a1)
-					polyB0 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), b0)
-					polyB1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), b1)
-					sharesA0 := shamir.Split(polyA0, uint64(entry.n))
-					sharesA1 := shamir.Split(polyA1, uint64(entry.n))
-					sharesB0 := shamir.Split(polyB0, uint64(entry.n))
-					sharesB1 := shamir.Split(polyB1, uint64(entry.n))
-
-					for i := range vms {
-						valueA0 := process.NewValuePrivate(sharesA0[i])
-						valueA1 := process.NewValuePrivate(sharesA1[i])
-						valueB0 := process.NewValuePrivate(sharesB0[i])
-						valueB1 := process.NewValuePrivate(sharesB1[i])
-
-						stack := stack.New(100)
-						mem := process.NewMemory(100)
-						code := process.Code{
-							// b0 && !a0 stored at 0
-							process.InstPush(valueA0),
-							process.MacroNot(SecretField),
-							process.InstPush(valueB0),
-							process.MacroAnd(),
-							process.InstStore(0),
-
-							// b1 && !a1 stored at 1
-							process.InstPush(valueA1),
-							process.MacroNot(SecretField),
-							process.InstPush(valueB1),
-							process.MacroAnd(),
-							process.InstStore(1),
-
-							// !b1 && !a1 stored at 2
-							process.InstPush(valueB1),
-							process.MacroNot(SecretField),
-							process.InstPush(valueA1),
-							process.MacroNot(SecretField),
-							process.MacroAnd(),
-							process.InstStore(2),
-
-							// b1 && a1 stored at 3
-							process.InstPush(valueA1),
-							process.InstPush(valueB1),
-							process.MacroAnd(),
-							process.InstStore(3),
-
-							// addr 2 || addr 3
-							process.InstLoad(2),
-							process.InstLoad(3),
-							process.MacroOr(),
-
-							// prev && addr 0
-							process.InstLoad(0),
-							process.MacroAnd(),
-
-							// prev || addr 1
-							process.InstLoad(1),
-							process.MacroOr(),
-
-							// open result
-							process.InstOpen(),
-						}
-						proc := process.New(id, stack, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
+					logicTable := []struct {
+						x, out algebra.FpElement
+					}{
+						{Zero, One},
+						{One, Zero},
 					}
 
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 5).Should(Receive(&actual))
+					for i, assignment := range logicTable {
+						poly := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
+						shares := shamir.Split(poly, uint64(entry.n))
 
-						res, ok := actual.result.Value.(process.ValuePublic)
-						Expect(ok).To(BeTrue())
-						if res.Value.IsOne() {
-							Expect(ai.Cmp(bi)).To(Equal(-1))
-						} else {
-							Expect(ai.Cmp(bi)).ToNot(Equal(-1))
+						for j := range vms {
+							value := process.NewValuePrivate(shares[j])
+
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(1)
+							code := process.Code{
+								process.InstMove(mem.At(0), value),
+								process.MacroBitwiseNot(mem.At(0), mem.At(0), SecretField),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstExit(mem.At(0)),
+							}
+							proc := process.New(id, mem, code)
+
+							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
-						// log.Printf("a < b: %v\na: %v\nb: %v", res.Value, a, b)
+
+						for _ = range vms {
+							var actual TestResult
+							Eventually(results, 1).Should(Receive(&actual))
+
+							res, ok := actual.result.Values[0].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
+						}
 					}
-				}, 5)
+				})
 
-				Context("when using macros", func() {
-					It("should compute a not gate", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
+				It("should compute an or gate", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
 
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
 
-						defer close(done)
+					defer close(done)
 
-						logicTable := []struct {
-							x, out algebra.FpElement
-						}{
-							{Zero, One},
-							{One, Zero},
-						}
+					logicTable := []struct {
+						x, y, out algebra.FpElement
+					}{
+						{Zero, Zero, Zero},
+						{Zero, One, One},
+						{One, Zero, One},
+						{One, One, One},
+					}
 
-						for i, assignment := range logicTable {
-							poly := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							shares := shamir.Split(poly, uint64(entry.n))
-
-							for j := range vms {
-								value := process.NewValuePrivate(shares[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(value),
-									process.MacroNot(SecretField),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 1).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.out)).To(BeTrue())
-							}
-						}
-					})
-
-					It("should compute an or gate", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						logicTable := []struct {
-							x, y, out algebra.FpElement
-						}{
-							{Zero, Zero, Zero},
-							{Zero, One, One},
-							{One, Zero, One},
-							{One, One, One},
-						}
-
-						for i, assignment := range logicTable {
-							polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-							sharesX := shamir.Split(polyX, uint64(entry.n))
-							sharesY := shamir.Split(polyY, uint64(entry.n))
-
-							for j := range vms {
-								valueX := process.NewValuePrivate(sharesX[j])
-								valueY := process.NewValuePrivate(sharesY[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueX),
-									process.InstPush(valueY),
-									process.MacroOr(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 1).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.out)).To(BeTrue())
-							}
-						}
-					})
-
-					It("should compute an xor gate", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						logicTable := []struct {
-							x, y, out algebra.FpElement
-						}{
-							{Zero, Zero, Zero},
-							{Zero, One, One},
-							{One, Zero, One},
-							{One, One, Zero},
-						}
-
-						for i, assignment := range logicTable {
-							polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-							sharesX := shamir.Split(polyX, uint64(entry.n))
-							sharesY := shamir.Split(polyY, uint64(entry.n))
-
-							for j := range vms {
-								valueX := process.NewValuePrivate(sharesX[j])
-								valueY := process.NewValuePrivate(sharesY[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueX),
-									process.InstPush(valueY),
-									process.MacroXor(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 1).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.out)).To(BeTrue())
-							}
-						}
-					})
-
-					It("should compute an and gate", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						logicTable := []struct {
-							x, y, out algebra.FpElement
-						}{
-							{Zero, Zero, Zero},
-							{Zero, One, Zero},
-							{One, Zero, Zero},
-							{One, One, One},
-						}
-
-						for i, assignment := range logicTable {
-							polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-							sharesX := shamir.Split(polyX, uint64(entry.n))
-							sharesY := shamir.Split(polyY, uint64(entry.n))
-
-							for j := range vms {
-								valueX := process.NewValuePrivate(sharesX[j])
-								valueY := process.NewValuePrivate(sharesY[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueX),
-									process.InstPush(valueY),
-									process.MacroAnd(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 1).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.out)).To(BeTrue())
-							}
-						}
-					})
-
-					It("should correctly swap elements on the stack", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						x := SecretField.Random()
-						y := SecretField.Random()
-
-						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), x)
-						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), y)
+					for i, assignment := range logicTable {
+						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
+						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
 						sharesX := shamir.Split(polyX, uint64(entry.n))
 						sharesY := shamir.Split(polyY, uint64(entry.n))
 
-						// MacroSwap should swap the elements on the stack
 						for j := range vms {
 							valueX := process.NewValuePrivate(sharesX[j])
 							valueY := process.NewValuePrivate(sharesY[j])
 
-							id := idFromUint64(1)
-							stack := stack.New(100)
-							mem := process.NewMemory(10)
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(2)
 							code := process.Code{
-								process.InstPush(valueX),
-								process.InstPush(valueY),
-								process.MacroSwap(),
-								process.InstOpen(),
+								process.InstMove(mem.At(0), valueX),
+								process.InstMove(mem.At(1), valueY),
+								process.MacroBitwiseOr(mem.At(0), mem.At(0), mem.At(1)),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstExit(mem.At(0)),
 							}
-							proc := process.New(id, stack, mem, code)
+							proc := process.New(id, mem, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -694,241 +430,266 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 1).Should(Receive(&actual))
 
-							res, ok := actual.result.Value.(process.ValuePublic)
+							res, ok := actual.result.Values[0].(process.ValuePublic)
 							Expect(ok).To(BeTrue())
 
-							Expect(res.Value.Eq(x)).To(BeTrue())
+							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
 						}
-
-						// Two applications of MacroSwap should leave the stack unchanged
-						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
-
-							id := idFromUint64(1)
-							stack := stack.New(100)
-							mem := process.NewMemory(10)
-							code := process.Code{
-								process.InstPush(valueX),
-								process.InstPush(valueY),
-								process.MacroSwap(),
-								process.MacroSwap(),
-								process.InstOpen(),
-							}
-							proc := process.New(id, stack, mem, code)
-
-							vms[j].IO().InputWriter() <- NewExec(proc)
-						}
-
-						for _ = range vms {
-							var actual TestResult
-							Eventually(results, 1).Should(Receive(&actual))
-
-							res, ok := actual.result.Value.(process.ValuePublic)
-							Expect(ok).To(BeTrue())
-
-							Expect(res.Value.Eq(y)).To(BeTrue())
-						}
-					})
-
-					It("should correctly compute the propagator and generator", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						logicTable := []struct {
-							x, y, p, g algebra.FpElement
-						}{
-							{Zero, Zero, Zero, Zero},
-							{Zero, One, One, Zero},
-							{One, Zero, One, Zero},
-							{One, One, Zero, One},
-						}
-
-						for i, assignment := range logicTable {
-							polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-							polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-							sharesX := shamir.Split(polyX, uint64(entry.n))
-							sharesY := shamir.Split(polyY, uint64(entry.n))
-
-							// Check that computing the generator is correct
-							for j := range vms {
-								valueX := process.NewValuePrivate(sharesX[j])
-								valueY := process.NewValuePrivate(sharesY[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueX),
-									process.InstPush(valueY),
-									process.MacroPropGen(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 5).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.g)).To(BeTrue())
-							}
-
-							// Check that computing the propagator is correct
-							for j := range vms {
-								valueX := process.NewValuePrivate(sharesX[j])
-								valueY := process.NewValuePrivate(sharesY[j])
-
-								id := idFromUint64(uint64(i + 44))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueX),
-									process.InstPush(valueY),
-									process.MacroPropGen(),
-									process.MacroSwap(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 5).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.p)).To(BeTrue())
-							}
-						}
-					}, 5)
-
-					It("should correctly compute the CLA operation", func(doneT Done) {
-						defer close(doneT)
-						defer GinkgoRecover()
-
-						done := make(chan (struct{}))
-						vms := initVMs(entry.n, entry.k, entry.bufferCap)
-						results := runVMs(done, vms)
-
-						defer close(done)
-
-						logicTable := []struct {
-							p1, g1, p2, g2, pp, gg algebra.FpElement
-						}{
-							{Zero, Zero, Zero, Zero, Zero, Zero},
-							{Zero, Zero, Zero, One, Zero, One},
-							{Zero, Zero, One, Zero, Zero, Zero},
-							{Zero, Zero, One, One, Zero, One},
-							{Zero, One, Zero, Zero, Zero, Zero},
-							{Zero, One, Zero, One, Zero, One},
-							{Zero, One, One, Zero, Zero, One},
-							{Zero, One, One, One, Zero, One},
-							{One, Zero, Zero, Zero, Zero, Zero},
-							{One, Zero, Zero, One, Zero, One},
-							{One, Zero, One, Zero, One, Zero},
-							{One, Zero, One, One, One, One},
-							{One, One, Zero, Zero, Zero, Zero},
-							{One, One, Zero, One, Zero, One},
-							{One, One, One, Zero, One, One},
-							{One, One, One, One, One, One},
-						}
-
-						for i, assignment := range logicTable {
-							polyP1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p1)
-							polyG1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g1)
-							polyP2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p2)
-							polyG2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g2)
-							sharesP1 := shamir.Split(polyP1, uint64(entry.n))
-							sharesG1 := shamir.Split(polyG1, uint64(entry.n))
-							sharesP2 := shamir.Split(polyP2, uint64(entry.n))
-							sharesG2 := shamir.Split(polyG2, uint64(entry.n))
-
-							// Check that computing the generator is correct
-							for j := range vms {
-								valueP1 := process.NewValuePrivate(sharesP1[j])
-								valueG1 := process.NewValuePrivate(sharesG1[j])
-								valueP2 := process.NewValuePrivate(sharesP2[j])
-								valueG2 := process.NewValuePrivate(sharesG2[j])
-
-								id := idFromUint64(uint64(i))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueP1),
-									process.InstPush(valueG1),
-									process.InstPush(valueP2),
-									process.InstPush(valueG2),
-									process.MacroOpCLA(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 10).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.gg)).To(BeTrue())
-							}
-
-							// Check that computing the porpagator is correct
-							for j := range vms {
-								valueP1 := process.NewValuePrivate(sharesP1[j])
-								valueG1 := process.NewValuePrivate(sharesG1[j])
-								valueP2 := process.NewValuePrivate(sharesP2[j])
-								valueG2 := process.NewValuePrivate(sharesG2[j])
-
-								id := idFromUint64(uint64(i + 16))
-								stack := stack.New(100)
-								mem := process.NewMemory(10)
-								code := process.Code{
-									process.InstPush(valueP1),
-									process.InstPush(valueG1),
-									process.InstPush(valueP2),
-									process.InstPush(valueG2),
-									process.MacroOpCLA(),
-									process.MacroSwap(),
-									process.InstOpen(),
-								}
-								proc := process.New(id, stack, mem, code)
-
-								vms[j].IO().InputWriter() <- NewExec(proc)
-							}
-
-							for _ = range vms {
-								var actual TestResult
-								Eventually(results, 10).Should(Receive(&actual))
-
-								res, ok := actual.result.Value.(process.ValuePublic)
-								Expect(ok).To(BeTrue())
-
-								Expect(res.Value.Eq(assignment.pp)).To(BeTrue())
-							}
-						}
-					}, 10)
+					}
 				})
 
-				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+				It("should compute an xor gate", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					logicTable := []struct {
+						x, y, out algebra.FpElement
+					}{
+						{Zero, Zero, Zero},
+						{Zero, One, One},
+						{One, Zero, One},
+						{One, One, Zero},
+					}
+
+					for i, assignment := range logicTable {
+						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
+						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
+						sharesX := shamir.Split(polyX, uint64(entry.n))
+						sharesY := shamir.Split(polyY, uint64(entry.n))
+
+						for j := range vms {
+							valueX := process.NewValuePrivate(sharesX[j])
+							valueY := process.NewValuePrivate(sharesY[j])
+
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(2)
+							code := process.Code{
+								process.InstMove(mem.At(0), valueX),
+								process.InstMove(mem.At(1), valueY),
+								process.MacroBitwiseXor(mem.At(0), mem.At(0), mem.At(1)),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstExit(mem.At(0)),
+							}
+							proc := process.New(id, mem, code)
+
+							vms[j].IO().InputWriter() <- NewExec(proc)
+						}
+
+						for _ = range vms {
+							var actual TestResult
+							Eventually(results, 1).Should(Receive(&actual))
+
+							res, ok := actual.result.Values[0].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
+						}
+					}
+				})
+
+				It("should compute an and gate", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					logicTable := []struct {
+						x, y, out algebra.FpElement
+					}{
+						{Zero, Zero, Zero},
+						{Zero, One, Zero},
+						{One, Zero, Zero},
+						{One, One, One},
+					}
+
+					for i, assignment := range logicTable {
+						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
+						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
+						sharesX := shamir.Split(polyX, uint64(entry.n))
+						sharesY := shamir.Split(polyY, uint64(entry.n))
+
+						for j := range vms {
+							valueX := process.NewValuePrivate(sharesX[j])
+							valueY := process.NewValuePrivate(sharesY[j])
+
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(2)
+							code := process.Code{
+								process.InstMove(mem.At(0), valueX),
+								process.InstMove(mem.At(1), valueY),
+								process.MacroBitwiseAnd(mem.At(0), mem.At(0), mem.At(1)),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstExit(mem.At(0)),
+							}
+							proc := process.New(id, mem, code)
+
+							vms[j].IO().InputWriter() <- NewExec(proc)
+						}
+
+						for _ = range vms {
+							var actual TestResult
+							Eventually(results, 1).Should(Receive(&actual))
+
+							res, ok := actual.result.Values[0].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
+						}
+					}
+				})
+
+				It("should correctly compute the propagator and generator", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					logicTable := []struct {
+						x, y, p, g algebra.FpElement
+					}{
+						{Zero, Zero, Zero, Zero},
+						{Zero, One, One, Zero},
+						{One, Zero, One, Zero},
+						{One, One, Zero, One},
+					}
+
+					for i, assignment := range logicTable {
+						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
+						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
+						sharesX := shamir.Split(polyX, uint64(entry.n))
+						sharesY := shamir.Split(polyY, uint64(entry.n))
+
+						// Check that computing the generator is correct
+						for j := range vms {
+							valueX := process.NewValuePrivate(sharesX[j])
+							valueY := process.NewValuePrivate(sharesY[j])
+
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(2)
+							code := process.Code{
+								process.InstMove(mem.At(0), valueX),
+								process.InstMove(mem.At(1), valueY),
+								process.MacroBitwisePropGen(mem.At(0), mem.At(1), mem.At(0), mem.At(1)),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstOpen(mem.At(1), mem.At(1)),
+								process.InstExit(mem.At(0), mem.At(1)),
+							}
+							proc := process.New(id, mem, code)
+
+							vms[j].IO().InputWriter() <- NewExec(proc)
+						}
+
+						for _ = range vms {
+							var actual TestResult
+							Eventually(results, 5).Should(Receive(&actual))
+
+							resP, ok := actual.result.Values[0].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+							resG, ok := actual.result.Values[1].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							Expect(resP.Value.Eq(assignment.p)).To(BeTrue())
+							Expect(resG.Value.Eq(assignment.g)).To(BeTrue())
+						}
+					}
+				}, 5)
+
+				It("should correctly compute the CLA operation", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					logicTable := []struct {
+						p1, g1, p2, g2, pp, gg algebra.FpElement
+					}{
+						{Zero, Zero, Zero, Zero, Zero, Zero},
+						{Zero, Zero, Zero, One, Zero, One},
+						{Zero, Zero, One, Zero, Zero, Zero},
+						{Zero, Zero, One, One, Zero, One},
+						{Zero, One, Zero, Zero, Zero, Zero},
+						{Zero, One, Zero, One, Zero, One},
+						{Zero, One, One, Zero, Zero, One},
+						{Zero, One, One, One, Zero, One},
+						{One, Zero, Zero, Zero, Zero, Zero},
+						{One, Zero, Zero, One, Zero, One},
+						{One, Zero, One, Zero, One, Zero},
+						{One, Zero, One, One, One, One},
+						{One, One, Zero, Zero, Zero, Zero},
+						{One, One, Zero, One, Zero, One},
+						{One, One, One, Zero, One, One},
+						{One, One, One, One, One, One},
+					}
+
+					for i, assignment := range logicTable {
+						polyP1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p1)
+						polyG1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g1)
+						polyP2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p2)
+						polyG2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g2)
+						sharesP1 := shamir.Split(polyP1, uint64(entry.n))
+						sharesG1 := shamir.Split(polyG1, uint64(entry.n))
+						sharesP2 := shamir.Split(polyP2, uint64(entry.n))
+						sharesG2 := shamir.Split(polyG2, uint64(entry.n))
+
+						// Check that computing the generator is correct
+						for j := range vms {
+							valueP1 := process.NewValuePrivate(sharesP1[j])
+							valueG1 := process.NewValuePrivate(sharesG1[j])
+							valueP2 := process.NewValuePrivate(sharesP2[j])
+							valueG2 := process.NewValuePrivate(sharesG2[j])
+
+							id := idFromUint64(uint64(i))
+							mem := process.NewMemory(4)
+							code := process.Code{
+								process.InstMove(mem.At(0), valueP1),
+								process.InstMove(mem.At(1), valueG1),
+								process.InstMove(mem.At(2), valueP2),
+								process.InstMove(mem.At(3), valueG2),
+								process.MacroBitwiseOpCLA(mem.At(0), mem.At(1), mem.At(0), mem.At(1), mem.At(2), mem.At(3)),
+								process.InstOpen(mem.At(0), mem.At(0)),
+								process.InstOpen(mem.At(1), mem.At(1)),
+								process.InstExit(mem.At(0), mem.At(1)),
+							}
+							proc := process.New(id, mem, code)
+
+							vms[j].IO().InputWriter() <- NewExec(proc)
+						}
+
+						for _ = range vms {
+							var actual TestResult
+							Eventually(results, 10).Should(Receive(&actual))
+
+							resPP, ok := actual.result.Values[0].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+							resGG, ok := actual.result.Values[1].(process.ValuePublic)
+							Expect(ok).To(BeTrue())
+
+							Expect(resPP.Value.Eq(assignment.pp)).To(BeTrue())
+							Expect(resGG.Value.Eq(assignment.gg)).To(BeTrue())
+						}
+
+					}
+				}, 10)
+
+				FIt("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -981,17 +742,17 @@ var _ = Describe("Virtual Machine", func() {
 					}
 
 					for i := range vms {
-						stack := stack.New(100)
-						mem := process.NewMemory(300)
+						mem := process.NewMemory(128)
 						for j := 0; j < 64; j++ {
-							mem[process.Addr(10+2*j)] = aVals[i][j]
-							mem[process.Addr(11+2*j)] = bVals[i][j]
+							mem[2*j] = aVals[i][j]
+							mem[2*j+1] = bVals[i][j]
 						}
 						code := process.Code{
-							process.MacroBitwiseCOut(SecretField, process.Addr(10), 64),
-							process.InstOpen(),
+							process.MacroBitwiseCOut(mem.At(0), mem.At(0), SecretField, 64),
+							process.InstOpen(mem.At(1), mem.At(1)),
+							process.InstExit(mem.At(1)),
 						}
-						proc := process.New(id, stack, mem, code)
+						proc := process.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -999,7 +760,7 @@ var _ = Describe("Virtual Machine", func() {
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Value.(process.ValuePublic)
+						res, ok := actual.result.Values[0].(process.ValuePublic)
 						Expect(ok).To(BeTrue())
 						if a.Cmp(b) == -1 {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
@@ -1008,6 +769,7 @@ var _ = Describe("Virtual Machine", func() {
 						}
 					}
 				}, 10)
+
 			})
 		}
 	})

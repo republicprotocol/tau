@@ -95,7 +95,7 @@ func (vm *VM) exec(exec Exec) task.Message {
 		if !ok {
 			panic(fmt.Sprintf("unexpected intent type %T", ret.Intent()))
 		}
-		return NewResult(intent.Value)
+		return NewResult(intent.Values)
 	}
 	if ret.Intent() == nil {
 		log.Printf("[debug] (vm %v) process is waiting = %v", vm.index, proc.ID)

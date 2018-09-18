@@ -90,11 +90,11 @@ func (intent IntentToOpen) IsIntent() {
 }
 
 type IntentToExit struct {
-	Value
+	Values []Value
 }
 
-func Exit(value Value) IntentToExit {
-	return IntentToExit{value}
+func Exit(values []Value) IntentToExit {
+	return IntentToExit{values}
 }
 
 func (intent IntentToExit) IsIntent() {

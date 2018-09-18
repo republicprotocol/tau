@@ -259,14 +259,26 @@ func (inst instOpen) IsInst() {
 }
 
 type instExit struct {
-	src Addr
+	src []Addr
 }
 
-// InstExit the Process and return the result at the source Addr.
-func InstExit(src Addr) Inst {
+// InstExit the Process and return the results at the source Addrs.
+func InstExit(src ...Addr) Inst {
 	return instExit{src}
 }
 
 // IsInst implements the Inst interface.
 func (inst instExit) IsInst() {
+}
+
+type instDebug struct {
+	d func()
+}
+
+func InstDebug(d func()) Inst {
+	return instDebug{d}
+}
+
+func (inst instDebug) IsInst() {
+
 }

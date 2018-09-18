@@ -109,6 +109,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstOpen(inst)
 		case instExit:
 			ret = proc.execInstExit(inst)
+		case instDebug:
+			ret = proc.execInstDebug(inst)
 
 		default:
 			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
@@ -289,13 +291,13 @@ func (proc *Process) execInstMul(inst instMul) Return {
 			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
 		}
 
-		ρ, ok := (*inst.σ).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC))
-		}
-		σ, ok := (*inst.ρ).(ValuePrivate)
+		ρ, ok := (*inst.ρ).(ValuePrivate)
 		if !ok {
 			return NotReady(ErrorUnexpectedTypeConversion(*inst.ρ, ValuePrivate{}, proc.PC))
+		}
+		σ, ok := (*inst.σ).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan shamir.Share, 1)
@@ -389,10 +391,22 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 }
 
 func (proc *Process) execInstExit(inst instExit) Return {
+
+	values := make([]Value, len(inst.src))
+	for i := range values {
+		values[i] = *(inst.src[i])
+	}
+
 	proc.PC++
 	ret := Terminated()
-	ret.intent = Exit(*inst.src)
+	ret.intent = Exit(values)
 	return ret
+}
+
+func (proc *Process) execInstDebug(inst instDebug) Return {
+	inst.d()
+	proc.PC++
+	return Ready()
 }
 
 func expandMacros(code *Code) {
