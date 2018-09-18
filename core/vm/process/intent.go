@@ -89,6 +89,17 @@ func Open(value shamir.Share, ret chan<- algebra.FpElement) IntentToOpen {
 func (intent IntentToOpen) IsIntent() {
 }
 
+type IntentToExit struct {
+	Values []Value
+}
+
+func Exit(values []Value) IntentToExit {
+	return IntentToExit{values}
+}
+
+func (intent IntentToExit) IsIntent() {
+}
+
 type IntentToError struct {
 	error
 }

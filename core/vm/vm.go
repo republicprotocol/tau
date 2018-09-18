@@ -91,11 +91,11 @@ func (vm *VM) exec(exec Exec) task.Message {
 		return task.NewError(fmt.Errorf("process %v is ready after execution", proc.ID))
 	}
 	if ret.IsTerminated() {
-		result, err := proc.Stack.Pop()
-		if err != nil {
-			return task.NewError(err)
+		intent, ok := ret.Intent().(process.IntentToExit)
+		if !ok {
+			panic(fmt.Sprintf("unexpected intent type %T", ret.Intent()))
 		}
-		return NewResult(result.(process.Value))
+		return NewResult(intent.Values)
 	}
 	if ret.Intent() == nil {
 		log.Printf("[debug] (vm %v) process is waiting = %v", vm.index, proc.ID)

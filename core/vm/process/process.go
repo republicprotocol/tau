@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"log"
 
-	"github.com/republicprotocol/oro-go/core/stack"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -62,17 +61,15 @@ func (id ID) String() string {
 
 type Process struct {
 	ID
-	stack.Stack
 	Memory
 	Code
 	PC
 }
 
-func New(id ID, stack stack.Stack, mem Memory, code Code) Process {
+func New(id ID, mem Memory, code Code) Process {
 	expandMacros(&code)
 	return Process{
 		ID:     id,
-		Stack:  stack,
 		Memory: mem,
 		Code:   code,
 		PC:     0,
@@ -88,16 +85,10 @@ func (proc *Process) Exec() Return {
 		}
 
 		switch inst := proc.Code[proc.PC].(type) {
-		case instPush:
-			ret = proc.execInstPush(inst)
 		case instCopy:
 			ret = proc.execInstCopy(inst)
-		case instStore:
-			ret = proc.execInstStore(inst)
-		case instLoad:
-			ret = proc.execInstLoad(inst)
-		case instLoadStack:
-			ret = proc.execInstLoadStack(inst)
+		case instMove:
+			ret = proc.execInstMove(inst)
 		case instAdd:
 			ret = proc.execInstAdd(inst)
 		case instNeg:
@@ -114,8 +105,14 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstGenerateRnTuple(inst)
 		case instMul:
 			ret = proc.execInstMul(inst)
+		case instMulPub:
+			ret = proc.execInstMulPub(inst)
 		case instOpen:
 			ret = proc.execInstOpen(inst)
+		case instExit:
+			ret = proc.execInstExit(inst)
+		case instDebug:
+			ret = proc.execInstDebug(inst)
 
 		default:
 			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
@@ -125,80 +122,23 @@ func (proc *Process) Exec() Return {
 	return ret
 }
 
-func (proc *Process) execInstPush(inst instPush) Return {
-	if err := proc.Stack.Push(inst.value); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-
-	proc.PC++
-	return Ready()
-}
-
 func (proc *Process) execInstCopy(inst instCopy) Return {
-	values := make([]stack.Element, inst.depth)
-	for i := range values {
-		value, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		values[len(values)-i-1] = value
-	}
-
-	values = append(values, values...)
-	for _, value := range values {
-		if err := proc.Stack.Push(value); err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-	}
+	*inst.dst = *inst.src
 
 	proc.PC++
 	return Ready()
 }
 
-func (proc *Process) execInstStore(inst instStore) Return {
-	value, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-	proc.Memory[inst.addr] = value.(Value)
-	proc.PC++
-	return Ready()
-}
+func (proc *Process) execInstMove(inst instMove) Return {
+	*inst.dst = inst.val
 
-func (proc *Process) execInstLoad(inst instLoad) Return {
-	value, ok := proc.Memory[inst.addr]
-	if !ok {
-		return NotReady(ErrorInvalidMemoryAddr(inst.addr, proc.PC))
-	}
-	if err := proc.Stack.Push(value); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-	proc.PC++
-	return Ready()
-}
-
-func (proc *Process) execInstLoadStack(inst instLoadStack) Return {
-	value, err := proc.Stack.Peek(int(inst.offset))
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-	if err := proc.Stack.Push(value); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
 	proc.PC++
 	return Ready()
 }
 
 func (proc *Process) execInstAdd(inst instAdd) Return {
-	rhs, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-
-	lhs, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	lhs := *inst.lhs
+	rhs := *inst.rhs
 
 	ret := Value(nil)
 	switch lhs := lhs.(type) {
@@ -209,19 +149,14 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
-	if err := proc.Stack.Push(ret); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.dst = ret
 
 	proc.PC++
 	return Ready()
 }
 
 func (proc *Process) execInstNeg(inst instNeg) Return {
-	lhs, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	lhs := *inst.lhs
 
 	ret := Value(nil)
 	switch lhs := lhs.(type) {
@@ -232,24 +167,15 @@ func (proc *Process) execInstNeg(inst instNeg) Return {
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
-	if err := proc.Stack.Push(ret); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.dst = ret
 
 	proc.PC++
 	return Ready()
 }
 
 func (proc *Process) execInstSub(inst instSub) Return {
-	rhs, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-
-	lhs, err := proc.Stack.Pop()
-	if err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	lhs := *inst.lhs
+	rhs := *inst.rhs
 
 	ret := Value(nil)
 	switch lhs := lhs.(type) {
@@ -260,9 +186,7 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	default:
 		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
 	}
-	if err := proc.Stack.Push(ret); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.dst = ret
 
 	proc.PC++
 	return Ready()
@@ -318,11 +242,7 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 		}
 	}
 
-	if err := proc.Push(ValuePrivate{
-		Share: inst.σ,
-	}); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.dst = NewValuePrivate(inst.σ)
 
 	proc.PC++
 	return Ready()
@@ -347,11 +267,7 @@ func (proc *Process) execInstGenerateRnZero(inst instGenerateRnZero) Return {
 		}
 	}
 
-	if err := proc.Push(ValuePrivate{
-		Share: inst.σ,
-	}); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.dst = NewValuePrivate(inst.σ)
 
 	proc.PC++
 	return Ready()
@@ -389,16 +305,8 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 		}
 	}
 
-	if err := proc.Push(ValuePrivate{
-		Share: inst.ρ,
-	}); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
-	if err := proc.Push(ValuePrivate{
-		Share: inst.σ,
-	}); err != nil {
-		return NotReady(ErrorExecution(err, proc.PC))
-	}
+	*inst.ρDst = NewValuePrivate(inst.ρ)
+	*inst.σDst = NewValuePrivate(inst.σ)
 
 	proc.PC++
 	return Ready()
@@ -407,40 +315,22 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 func (proc *Process) execInstMul(inst instMul) Return {
 	if inst.retCh == nil {
 
-		σValue, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		σ, ok := σValue.(ValuePrivate)
+		x, ok := (*inst.lhs).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(σValue, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
+		}
+		y, ok := (*inst.rhs).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
 		}
 
-		ρValue, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		ρ, ok := ρValue.(ValuePrivate)
+		ρ, ok := (*inst.ρ).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(ρValue, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.ρ, ValuePrivate{}, proc.PC))
 		}
-
-		yValue, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		y, ok := yValue.(ValuePrivate)
+		σ, ok := (*inst.σ).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(yValue, ValuePrivate{}, proc.PC))
-		}
-
-		xValue, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		x, ok := xValue.(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(xValue, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan shamir.Share, 1)
@@ -461,9 +351,42 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 	}
 
-	proc.Push(ValuePrivate{
-		Share: inst.ret,
-	})
+	*inst.dst = NewValuePrivate(inst.ret)
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstMulPub(inst instMulPub) Return {
+	if inst.retCh == nil {
+
+		x, ok := (*inst.lhs).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
+		}
+		y, ok := (*inst.rhs).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
+		}
+
+		retCh := make(chan algebra.FpElement, 1)
+		inst.retCh = retCh
+		proc.Code[proc.PC] = inst
+		return NotReady(Open(x.Share.Mul(y.Share), retCh))
+	}
+
+	if !inst.retReady {
+		select {
+		case ret := <-inst.retCh:
+			inst.retReady = true
+			inst.ret = ret
+			proc.Code[proc.PC] = inst
+		default:
+			return NotReady(nil)
+		}
+	}
+
+	*inst.dst = NewValuePublic(inst.ret)
 
 	proc.PC++
 	return Ready()
@@ -472,13 +395,9 @@ func (proc *Process) execInstMul(inst instMul) Return {
 func (proc *Process) execInstOpen(inst instOpen) Return {
 	if inst.retCh == nil {
 
-		value, err := proc.Stack.Pop()
-		if err != nil {
-			return NotReady(ErrorExecution(err, proc.PC))
-		}
-		v, ok := value.(ValuePrivate)
+		v, ok := (*inst.src).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(value, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.src, ValuePrivate{}, proc.PC))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
@@ -498,10 +417,27 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 		}
 	}
 
-	proc.Push(ValuePublic{
-		Value: inst.ret,
-	})
+	*inst.dst = NewValuePublic(inst.ret)
 
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstExit(inst instExit) Return {
+
+	values := make([]Value, len(inst.src))
+	for i := range values {
+		values[i] = *(inst.src[i])
+	}
+
+	proc.PC++
+	ret := Terminated()
+	ret.intent = Exit(values)
+	return ret
+}
+
+func (proc *Process) execInstDebug(inst instDebug) Return {
+	inst.d()
 	proc.PC++
 	return Ready()
 }

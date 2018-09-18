@@ -1,9 +1,13 @@
 package process
 
-type Addr uint64
+type Addr = *Value
 
-type Memory map[Addr]Value
+type Memory []Value
 
 func NewMemory(cap int) Memory {
 	return make(Memory, cap)
+}
+
+func (mem Memory) At(i int) *Value {
+	return &mem[i]
 }
