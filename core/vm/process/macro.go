@@ -72,20 +72,21 @@ func MacroBitwiseOpCLA(propDst, genDst, prop1, gen1, prop2, gen2 Addr) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseCOut(dst, src Addr, field algebra.Fp, bits uint) Inst {
+func MacroBitwiseCOut(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
 
 	size := unsafe.Sizeof(interface{}(nil))
-	dstPtr := unsafe.Pointer(dst)
-	srcPtr := unsafe.Pointer(src)
+	tmps := make([]Value, 2*bits)
+	lhsPtr := unsafe.Pointer(lhs)
+	rhsPtr := unsafe.Pointer(rhs)
 
 	code := make(Code, 0)
 	for i := uint(0); i < bits; i++ {
 		c := Code{
 			MacroBitwisePropGen(
-				(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(2*i))),
-				(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(2*i+1))),
-				(*Value)(unsafe.Pointer(uintptr(srcPtr)+size*uintptr(2*i))),
-				(*Value)(unsafe.Pointer(uintptr(srcPtr)+size*uintptr(2*i+1))),
+				&tmps[2*i],
+				&tmps[2*i+1],
+				(*Value)(unsafe.Pointer(uintptr(lhsPtr)+size*uintptr(i))),
+				(*Value)(unsafe.Pointer(uintptr(rhsPtr)+size*uintptr(i))),
 			),
 		}
 		code = append(code, c...)
@@ -95,17 +96,19 @@ func MacroBitwiseCOut(dst, src Addr, field algebra.Fp, bits uint) Inst {
 		for j := uint(0); j < i; j++ {
 			c := Code{
 				MacroBitwiseOpCLA(
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(2*j))),
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(2*j+1))),
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(4*j))),
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(4*j+1))),
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(4*j+2))),
-					(*Value)(unsafe.Pointer(uintptr(dstPtr)+size*uintptr(4*j+3))),
+					&tmps[2*j],
+					&tmps[2*j+1],
+					&tmps[4*j],
+					&tmps[4*j+1],
+					&tmps[4*j+2],
+					&tmps[4*j+3],
 				),
 			}
 			code = append(code, c...)
 		}
 	}
+
+	code = append(code, InstCopy(dst, &tmps[1]))
 
 	return InstMacro(code)
 }

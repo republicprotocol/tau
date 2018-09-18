@@ -689,7 +689,7 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
-				It("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
+				FIt("should compare 64 bit numbers with the CLA adder", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -744,13 +744,13 @@ var _ = Describe("Virtual Machine", func() {
 					for i := range vms {
 						mem := process.NewMemory(128)
 						for j := 0; j < 64; j++ {
-							mem[2*j] = aVals[i][j]
-							mem[2*j+1] = bVals[i][j]
+							mem[j] = aVals[i][j]
+							mem[j+64] = bVals[i][j]
 						}
 						code := process.Code{
-							process.MacroBitwiseCOut(mem.At(0), mem.At(0), SecretField, 64),
-							process.InstOpen(mem.At(1), mem.At(1)),
-							process.InstExit(mem.At(1)),
+							process.MacroBitwiseCOut(mem.At(0), mem.At(0), mem.At(64), SecretField, 64),
+							process.InstOpen(mem.At(0), mem.At(0)),
+							process.InstExit(mem.At(0)),
 						}
 						proc := process.New(id, mem, code)
 
