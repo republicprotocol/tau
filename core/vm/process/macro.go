@@ -72,7 +72,7 @@ func MacroBitwiseOpCLA(propDst, genDst, prop1, gen1, prop2, gen2 Addr) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseCOut(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
+func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits uint) Inst {
 
 	size := unsafe.Sizeof(interface{}(nil))
 	tmps := make([]Value, 2*bits)
@@ -90,6 +90,11 @@ func MacroBitwiseCOut(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
 			),
 		}
 		code = append(code, c...)
+	}
+
+	// If there is initial carry in, update the first generator
+	if carry {
+		code = append(code, MacroBitwiseOr(&tmps[1], &tmps[0], &tmps[1]))
 	}
 
 	for i := bits / 2; i > 0; i /= 2 {
@@ -113,6 +118,18 @@ func MacroBitwiseCOut(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseLT(dst, src Addr, field algebra.Fp, bits uint) Inst {
-	panic("unimplemented")
+func MacroBitwiseLT(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
+
+	size := unsafe.Sizeof(interface{}(nil))
+	tmps := make([]Value, bits)
+	rhsPtr := unsafe.Pointer(rhs)
+
+	code := make(Code, 0)
+	for i := uint(0); i < bits; i++ {
+		code = append(code, MacroBitwiseNot(&tmps[i], (*Value)(unsafe.Pointer(uintptr(rhsPtr)+size*uintptr(i))), field))
+	}
+
+	code = append(code, MacroBitwiseCOut(dst, lhs, &tmps[0], true, field, bits))
+
+	return InstMacro(code)
 }

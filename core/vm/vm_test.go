@@ -703,11 +703,10 @@ var _ = Describe("Virtual Machine", func() {
 
 					a := big.NewInt(0).SetUint64(rand.Uint64())
 					b := big.NewInt(0).SetUint64(rand.Uint64()) // Set(a)
-					notB := ^b.Uint64()
-					notB += 1
+					// notB := ^b.Uint64()
 
 					aTemp := big.NewInt(0).Set(a)
-					bTemp := big.NewInt(0).SetUint64(notB)
+					bTemp := big.NewInt(0).Set(b)
 
 					aBits := make([]algebra.FpElement, 64)
 					bBits := make([]algebra.FpElement, 64)
@@ -748,7 +747,7 @@ var _ = Describe("Virtual Machine", func() {
 							mem[j+64] = bVals[i][j]
 						}
 						code := process.Code{
-							process.MacroBitwiseCOut(mem.At(0), mem.At(0), mem.At(64), SecretField, 64),
+							process.MacroBitwiseLT(mem.At(0), mem.At(0), mem.At(64), SecretField, 64),
 							process.InstOpen(mem.At(0), mem.At(0)),
 							process.InstExit(mem.At(0)),
 						}
