@@ -77,18 +77,21 @@ func (rnger *rnger) generateRn(message GenerateRn) task.Message {
 		return result
 	}
 
-	rn := rnger.scheme.SecretField().Random()
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	σSharesMapBatch := make([]map[uint64]vss.VShare, message.batch)
 
-	// TODO: Remove duplication.
-	// Generate k/2 threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
-	for _, ρShare := range ρShares {
-		share := ρShare.Share()
-		ρSharesMap[share.Index()] = ρShare
-	}
+	co.ForAll(message.batch, func(b int) {
+		σSharesMapBatch[b] = make(map[uint64]vss.VShare, rnger.n)
 
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+		// Generate k/2 threshold shares for the random number
+		rn := rnger.scheme.SecretField().Random()
+		σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+		for _, σShare := range σShares {
+			share := σShare.Share()
+			σSharesMapBatch[b][share.Index()] = σShare
+		}
+	})
+
+	return NewRnShares(message.MessageID, rnger.index, nil, σSharesMapBatch)
 }
 
 func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
@@ -99,17 +102,20 @@ func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
 	}
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
+	σSharesMapBatch := make([]map[uint64]vss.VShare, message.batch)
 
-	// TODO: Remove duplication.
-	// Generate k/2 threshold shares for the random number
-	ρShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
-	for _, ρShare := range ρShares {
-		share := ρShare.Share()
-		ρSharesMap[share.Index()] = ρShare
-	}
+	co.ForAll(message.batch, func(b int) {
+		σSharesMapBatch[b] = make(map[uint64]vss.VShare, rnger.n)
 
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, nil)
+		// Generate k/2 threshold shares for the random number
+		σShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
+		for _, σShare := range σShares {
+			share := σShare.Share()
+			σSharesMapBatch[b][share.Index()] = σShare
+		}
+	})
+
+	return NewRnShares(message.MessageID, rnger.index, nil, σSharesMapBatch)
 }
 
 func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
@@ -119,30 +125,34 @@ func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
 		return result
 	}
 
-	rn := rnger.scheme.SecretField().Random()
-	ρSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	σSharesMap := make(map[uint64]vss.VShare, rnger.n)
-	co.ParBegin(
-		func() {
-			// TODO: Remove duplication.
-			// Generate k threshold shares for the random number
-			ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
-			for _, ρShare := range ρShares {
-				share := ρShare.Share()
-				ρSharesMap[share.Index()] = ρShare
-			}
-		},
-		func() {
-			// TODO: Remove duplication.
-			// Generate k/2 threshold shares for the same random number
-			σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
-			for _, σShare := range σShares {
-				share := σShare.Share()
-				σSharesMap[share.Index()] = σShare
-			}
-		})
+	ρSharesMapBatch := make([]map[uint64]vss.VShare, message.batch)
+	σSharesMapBatch := make([]map[uint64]vss.VShare, message.batch)
 
-	return NewRnShares(message.MessageID, rnger.index, ρSharesMap, σSharesMap)
+	co.ForAll(message.batch, func(b int) {
+		ρSharesMapBatch[b] = make(map[uint64]vss.VShare, rnger.n)
+		σSharesMapBatch[b] = make(map[uint64]vss.VShare, rnger.n)
+
+		rn := rnger.scheme.SecretField().Random()
+		co.ParBegin(
+			func() {
+				// Generate k threshold shares for a random number
+				ρShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k)
+				for _, ρShare := range ρShares {
+					share := ρShare.Share()
+					ρSharesMapBatch[b][share.Index()] = ρShare
+				}
+			},
+			func() {
+				// Generate k/2 threshold shares for the same random number
+				σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+				for _, σShare := range σShares {
+					share := σShare.Share()
+					σSharesMapBatch[b][share.Index()] = σShare
+				}
+			})
+	})
+
+	return NewRnShares(message.MessageID, rnger.index, ρSharesMapBatch, σSharesMapBatch)
 }
 
 func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
@@ -179,7 +189,7 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 
 func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 
-	result := NewResult(message.MessageID, message.Rho, message.Sigma)
+	result := NewResult(message.MessageID, message.RhoBatch, message.SigmaBatch)
 	rnger.results[message.MessageID] = result
 	delete(rnger.genRns, message.MessageID)
 	delete(rnger.genRnTuples, message.MessageID)
@@ -189,14 +199,12 @@ func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
 	return result
 }
 
+// TODO: Remember, we need an additively homomorphic encryption
+// scheme for these shares to ensure that this technique works.
 func (rnger *rnger) buildRnShareProposals(message RnShares) []task.Message {
 
 	zero := rnger.scheme.SecretField().NewInField(big.NewInt(0))
-
-	// TODO: Create more efficient way to get the one element (in the larger
-	// field, not the secret field).
 	one := rnger.scheme.Commit(zero, zero)
-
 	ρCommitments := make(algebra.FpElements, rnger.k)
 	for i := 0; i < len(ρCommitments); i++ {
 		ρCommitments[i] = one
@@ -206,44 +214,51 @@ func (rnger *rnger) buildRnShareProposals(message RnShares) []task.Message {
 		σCommitments[i] = one
 	}
 
+	batch := len(message.SigmaBatch)
 	rnShareProposals := make([]task.Message, rnger.n)
 
-	co.ForAll(int(rnger.n), func(j int) {
-		index := uint64(j) + 1
+	for j := uint64(0); j < rnger.n; j++ {
+		index := j + 1
 
-		ρShare := shamir.New(index, zero)
-		ρt := shamir.New(index, zero)
-		ρ := vss.New(ρCommitments, ρShare, ρt)
+		var ρBatch, σBatch []vss.VShare
+		if message.RhoBatch != nil {
+			ρBatch = make([]vss.VShare, batch)
+		}
+		if message.SigmaBatch != nil {
+			σBatch = make([]vss.VShare, batch)
+		}
 
-		σShare := shamir.New(index, zero)
-		σt := shamir.New(index, zero)
-		σ := vss.New(σCommitments, σShare, σt)
+		co.ForAll(len(message.SigmaBatch), func(b int) {
 
-		for _, rnShares := range rnger.rnShares[message.MessageID] {
-			// TODO: Remember, we need an additively homomorphic encryption
-			// scheme for these shares to ensure that this technique works.
+			ρShare := shamir.New(index, zero)
+			ρt := shamir.New(index, zero)
+			ρ := vss.New(ρCommitments, ρShare, ρt)
 
-			if rnShares.Rho != nil {
-				ρFromShares := rnShares.Rho[index]
-				ρ = ρ.Add(&ρFromShares)
+			σShare := shamir.New(index, zero)
+			σt := shamir.New(index, zero)
+			σ := vss.New(σCommitments, σShare, σt)
+
+			for _, rnShares := range rnger.rnShares[message.MessageID] {
+				if rnShares.RhoBatch != nil {
+					ρFromShares := rnShares.RhoBatch[b][index]
+					ρ = ρ.Add(&ρFromShares)
+				}
+				if rnShares.SigmaBatch != nil {
+					σFromShares := rnShares.SigmaBatch[b][index]
+					σ = σ.Add(&σFromShares)
+				}
 			}
-			if rnShares.Sigma != nil {
-				σFromShares := rnShares.Sigma[index]
-				σ = σ.Add(&σFromShares)
+
+			if message.RhoBatch != nil {
+				ρBatch[b] = ρ
 			}
-		}
+			if message.SigmaBatch != nil {
+				σBatch[b] = σ
+			}
+		})
 
-		var ρPtr *vss.VShare
-		var σPtr *vss.VShare
-		if message.Rho != nil {
-			ρPtr = &ρ
-		}
-		if message.Sigma != nil {
-			σPtr = &σ
-		}
-
-		rnShareProposals[j] = NewProposeRnShare(message.MessageID, ρPtr, σPtr)
-	})
+		rnShareProposals[j] = NewProposeRnShare(message.MessageID, ρBatch, σBatch)
+	}
 
 	return rnShareProposals
 }
