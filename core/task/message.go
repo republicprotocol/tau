@@ -27,7 +27,7 @@ type Message interface {
 
 type MessageBatch []Message
 
-func NewMessageBatch(messages ...Message) Message {
+func NewMessageBatch(messages []Message) Message {
 	return MessageBatch(messages)
 }
 
