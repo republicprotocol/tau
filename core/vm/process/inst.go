@@ -1,6 +1,7 @@
 package process
 
 import (
+	"github.com/republicprotocol/oro-go/core/vss"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -102,20 +103,24 @@ func (inst instSub) IsInst() {
 }
 
 type instGenerateRn struct {
-	dst    Addr
-	σReady bool
-	σCh    <-chan shamir.Share
-	σ      shamir.Share
+	dst   Addr
+	batch int
+
+	σsReady bool
+	σsCh    <-chan []vss.VShare
+	σs      []vss.VShare
 }
 
 // InstGenerateRn and move the private Value to a destination Addr. This
 // instruction is asynchronous.
-func InstGenerateRn(dst Addr) Inst {
+func InstGenerateRn(dst Addr, batch int) Inst {
 	return instGenerateRn{
-		dst:    dst,
-		σReady: false,
-		σCh:    nil,
-		σ:      shamir.Share{},
+		dst:   dst,
+		batch: batch,
+
+		σsReady: false,
+		σsCh:    nil,
+		σs:      nil,
 	}
 }
 
@@ -124,20 +129,24 @@ func (inst instGenerateRn) IsInst() {
 }
 
 type instGenerateRnZero struct {
-	dst    Addr
-	σReady bool
-	σCh    <-chan shamir.Share
-	σ      shamir.Share
+	dst   Addr
+	batch int
+
+	σsReady bool
+	σsCh    <-chan []vss.VShare
+	σs      []vss.VShare
 }
 
 // InstGenerateRnZero and move the private Value to a destination Addr. This
 // instruction is asynchronous.
-func InstGenerateRnZero(dst Addr) Inst {
+func InstGenerateRnZero(dst Addr, batch int) Inst {
 	return instGenerateRnZero{
-		dst:    dst,
-		σReady: false,
-		σCh:    nil,
-		σ:      shamir.Share{},
+		dst:   dst,
+		batch: batch,
+
+		σsReady: false,
+		σsCh:    nil,
+		σs:      nil,
 	}
 }
 
@@ -146,30 +155,31 @@ func (inst instGenerateRnZero) IsInst() {
 }
 
 type instGenerateRnTuple struct {
-	ρDst   Addr
-	ρReady bool
-	ρCh    <-chan shamir.Share
-	ρ      shamir.Share
+	dst   Addr
+	batch int
 
-	σDst   Addr
-	σReady bool
-	σCh    <-chan shamir.Share
-	σ      shamir.Share
+	ρsReady bool
+	ρsCh    <-chan []vss.VShare
+	ρs      []vss.VShare
+	σsReady bool
+	σsCh    <-chan []vss.VShare
+	σs      []vss.VShare
 }
 
 // InstGenerateRnTuple and move the private Values to two destination Addrs.
 // This instruction is asynchronous.
-func InstGenerateRnTuple(ρDst, σDst Addr) Inst {
+func InstGenerateRnTuple(dst Addr, batch int) Inst {
 	return instGenerateRnTuple{
-		ρDst:   ρDst,
-		ρReady: false,
-		ρCh:    nil,
-		ρ:      shamir.Share{},
+		dst:   dst,
+		batch: batch,
 
-		σDst:   σDst,
-		σReady: false,
-		σCh:    nil,
-		σ:      shamir.Share{}}
+		ρsReady: false,
+		ρsCh:    nil,
+		ρs:      nil,
+		σsReady: false,
+		σsCh:    nil,
+		σs:      nil,
+	}
 }
 
 // IsInst implements the Inst interface.

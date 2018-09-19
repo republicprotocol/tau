@@ -2,7 +2,9 @@ package process
 
 import (
 	"encoding/base64"
+	"unsafe"
 
+	"github.com/republicprotocol/oro-go/core/vss"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -176,87 +178,99 @@ func (proc *Process) execInstSub(inst instSub) Return {
 }
 
 func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
-	if inst.σCh == nil {
-		σCh := make(chan shamir.Share, 1)
-		inst.σCh = σCh
+	if inst.σsCh == nil {
+		σsCh := make(chan []vss.VShare, 1)
+		inst.σsCh = σsCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRn(proc.iid(), σCh))
+		return NotReady(GenerateRn(proc.iid(), inst.batch, σsCh))
 	}
 
-	if !inst.σReady {
+	if !inst.σsReady {
 		select {
-		case σ := <-inst.σCh:
-			inst.σReady = true
-			inst.σ = σ
+		case σs := <-inst.σsCh:
+			inst.σsReady = true
+			inst.σs = σs
 			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	*inst.dst = NewValuePrivate(inst.σ)
+	size := unsafe.Sizeof(Value(nil))
+	dst := unsafe.Pointer(inst.dst)
+	for i := 0; i < inst.batch; i++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(i)*size)) = NewValuePrivate(inst.σs[i].Share())
+	}
 
 	return Ready()
 }
 
 func (proc *Process) execInstGenerateRnZero(inst instGenerateRnZero) Return {
-	if inst.σCh == nil {
-		σCh := make(chan shamir.Share, 1)
-		inst.σCh = σCh
+	if inst.σsCh == nil {
+		σsCh := make(chan []vss.VShare, 1)
+		inst.σsCh = σsCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRnZero(proc.iid(), σCh))
+		return NotReady(GenerateRnZero(proc.iid(), inst.batch, σsCh))
 	}
 
-	if !inst.σReady {
+	if !inst.σsReady {
 		select {
-		case σ := <-inst.σCh:
-			inst.σReady = true
-			inst.σ = σ
+		case σs := <-inst.σsCh:
+			inst.σsReady = true
+			inst.σs = σs
 			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	*inst.dst = NewValuePrivate(inst.σ)
+	size := unsafe.Sizeof(Value(nil))
+	dst := unsafe.Pointer(inst.dst)
+	for i := 0; i < inst.batch; i++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(i)*size)) = NewValuePrivate(inst.σs[i].Share())
+	}
 
 	return Ready()
 }
 
 func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
-	if inst.ρCh == nil || inst.σCh == nil {
-		ρCh := make(chan shamir.Share, 1)
-		σCh := make(chan shamir.Share, 1)
-		inst.ρCh = ρCh
-		inst.σCh = σCh
+	if inst.ρsCh == nil || inst.σsCh == nil {
+		ρsCh := make(chan []vss.VShare, 1)
+		σsCh := make(chan []vss.VShare, 1)
+		inst.ρsCh = ρsCh
+		inst.σsCh = σsCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRnTuple(proc.iid(), ρCh, σCh))
+		return NotReady(GenerateRnTuple(proc.iid(), inst.batch, ρsCh, σsCh))
 	}
 
-	if !inst.ρReady {
+	if !inst.ρsReady {
 		select {
-		case ρ := <-inst.ρCh:
-			inst.ρReady = true
-			inst.ρ = ρ
+		case ρs := <-inst.ρsCh:
+			inst.ρsReady = true
+			inst.ρs = ρs
 			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	if !inst.σReady {
+	if !inst.σsReady {
 		select {
-		case σ := <-inst.σCh:
-			inst.σReady = true
-			inst.σ = σ
+		case σs := <-inst.σsCh:
+			inst.σsReady = true
+			inst.σs = σs
 			proc.Code[proc.PC] = inst
 		default:
 			return NotReady(nil)
 		}
 	}
 
-	*inst.ρDst = NewValuePrivate(inst.ρ)
-	*inst.σDst = NewValuePrivate(inst.σ)
+	size := unsafe.Sizeof(Value(nil))
+	dst := unsafe.Pointer(inst.dst)
+	for i := 0; i < inst.batch; i++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*i)*size)) = NewValuePrivate(inst.ρs[i].Share())
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*i+1)*size)) = NewValuePrivate(inst.σs[i].Share())
+	}
 
 	return Ready()
 }

@@ -60,8 +60,7 @@ var _ = Describe("Virtual Machine", func() {
 					tasks[0].Send(NewRemoteProcedureCall(message))
 
 				case rng.ProposeRnShare:
-					share := message.Rho.Share()
-					tasks[share.Index()-1].Send(NewRemoteProcedureCall(message))
+					tasks[message.To-1].Send(NewRemoteProcedureCall(message))
 
 				default:
 					for _, in := range tasks {
@@ -251,7 +250,7 @@ var _ = Describe("Virtual Machine", func() {
 					for i := range vms {
 						mem := process.NewMemory(2)
 						code := process.Code{
-							process.InstGenerateRnTuple(mem.At(0), mem.At(1)),
+							process.InstGenerateRnTuple(mem.At(0), 1),
 							process.InstExit(mem.At(0), mem.At(1)),
 						}
 						proc := process.New(id, mem, code)
@@ -312,7 +311,7 @@ var _ = Describe("Virtual Machine", func() {
 						code := process.Code{
 							process.InstMove(mem.At(0), valueA),
 							process.InstMove(mem.At(1), valueB),
-							process.InstGenerateRnTuple(mem.At(2), mem.At(3)),
+							process.InstGenerateRnTuple(mem.At(2), 1),
 							process.InstMul(mem.At(0), mem.At(0), mem.At(1), mem.At(2), mem.At(3)),
 							process.InstOpen(mem.At(0), mem.At(0)),
 							process.InstExit(mem.At(0)),

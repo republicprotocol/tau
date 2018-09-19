@@ -3,6 +3,7 @@ package process
 import (
 	"fmt"
 
+	"github.com/republicprotocol/oro-go/core/vss"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -15,16 +16,18 @@ type Intent interface {
 }
 
 type IntentToGenerateRn struct {
-	ID IntentID
+	ID    IntentID
+	Batch int
 
-	Sigma chan<- shamir.Share
+	Sigmas chan<- []vss.VShare
 }
 
-func GenerateRn(id IntentID, σ chan<- shamir.Share) IntentToGenerateRn {
+func GenerateRn(id IntentID, batch int, σs chan<- []vss.VShare) IntentToGenerateRn {
 	return IntentToGenerateRn{
-		ID: id,
+		ID:    id,
+		Batch: batch,
 
-		Sigma: σ,
+		Sigmas: σs,
 	}
 }
 
@@ -32,41 +35,45 @@ func (intent IntentToGenerateRn) IntentID() IntentID {
 	return intent.ID
 }
 
-type IntentToGenerateRnTuple struct {
-	ID IntentID
-
-	Rho   chan<- shamir.Share
-	Sigma chan<- shamir.Share
-}
-
-func GenerateRnTuple(id IntentID, ρ, σ chan<- shamir.Share) IntentToGenerateRnTuple {
-	return IntentToGenerateRnTuple{
-		ID: id,
-
-		Rho:   ρ,
-		Sigma: σ,
-	}
-}
-
-func (intent IntentToGenerateRnTuple) IntentID() IntentID {
-	return intent.ID
-}
-
 type IntentToGenerateRnZero struct {
-	ID IntentID
+	ID    IntentID
+	Batch int
 
-	Sigma chan<- shamir.Share
+	Sigmas chan<- []vss.VShare
 }
 
-func GenerateRnZero(id IntentID, σ chan<- shamir.Share) IntentToGenerateRnZero {
+func GenerateRnZero(id IntentID, batch int, σs chan<- []vss.VShare) IntentToGenerateRnZero {
 	return IntentToGenerateRnZero{
-		ID: id,
+		ID:    id,
+		Batch: batch,
 
-		Sigma: σ,
+		Sigmas: σs,
 	}
 }
 
 func (intent IntentToGenerateRnZero) IntentID() IntentID {
+	return intent.ID
+}
+
+type IntentToGenerateRnTuple struct {
+	ID    IntentID
+	Batch int
+
+	Rhos   chan<- []vss.VShare
+	Sigmas chan<- []vss.VShare
+}
+
+func GenerateRnTuple(id IntentID, batch int, ρs, σs chan<- []vss.VShare) IntentToGenerateRnTuple {
+	return IntentToGenerateRnTuple{
+		ID:    id,
+		Batch: batch,
+
+		Rhos:   ρs,
+		Sigmas: σs,
+	}
+}
+
+func (intent IntentToGenerateRnTuple) IntentID() IntentID {
 	return intent.ID
 }
 

@@ -16,7 +16,7 @@ func MacroGenerateRnTuplesN(dst Memory, n int) Inst {
 	code := Code{}
 	code = append(code, InstAsync())
 	for i := 0; i < n; i++ {
-		code = append(code, InstGenerateRnTuple(dst.At(2*i), dst.At(2*i+1)))
+		code = append(code, InstGenerateRnTuple(dst.At(2*i), 1))
 	}
 	code = append(code, InstAwait())
 
@@ -33,14 +33,13 @@ func MacroBitwiseNot(dst, src Addr, field algebra.Fp) Inst {
 }
 
 func MacroBitwiseOr(dst, lhs, rhs Addr) Inst {
-	tmp1 := new(Value)
-	tmp2 := new(Value)
+	tmp1n2 := make([]Value, 2)
 	tmp3 := new(Value)
 	code := Code{
-		InstGenerateRnTuple(tmp1, tmp2),     // rand
-		InstMul(tmp3, lhs, rhs, tmp1, tmp2), // ab
-		InstSub(tmp3, rhs, tmp3),            // b - ab
-		InstAdd(dst, lhs, tmp3),             // a + b - ab
+		InstGenerateRnTuple(&tmp1n2[0], 1),              // rand
+		InstMul(tmp3, lhs, rhs, &tmp1n2[0], &tmp1n2[1]), // ab
+		InstSub(tmp3, rhs, tmp3),                        // b - ab
+		InstAdd(dst, lhs, tmp3),                         // a + b - ab
 	}
 	return InstMacro(code)
 }
@@ -70,12 +69,11 @@ func MacroBitwiseOrN(dst, lhs, rhs, rns Memory, n int) Inst {
 }
 
 func MacroBitwiseXor(dst, lhs, rhs Addr) Inst {
-	tmp1 := new(Value)
-	tmp2 := new(Value)
+	tmp1n2 := make([]Value, 2)
 	code := Code{
-		InstSub(dst, lhs, rhs),             // a - b
-		InstGenerateRnTuple(tmp1, tmp2),    // rand
-		InstMul(dst, dst, dst, tmp1, tmp2), // (a - b)^2
+		InstSub(dst, lhs, rhs),                         // a - b
+		InstGenerateRnTuple(&tmp1n2[0], 1),             // rand
+		InstMul(dst, dst, dst, &tmp1n2[0], &tmp1n2[1]), // (a - b)^2
 	}
 	return InstMacro(code)
 }
@@ -96,11 +94,10 @@ func MacroBitwiseXorN(dst, lhs, rhs, rns Memory, n int) Inst {
 }
 
 func MacroBitwiseAnd(dst, lhs, rhs Addr) Inst {
-	tmp1 := new(Value)
-	tmp2 := new(Value)
+	tmp1n2 := make([]Value, 2)
 	code := Code{
-		InstGenerateRnTuple(tmp1, tmp2),
-		InstMul(dst, lhs, rhs, tmp1, tmp2),
+		InstGenerateRnTuple(&tmp1n2[0], 1),
+		InstMul(dst, lhs, rhs, &tmp1n2[0], &tmp1n2[1]),
 	}
 	return InstMacro(code)
 }
@@ -245,7 +242,7 @@ func MacroBitwiseCOutN(dst, lhs, rhs Memory, field algebra.Fp, bits int) Inst {
 
 	code := make(Code, 0)
 	code = append(code,
-		MacroGenerateRnTuplesN(rns, 2*bits+3*(bits-1)),
+		InstGenerateRnTuple(rns.At(0), 2*bits+3*(bits-1)),
 		MacroBitwisePropGenN(
 			dst[0:],
 			dst[bits:],

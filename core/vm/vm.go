@@ -112,15 +112,15 @@ func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Messa
 
 	case process.IntentToGenerateRn:
 		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRn(iidToMsgid(intent.IntentID())))
+		vm.rng.Send(rng.NewGenerateRn(iidToMsgid(intent.IntentID()), intent.Batch))
 
 	case process.IntentToGenerateRnZero:
 		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRnZero(iidToMsgid(intent.IntentID())))
+		vm.rng.Send(rng.NewGenerateRnZero(iidToMsgid(intent.IntentID()), intent.Batch))
 
 	case process.IntentToGenerateRnTuple:
 		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRnTuple(iidToMsgid(intent.IntentID())))
+		vm.rng.Send(rng.NewGenerateRnTuple(iidToMsgid(intent.IntentID()), intent.Batch))
 
 	case process.IntentToMultiply:
 		vm.intents[intent.IntentID()] = intent
@@ -192,7 +192,7 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	case process.IntentToGenerateRn:
 
 		select {
-		case intent.Sigma <- message.Sigma.Share():
+		case intent.Sigmas <- message.Sigmas:
 		default:
 			return task.NewError(fmt.Errorf("unavailable intent"))
 		}
@@ -200,7 +200,7 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	case process.IntentToGenerateRnZero:
 
 		select {
-		case intent.Sigma <- message.Sigma.Share():
+		case intent.Sigmas <- message.Sigmas:
 		default:
 			return task.NewError(fmt.Errorf("unavailable intent"))
 		}
@@ -208,13 +208,13 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	case process.IntentToGenerateRnTuple:
 
 		select {
-		case intent.Rho <- message.Rho.Share():
+		case intent.Rhos <- message.Rhos:
 		default:
 			return task.NewError(fmt.Errorf("unavailable intent"))
 		}
 
 		select {
-		case intent.Sigma <- message.Sigma.Share():
+		case intent.Sigmas <- message.Sigmas:
 		default:
 			return task.NewError(fmt.Errorf("unavailable intent"))
 		}
