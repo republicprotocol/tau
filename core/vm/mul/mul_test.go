@@ -32,7 +32,7 @@ var _ = Describe("Multipliers", func() {
 	init := func(n, k uint64, cap int) []task.Task {
 		tasks := make([]task.Task, n)
 		for i := 0; i < len(tasks); i++ {
-			tasks[i] = New(n, k, cap)
+			tasks[i] = New(uint64(i)+1, n, k, cap)
 		}
 		return tasks
 	}

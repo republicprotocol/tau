@@ -3,29 +3,33 @@ package mul
 import (
 	"fmt"
 
+	"github.com/republicprotocol/co-go"
+
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type multiplier struct {
-	n, k        uint64
-	sharesCache shamir.Shares
+	index uint64
 
-	signals map[task.MessageID]SignalMul
+	n, k uint64
+
+	muls    map[task.MessageID]Mul
 	opens   map[task.MessageID]map[uint64]OpenMul
 	results map[task.MessageID]Result
 }
 
-func New(n, k uint64, cap int) task.Task {
-	return task.New(task.NewIO(cap), newMultiplier(n, k, cap))
+func New(index, n, k uint64, cap int) task.Task {
+	return task.New(task.NewIO(cap), newMultiplier(index, n, k, cap))
 }
 
-func newMultiplier(n, k uint64, cap int) *multiplier {
+func newMultiplier(index, n, k uint64, cap int) *multiplier {
 	return &multiplier{
-		n: n, k: k,
-		sharesCache: make(shamir.Shares, n),
+		index: index,
 
-		signals: map[task.MessageID]SignalMul{},
+		n: n, k: k,
+
+		muls:    map[task.MessageID]Mul{},
 		opens:   map[task.MessageID]map[uint64]OpenMul{},
 		results: map[task.MessageID]Result{},
 	}
@@ -34,8 +38,8 @@ func newMultiplier(n, k uint64, cap int) *multiplier {
 func (multiplier *multiplier) Reduce(message task.Message) task.Message {
 	switch message := message.(type) {
 
-	case SignalMul:
-		return multiplier.signalMul(message)
+	case Mul:
+		return multiplier.mul(message)
 
 	case OpenMul:
 		return multiplier.tryOpenMul(message)
@@ -45,14 +49,21 @@ func (multiplier *multiplier) Reduce(message task.Message) task.Message {
 	}
 }
 
-func (multiplier *multiplier) signalMul(message SignalMul) task.Message {
+func (multiplier *multiplier) mul(message Mul) task.Message {
 	if result, ok := multiplier.results[message.MessageID]; ok {
 		return result
 	}
-	multiplier.signals[message.MessageID] = message
+	multiplier.muls[message.MessageID] = message
 
-	share := message.x.Mul(message.y)
-	mul := NewOpenMul(message.MessageID, share.Add(message.ρ))
+	batch := len(message.xs)
+	shares := make([]shamir.Share, batch)
+
+	co.ForAll(batch, func(b int) {
+		share := message.xs[b].Mul(message.ys[b])
+		shares[b] = share.Add(message.ρs[b])
+	})
+
+	mul := NewOpenMul(message.MessageID, multiplier.index, shares)
 
 	return task.NewMessageBatch([]task.Message{
 		multiplier.tryOpenMul(mul),
@@ -64,14 +75,14 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 	if _, ok := multiplier.opens[message.MessageID]; !ok {
 		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
 	}
-	multiplier.opens[message.MessageID][message.Index()] = message
+	multiplier.opens[message.MessageID][message.From] = message
 
 	// Do not continue if there is an insufficient number of shares
 	if uint64(len(multiplier.opens[message.MessageID])) < multiplier.k {
 		return nil
 	}
 	// Do not continue if we have not received a signal to open
-	if _, ok := multiplier.signals[message.MessageID]; !ok {
+	if _, ok := multiplier.muls[message.MessageID]; !ok {
 		return nil
 	}
 	// Do not continue if we have already completed the multiplication
@@ -79,22 +90,30 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 		return nil
 	}
 
-	n := 0
-	for _, opening := range multiplier.opens[message.MessageID] {
-		multiplier.sharesCache[n] = opening.Share
-		n++
-	}
-	value, err := shamir.Join(multiplier.sharesCache[:n])
-	if err != nil {
-		return task.NewError(err)
-	}
-	σ := multiplier.signals[message.MessageID].σ
-	share := shamir.New(σ.Index(), value)
-	share = share.Sub(σ)
-	result := NewResult(message.MessageID, share)
+	batch := len(message.Shares)
+	shares := make([]shamir.Share, batch)
+
+	co.ForAll(batch, func(b int) {
+		sharesCache := make([]shamir.Share, multiplier.n)
+
+		n := 0
+		for _, opening := range multiplier.opens[message.MessageID] {
+			sharesCache[n] = opening.Shares[b]
+			n++
+		}
+		value, err := shamir.Join(sharesCache[:n])
+		if err != nil {
+			panic(err)
+		}
+		σ := multiplier.muls[message.MessageID].σs[b]
+		share := shamir.New(σ.Index(), value)
+		shares[b] = share.Sub(σ)
+	})
+
+	result := NewResult(message.MessageID, shares)
 
 	multiplier.results[message.MessageID] = result
-	delete(multiplier.signals, message.MessageID)
+	delete(multiplier.muls, message.MessageID)
 	delete(multiplier.opens, message.MessageID)
 
 	return result

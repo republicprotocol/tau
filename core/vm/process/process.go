@@ -267,39 +267,62 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 
 	size := unsafe.Sizeof(Value(nil))
 	dst := unsafe.Pointer(inst.dst)
-	for i := 0; i < inst.batch; i++ {
-		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*i)*size)) = NewValuePrivate(inst.ρs[i].Share())
-		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*i+1)*size)) = NewValuePrivate(inst.σs[i].Share())
+	for b := 0; b < inst.batch; b++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*b)*size)) = NewValuePrivate(inst.ρs[b].Share())
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(2*b+1)*size)) = NewValuePrivate(inst.σs[b].Share())
 	}
 
 	return Ready()
 }
 
 func (proc *Process) execInstMul(inst instMul) Return {
+
 	if inst.retCh == nil {
 
-		x, ok := (*inst.lhs).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
-		}
-		y, ok := (*inst.rhs).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
+		xs := make([]shamir.Share, inst.batch)
+		ys := make([]shamir.Share, inst.batch)
+		ρs := make([]shamir.Share, inst.batch)
+		σs := make([]shamir.Share, inst.batch)
+
+		size := unsafe.Sizeof(Value(nil))
+		lhs := unsafe.Pointer(inst.lhs)
+		rhs := unsafe.Pointer(inst.rhs)
+		ρσs := unsafe.Pointer(inst.ρσs)
+
+		for b := 0; b < inst.batch; b++ {
+			xPtr := (*Value)(unsafe.Pointer(uintptr(lhs) + uintptr(b)*size))
+			yPtr := (*Value)(unsafe.Pointer(uintptr(rhs) + uintptr(b)*size))
+			ρPtr := (*Value)(unsafe.Pointer(uintptr(ρσs) + uintptr(2*b)*size))
+			σPtr := (*Value)(unsafe.Pointer(uintptr(ρσs) + uintptr(2*b+1)*size))
+
+			x, ok := (*xPtr).(ValuePrivate)
+			if !ok {
+				return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePrivate{}, proc.PC))
+			}
+			y, ok := (*yPtr).(ValuePrivate)
+			if !ok {
+				return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePrivate{}, proc.PC))
+			}
+
+			ρ, ok := (*ρPtr).(ValuePrivate)
+			if !ok {
+				return NotReady(ErrorUnexpectedTypeConversion(*ρPtr, ValuePrivate{}, proc.PC))
+			}
+			σ, ok := (*σPtr).(ValuePrivate)
+			if !ok {
+				return NotReady(ErrorUnexpectedTypeConversion(*σPtr, ValuePrivate{}, proc.PC))
+			}
+
+			xs[b] = x.Share
+			ys[b] = y.Share
+			ρs[b] = ρ.Share
+			σs[b] = σ.Share
 		}
 
-		ρ, ok := (*inst.ρ).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.ρ, ValuePrivate{}, proc.PC))
-		}
-		σ, ok := (*inst.σ).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC))
-		}
-
-		retCh := make(chan shamir.Share, 1)
+		retCh := make(chan []shamir.Share, 1)
 		inst.retCh = retCh
 		proc.Code[proc.PC] = inst
-		return NotReady(Multiply(proc.iid(), x.Share, y.Share, ρ.Share, σ.Share, retCh))
+		return NotReady(Multiply(proc.iid(), xs, ys, ρs, σs, retCh))
 	}
 
 	if !inst.retReady {
@@ -313,7 +336,11 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 	}
 
-	*inst.dst = NewValuePrivate(inst.ret)
+	size := unsafe.Sizeof(Value(nil))
+	dst := unsafe.Pointer(inst.dst)
+	for b := 0; b < inst.batch; b++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(b)*size)) = NewValuePrivate(inst.ret[b])
+	}
 
 	return Ready()
 }

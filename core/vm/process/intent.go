@@ -78,20 +78,20 @@ func (intent IntentToGenerateRnTuple) IntentID() IntentID {
 }
 
 type IntentToMultiply struct {
-	ID         IntentID
-	X, Y       shamir.Share
-	Rho, Sigma shamir.Share
+	ID           IntentID
+	Xs, Ys       []shamir.Share
+	Rhos, Sigmas []shamir.Share
 
-	Ret chan<- shamir.Share
+	Ret chan<- []shamir.Share
 }
 
-func Multiply(id IntentID, x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultiply {
+func Multiply(id IntentID, xs, ys, ρs, σs []shamir.Share, ret chan<- []shamir.Share) IntentToMultiply {
 	return IntentToMultiply{
-		ID:    id,
-		X:     x,
-		Y:     y,
-		Rho:   ρ,
-		Sigma: σ,
+		ID:     id,
+		Xs:     xs,
+		Ys:     ys,
+		Rhos:   ρs,
+		Sigmas: σs,
 
 		Ret: ret,
 	}

@@ -7,22 +7,6 @@ import (
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 )
 
-// MacroGenerateRnTuplesN executes the generation of N random number tuples in
-// parallel. The destination Memory allocation is expected to have 2N contiguous
-// indices, where N ρ-σ tuples will be stored, where ρ-σ tuples are stored
-// immediately adjacent.
-func MacroGenerateRnTuplesN(dst Memory, n int) Inst {
-
-	code := Code{}
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code, InstGenerateRnTuple(dst.At(2*i), 1))
-	}
-	code = append(code, InstAwait())
-
-	return InstMacro(code)
-}
-
 func MacroBitwiseNot(dst, src Addr, field algebra.Fp) Inst {
 	tmp1 := new(Value)
 	code := Code{
@@ -36,28 +20,20 @@ func MacroBitwiseOr(dst, lhs, rhs Addr) Inst {
 	tmp1n2 := make([]Value, 2)
 	tmp3 := new(Value)
 	code := Code{
-		InstGenerateRnTuple(&tmp1n2[0], 1),              // rand
-		InstMul(tmp3, lhs, rhs, &tmp1n2[0], &tmp1n2[1]), // ab
-		InstSub(tmp3, rhs, tmp3),                        // b - ab
-		InstAdd(dst, lhs, tmp3),                         // a + b - ab
+		InstGenerateRnTuple(&tmp1n2[0], 1),     // rand
+		InstMul(tmp3, lhs, rhs, &tmp1n2[0], 1), // ab
+		InstSub(tmp3, rhs, tmp3),               // b - ab
+		InstAdd(dst, lhs, tmp3),                // a + b - ab
 	}
 	return InstMacro(code)
 }
 
-// MacroBitwiseOrN executes the equivalent of a MacroBitwiseOr on N bits in
-// parallel. The destination, left-hand side, and right-hand side Memory
-// allocations are expected to have N contiguous indices. The random number
-// Memory allocation is expeted to have 2N contiguous indices, storing N ρ-σ
-// tuples, where ρ-σ tuples are immediately adjacent.
 func MacroBitwiseOrN(dst, lhs, rhs, rns Memory, n int) Inst {
 	tmp := NewMemory(n)
 
-	code := Code{}
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code, InstMul(tmp.At(i), lhs.At(i), rhs.At(i), rns.At(2*i), rns.At(2*i+1))) // ab
+	code := Code{
+		InstMul(tmp.At(0), lhs.At(0), rhs.At(0), rns.At(0), n), // ab
 	}
-	code = append(code, InstAwait())
 	for i := 0; i < n; i++ {
 		code = append(code,
 			InstSub(tmp.At(i), rhs.At(i), tmp.At(i)), // b - ab
@@ -71,25 +47,19 @@ func MacroBitwiseOrN(dst, lhs, rhs, rns Memory, n int) Inst {
 func MacroBitwiseXor(dst, lhs, rhs Addr) Inst {
 	tmp1n2 := make([]Value, 2)
 	code := Code{
-		InstSub(dst, lhs, rhs),                         // a - b
-		InstGenerateRnTuple(&tmp1n2[0], 1),             // rand
-		InstMul(dst, dst, dst, &tmp1n2[0], &tmp1n2[1]), // (a - b)^2
+		InstSub(dst, lhs, rhs),                // a - b
+		InstGenerateRnTuple(&tmp1n2[0], 1),    // rand
+		InstMul(dst, dst, dst, &tmp1n2[0], 1), // (a - b)^2
 	}
 	return InstMacro(code)
 }
 
 func MacroBitwiseXorN(dst, lhs, rhs, rns Memory, n int) Inst {
-
 	code := Code{}
 	for i := 0; i < n; i++ {
-		code = append(code, InstSub(dst.At(i), lhs.At(i), rhs.At(i))) // ab
+		code = append(code, InstSub(dst.At(i), lhs.At(i), rhs.At(i)))
 	}
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code, InstMul(dst.At(i), dst.At(i), dst.At(i), rns.At(2*i), rns.At(2*i+1)))
-	}
-	code = append(code, InstAwait())
-
+	code = append(code, InstMul(dst.At(0), dst.At(0), dst.At(0), rns.At(0), n))
 	return InstMacro(code)
 }
 
@@ -97,20 +67,15 @@ func MacroBitwiseAnd(dst, lhs, rhs Addr) Inst {
 	tmp1n2 := make([]Value, 2)
 	code := Code{
 		InstGenerateRnTuple(&tmp1n2[0], 1),
-		InstMul(dst, lhs, rhs, &tmp1n2[0], &tmp1n2[1]),
+		InstMul(dst, lhs, rhs, &tmp1n2[0], 1),
 	}
 	return InstMacro(code)
 }
 
 func MacroBitwiseAndN(dst, lhs, rhs, rns Memory, n int) Inst {
-
-	code := Code{}
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code, InstMul(dst.At(i), lhs.At(i), rhs.At(i), rns.At(2*i), rns.At(2*i+1)))
+	code := Code{
+		InstMul(dst.At(0), lhs.At(0), rhs.At(0), rns.At(0), n),
 	}
-	code = append(code, InstAwait())
-
 	return InstMacro(code)
 }
 
@@ -124,24 +89,13 @@ func MacroBitwisePropGen(propDst, genDst, lhs, rhs Addr) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwisePropGenN(propDst, genDst, lhs, rhs, rns Memory, n int) Inst {
+func MacroBitwisePropGenN(propDst, genDst, lhs, rhs, rs Memory, n int) Inst {
 	tmp := NewMemory(n)
 
-	// XOR and AND
-	code := Code{}
-	for i := 0; i < n; i++ {
-		code = append(code, InstSub(tmp.At(i), lhs.At(i), rhs.At(i)))
+	code := Code{
+		MacroBitwiseXorN(tmp, lhs, rhs, rs, n),
+		MacroBitwiseAndN(genDst, lhs, rhs, rs.Offset(2*n), n),
 	}
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code,
-			InstMul(tmp.At(i), tmp.At(i), tmp.At(i), rns.At(2*i), rns.At(2*i+1)),
-			InstMul(genDst.At(i), lhs.At(i), rhs.At(i), rns.At(2*n+2*i), rns.At(2*n+2*i+1)),
-		)
-	}
-	code = append(code, InstAwait())
-
-	// COPY
 	for i := 0; i < n; i++ {
 		code = append(code, InstCopy(propDst.At(i), tmp.At(i)))
 	}
@@ -161,36 +115,15 @@ func MacroBitwiseOpCLA(propDst, genDst, prop1, gen1, prop2, gen2 Addr) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseOpCLAN(propDst, genDst, props, gens, rns Memory, n int) Inst {
+func MacroBitwiseOpCLAN(propDst, genDst, props, gens, rs Memory, n int) Inst {
 	tmp1 := NewMemory(n)
 	tmp2 := NewMemory(n)
-	tmp3 := NewMemory(n)
-	code := Code{}
 
-	// ANDs
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code,
-			InstMul(tmp1.At(i), props.At(2*i), props.At(2*i+1), rns.At(2*i), rns.At(2*i+1)),
-			InstMul(tmp2.At(i), gens.At(2*i), props.At(2*i+1), rns.At(2*n+2*i), rns.At(2*n+2*i+1)),
-		)
+	code := Code{
+		MacroBitwiseAndN(tmp1, props, props.Offset(n), rs, n),
+		MacroBitwiseAndN(tmp2, gens, props.Offset(n), rs.Offset(2*n), n),
+		MacroBitwiseOrN(genDst, gens.Offset(n), tmp2, rs.Offset(4*n), n),
 	}
-	code = append(code, InstAwait())
-
-	// OR
-	code = append(code, InstAsync())
-	for i := 0; i < n; i++ {
-		code = append(code, InstMul(tmp3.At(i), gens.At(2*i+1), tmp2.At(i), rns.At(4*n+2*i), rns.At(4*n+2*i+1))) // ab
-	}
-	code = append(code, InstAwait())
-	for i := 0; i < n; i++ {
-		code = append(code,
-			InstSub(tmp3.At(i), tmp2.At(i), tmp3.At(i)),       // b - ab
-			InstAdd(genDst.At(i), gens.At(2*i+1), tmp3.At(i)), // a + b - ab
-		)
-	}
-
-	// COPY
 	for i := 0; i < n; i++ {
 		code = append(code, InstCopy(propDst.At(i), tmp1.At(i)))
 	}
@@ -236,37 +169,62 @@ func MacroBitwiseCOut(dst, src Addr, field algebra.Fp, bits int) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseCOutN(dst, lhs, rhs Memory, field algebra.Fp, bits int) Inst {
+func MacroBitwiseCOutN(dst Addr, lhs, rhs Memory, field algebra.Fp, bits int) Inst {
 
-	rns := NewMemory(4*bits + 6*(bits-1))
+	props := NewMemory(bits)
+	gens := NewMemory(bits)
+	rs := NewMemory(4*bits + 6*(bits-1))
 
-	code := make(Code, 0)
-	code = append(code,
-		InstGenerateRnTuple(rns.At(0), 2*bits+3*(bits-1)),
+	code := Code{
+		InstGenerateRnTuple(rs.At(0), 2*bits+3*(bits-1)),
 		MacroBitwisePropGenN(
-			dst[0:],
-			dst[bits:],
-			lhs[0:],
-			rhs[0:],
-			rns[0:],
+			props.Offset(0),
+			gens.Offset(0),
+			lhs.Offset(0),
+			rhs.Offset(0),
+			rs.Offset(0),
 			bits,
 		),
-	)
+	}
 
 	j := 0
 	for i := bits / 2; i > 0; i /= 2 {
+
+		propsCp := NewMemory(2 * i)
+		props1 := propsCp.Offset(0)
+		props2 := propsCp.Offset(i)
+		for j := 0; j < i; j++ {
+			code = append(
+				code,
+				InstCopy(props1.At(j), props.At(j*2)),
+				InstCopy(props2.At(j), props.At(j*2+1)),
+			)
+		}
+
+		gensCp := NewMemory(2 * i)
+		gens1 := gensCp.Offset(0)
+		gens2 := gensCp.Offset(i)
+		for j := 0; j < i; j++ {
+			code = append(
+				code,
+				InstCopy(gens1.At(j), gens.At(j*2)),
+				InstCopy(gens2.At(j), gens.At(j*2+1)),
+			)
+		}
+
 		code = append(code,
 			MacroBitwiseOpCLAN(
-				dst[0:],
-				dst[bits:],
-				dst[0:],
-				dst[bits:],
-				rns[4*bits+j:],
+				props,
+				gens,
+				propsCp,
+				gensCp,
+				rs[4*bits+j:],
 				i,
 			),
 		)
 		j += 6 * i
 	}
+	code = append(code, InstCopy(dst, gens.At(0)))
 
 	return InstMacro(code)
 }

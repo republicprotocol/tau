@@ -312,7 +312,7 @@ var _ = Describe("Virtual Machine", func() {
 							process.InstMove(mem.At(0), valueA),
 							process.InstMove(mem.At(1), valueB),
 							process.InstGenerateRnTuple(mem.At(2), 1),
-							process.InstMul(mem.At(0), mem.At(0), mem.At(1), mem.At(2), mem.At(3)),
+							process.InstMul(mem.At(0), mem.At(0), mem.At(1), mem.At(2), 1),
 							process.InstOpen(mem.At(0), mem.At(0)),
 							process.InstExit(mem.At(0)),
 						}
@@ -641,7 +641,7 @@ var _ = Describe("Virtual Machine", func() {
 							code := process.Code{
 								process.InstMove(mem.At(0), valueX),
 								process.InstMove(mem.At(1), valueY),
-								process.MacroGenerateRnTuplesN(mem[2:], 2),
+								process.InstGenerateRnTuple(mem.At(2), 2),
 								process.MacroBitwisePropGenN(mem[0:], mem[1:], mem[0:], mem[1:], mem[2:], 1),
 								process.InstOpen(mem.At(0), mem.At(0)),
 								process.InstOpen(mem.At(1), mem.At(1)),
@@ -803,7 +803,7 @@ var _ = Describe("Virtual Machine", func() {
 								process.InstMove(mem.At(1), valueP2),
 								process.InstMove(mem.At(2), valueG1),
 								process.InstMove(mem.At(3), valueG2),
-								process.MacroGenerateRnTuplesN(mem[4:], 3),
+								process.InstGenerateRnTuple(mem.At(4), 3),
 								process.MacroBitwiseOpCLAN(mem[0:], mem[2:], mem[0:], mem[2:], mem[4:], 1),
 								process.InstOpen(mem.At(0), mem.At(0)),
 								process.InstOpen(mem.At(2), mem.At(2)),
@@ -964,15 +964,15 @@ var _ = Describe("Virtual Machine", func() {
 					}
 
 					for i := range vms {
-						mem := process.NewMemory(128)
+						mem := process.NewMemory(129)
 						for j := 0; j < 64; j++ {
 							mem[j] = aVals[i][j]
 							mem[64+j] = bVals[i][j]
 						}
 						code := process.Code{
-							process.MacroBitwiseCOutN(mem[0:], mem[0:], mem[64:], SecretField, 64),
-							process.InstOpen(mem.At(64), mem.At(64)),
-							process.InstExit(mem.At(64)),
+							process.MacroBitwiseCOutN(mem.At(128), mem[0:], mem[64:], SecretField, 64),
+							process.InstOpen(mem.At(128), mem.At(128)),
+							process.InstExit(mem.At(128)),
 						}
 						proc := process.New(id, mem, code)
 

@@ -187,29 +187,31 @@ func (inst instGenerateRnTuple) IsInst() {
 }
 
 type instMul struct {
-	dst      Addr
-	lhs      Addr
-	rhs      Addr
-	ρ        Addr
-	σ        Addr
+	dst   Addr
+	lhs   Addr
+	rhs   Addr
+	ρσs   Addr
+	batch int
+
 	retReady bool
-	retCh    <-chan shamir.Share
-	ret      shamir.Share
+	retCh    <-chan []shamir.Share
+	ret      []shamir.Share
 }
 
 // InstMul a left-hand private Value with a right-hand private Value and move
 // the result to a destination Addr. Executing a multiplication also requires a
 // random number tuple. This instruction is asynchronous.
-func InstMul(dst, lhs, rhs, ρ, σ Addr) Inst {
+func InstMul(dst, lhs, rhs, ρσs Addr, batch int) Inst {
 	return instMul{
-		dst:      dst,
-		lhs:      lhs,
-		rhs:      rhs,
-		ρ:        ρ,
-		σ:        σ,
+		dst:   dst,
+		lhs:   lhs,
+		rhs:   rhs,
+		ρσs:   ρσs,
+		batch: batch,
+
 		retReady: false,
 		retCh:    nil,
-		ret:      shamir.Share{},
+		ret:      nil,
 	}
 }
 
@@ -230,13 +232,13 @@ type instMulPub struct {
 // the result into a public Value. The public Value is moved to a destination
 // Addr. This instruction is asynchronous.
 func InstMulPub(dst, lhs, rhs Addr) Inst {
-	return instMul{
+	return instMulPub{
 		dst:      dst,
 		lhs:      lhs,
 		rhs:      rhs,
 		retReady: false,
 		retCh:    nil,
-		ret:      shamir.Share{},
+		ret:      algebra.FpElement{},
 	}
 }
 

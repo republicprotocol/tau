@@ -7,32 +7,32 @@ import (
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
-// A SignalMul message signals to a Multiplier that it should open intermediate
-// multiplication shares with other Multipliers. Before receiving a SignalMul
+// A Mul message signals to a Multiplier that it should open intermediate
+// multiplication shares with other Multipliers. Before receiving a Mul
 // message for a particular task.MessageID, a Multiplier will still accept OpenMul
 // messages related to the task.MessageID. However, a Multiplier will not produce a
-// Result for a particular task.MessageID until the respective SignalMul message is
+// Result for a particular task.MessageID until the respective Mul message is
 // received.
-type SignalMul struct {
+type Mul struct {
 	task.MessageID
 
-	x, y shamir.Share
-	ρ, σ shamir.Share
+	xs, ys []shamir.Share
+	ρs, σs []shamir.Share
 }
 
-// NewSignalMul returns a new SignalMul message.
-func NewSignalMul(id task.MessageID, x, y, ρ, σ shamir.Share) SignalMul {
-	return SignalMul{
-		id, x, y, ρ, σ,
+// NewMul returns a new Mul message.
+func NewMul(id task.MessageID, xs, ys, ρs, σs []shamir.Share) Mul {
+	return Mul{
+		id, xs, ys, ρs, σs,
 	}
 }
 
 // IsMessage implements the Message interface.
-func (message SignalMul) IsMessage() {
+func (message Mul) IsMessage() {
 }
 
-func (message SignalMul) String() string {
-	return fmt.Sprintf("mul.SignalMul {\n\tid: %v\n\tx: %v\n\ty: %v\n\tρ: %v\n\tσ: %v\n}", message.MessageID, message.x, message.y, message.ρ, message.σ)
+func (message Mul) String() string {
+	return fmt.Sprintf("mul.Mul {\n\tid: %v\n\tx: %v\n\ty: %v\n\tρ: %v\n\tσ: %v\n}", message.MessageID, message.xs, message.ys, message.ρs, message.σs)
 }
 
 // An OpenMul message is used by a Multiplier to accept and store intermediate
@@ -41,13 +41,15 @@ func (message SignalMul) String() string {
 // message, by its task.MessageID.
 type OpenMul struct {
 	task.MessageID
-	shamir.Share
+
+	From   uint64
+	Shares []shamir.Share
 }
 
 // NewOpenMul returns a new OpenMul message.
-func NewOpenMul(id task.MessageID, share shamir.Share) OpenMul {
+func NewOpenMul(id task.MessageID, from uint64, shares []shamir.Share) OpenMul {
 	return OpenMul{
-		id, share,
+		id, from, shares,
 	}
 }
 
@@ -56,22 +58,23 @@ func (message OpenMul) IsMessage() {
 }
 
 func (message OpenMul) String() string {
-	return fmt.Sprintf("mul.OpenMul {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Share)
+	return fmt.Sprintf("mul.OpenMul {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Shares)
 }
 
 // A Result message is produced by a Multiplier after it has received (a) a
-// SignalMul message, and (b) a sufficient threshold of OpenMul messages with
-// the same task.MessageID. The order in which it receives the SignalMul message and the
+// Mul message, and (b) a sufficient threshold of OpenMul messages with
+// the same task.MessageID. The order in which it receives the Mul message and the
 // OpenMul messages does not affect the production of a Result. A Result message
-// is related to a SignalMul message by its task.MessageID.
+// is related to a Mul message by its task.MessageID.
 type Result struct {
 	task.MessageID
-	shamir.Share
+
+	Shares []shamir.Share
 }
 
 // NewResult returns a new Result message.
-func NewResult(id task.MessageID, share shamir.Share) Result {
-	return Result{id, share}
+func NewResult(id task.MessageID, shares []shamir.Share) Result {
+	return Result{id, shares}
 }
 
 // IsMessage implements the Message interface.
@@ -79,5 +82,5 @@ func (message Result) IsMessage() {
 }
 
 func (message Result) String() string {
-	return fmt.Sprintf("mul.Result {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Share)
+	return fmt.Sprintf("mul.Result {\n\tid: %v\n\tshare: %v\n}", message.MessageID, message.Shares)
 }

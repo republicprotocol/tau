@@ -23,7 +23,7 @@ type VM struct {
 
 func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
 	rng := rng.New(scheme, index, n, k, n-k, cap)
-	mul := mul.New(n, k, cap)
+	mul := mul.New(index, n, k, cap)
 	open := open.New(n, k, cap)
 	vm := newVM(scheme, index, rng, mul, open)
 	return task.New(task.NewIO(cap), vm, vm.rng, vm.mul, vm.open)
@@ -124,7 +124,7 @@ func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Messa
 
 	case process.IntentToMultiply:
 		vm.intents[intent.IntentID()] = intent
-		vm.mul.Send(mul.NewSignalMul(iidToMsgid(intent.IntentID()), intent.X, intent.Y, intent.Rho, intent.Sigma))
+		vm.mul.Send(mul.NewMul(iidToMsgid(intent.IntentID()), intent.Xs, intent.Ys, intent.Rhos, intent.Sigmas))
 
 	case process.IntentToOpen:
 		vm.intents[intent.IntentID()] = intent
@@ -241,7 +241,7 @@ func (vm *VM) recvInternalMulResult(message mul.Result) task.Message {
 	switch intent := intent.(type) {
 	case process.IntentToMultiply:
 		select {
-		case intent.Ret <- message.Share:
+		case intent.Ret <- message.Shares:
 		default:
 			return task.NewError(fmt.Errorf("unavailable intent"))
 		}
