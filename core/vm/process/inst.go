@@ -29,13 +29,15 @@ func (inst instMacro) IsInst() {
 }
 
 type instCopy struct {
-	dst Addr
-	src Addr
+	dst  Addr
+	src  Addr
+	step int
+	n    int
 }
 
-// InstCopy a Value from a source Addr to a destination Addr.
-func InstCopy(dst, src Addr) Inst {
-	return instCopy{dst, src}
+// InstCopy Values from the source Addr to the destination Addr.
+func InstCopy(dst, src Addr, step int, n int) Inst {
+	return instCopy{dst, src, step, n}
 }
 
 // IsInst implements the Inst interface.

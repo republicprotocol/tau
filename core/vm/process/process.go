@@ -113,7 +113,13 @@ func (proc *Process) execInst(inst Inst) Return {
 }
 
 func (proc *Process) execInstCopy(inst instCopy) Return {
-	*inst.dst = *inst.src
+
+	size := unsafe.Sizeof(Value(nil))
+	dst := unsafe.Pointer(inst.dst)
+	src := unsafe.Pointer(inst.src)
+	for i := 0; i < inst.n; i++ {
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(i)*size)) = *(*Value)(unsafe.Pointer(uintptr(src) + uintptr(i*inst.step)*size))
+	}
 
 	return Ready()
 }

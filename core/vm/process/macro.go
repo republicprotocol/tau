@@ -84,7 +84,7 @@ func MacroBitwisePropGen(propDst, genDst, lhs, rhs Addr) Inst {
 	code := Code{
 		MacroBitwiseXor(tmp1, lhs, rhs),
 		MacroBitwiseAnd(genDst, lhs, rhs),
-		InstCopy(propDst, tmp1),
+		InstCopy(propDst, tmp1, 1, 1),
 	}
 	return InstMacro(code)
 }
@@ -95,9 +95,7 @@ func MacroBitwisePropGenN(propDst, genDst, lhs, rhs, rs Memory, n int) Inst {
 	code := Code{
 		MacroBitwiseXorN(tmp, lhs, rhs, rs, n),
 		MacroBitwiseAndN(genDst, lhs, rhs, rs.Offset(2*n), n),
-	}
-	for i := 0; i < n; i++ {
-		code = append(code, InstCopy(propDst.At(i), tmp.At(i)))
+		InstCopy(propDst.At(0), tmp.At(0), 1, n),
 	}
 
 	return InstMacro(code)
@@ -110,7 +108,7 @@ func MacroBitwiseOpCLA(propDst, genDst, prop1, gen1, prop2, gen2 Addr) Inst {
 		MacroBitwiseAnd(tmp1, prop1, prop2),
 		MacroBitwiseAnd(tmp2, gen1, prop2),
 		MacroBitwiseOr(genDst, gen2, tmp2),
-		InstCopy(propDst, tmp1),
+		InstCopy(propDst, tmp1, 1, 1),
 	}
 	return InstMacro(code)
 }
@@ -123,9 +121,7 @@ func MacroBitwiseOpCLAN(propDst, genDst, props, gens, rs Memory, n int) Inst {
 		MacroBitwiseAndN(tmp1, props, props.Offset(n), rs, n),
 		MacroBitwiseAndN(tmp2, gens, props.Offset(n), rs.Offset(2*n), n),
 		MacroBitwiseOrN(genDst, gens.Offset(n), tmp2, rs.Offset(4*n), n),
-	}
-	for i := 0; i < n; i++ {
-		code = append(code, InstCopy(propDst.At(i), tmp1.At(i)))
+		InstCopy(propDst.At(0), tmp1.At(0), 1, n),
 	}
 
 	return InstMacro(code)
@@ -171,60 +167,30 @@ func MacroBitwiseCOut(dst, src Addr, field algebra.Fp, bits int) Inst {
 
 func MacroBitwiseCOutN(dst Addr, lhs, rhs Memory, field algebra.Fp, bits int) Inst {
 
-	props := NewMemory(bits)
-	gens := NewMemory(bits)
+	propsDst := NewMemory(bits)
+	gensDst := NewMemory(bits)
 	rs := NewMemory(4*bits + 6*(bits-1))
 
 	code := Code{
 		InstGenerateRnTuple(rs.At(0), 2*bits+3*(bits-1)),
-		MacroBitwisePropGenN(
-			props.Offset(0),
-			gens.Offset(0),
-			lhs.Offset(0),
-			rhs.Offset(0),
-			rs.Offset(0),
-			bits,
-		),
+		MacroBitwisePropGenN(propsDst, gensDst, lhs, rhs, rs, bits),
 	}
 
-	j := 0
+	propsSrc := NewMemory(bits)
+	gensSrc := NewMemory(bits)
+
+	j := 4 * bits
 	for i := bits / 2; i > 0; i /= 2 {
-
-		propsCp := NewMemory(2 * i)
-		props1 := propsCp.Offset(0)
-		props2 := propsCp.Offset(i)
-		for j := 0; j < i; j++ {
-			code = append(
-				code,
-				InstCopy(props1.At(j), props.At(j*2)),
-				InstCopy(props2.At(j), props.At(j*2+1)),
-			)
-		}
-
-		gensCp := NewMemory(2 * i)
-		gens1 := gensCp.Offset(0)
-		gens2 := gensCp.Offset(i)
-		for j := 0; j < i; j++ {
-			code = append(
-				code,
-				InstCopy(gens1.At(j), gens.At(j*2)),
-				InstCopy(gens2.At(j), gens.At(j*2+1)),
-			)
-		}
-
 		code = append(code,
-			MacroBitwiseOpCLAN(
-				props,
-				gens,
-				propsCp,
-				gensCp,
-				rs[4*bits+j:],
-				i,
-			),
+			InstCopy(propsSrc.At(0), propsDst.At(0), 2, i),
+			InstCopy(propsSrc.At(i), propsDst.At(1), 2, i),
+			InstCopy(gensSrc.At(0), gensDst.At(0), 2, i),
+			InstCopy(gensSrc.At(i), gensDst.At(1), 2, i),
+			MacroBitwiseOpCLAN(propsDst, gensDst, propsSrc, gensSrc, rs.Offset(j), i),
 		)
 		j += 6 * i
 	}
-	code = append(code, InstCopy(dst, gens.At(0)))
+	code = append(code, InstCopy(dst, gensDst.At(0), 1, 1))
 
 	return InstMacro(code)
 }
