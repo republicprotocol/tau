@@ -10,32 +10,21 @@ import (
 )
 
 type Return struct {
-	intent     Intent
-	ready      bool
-	terminated bool
+	intent Intent
+	ready  bool
 }
 
 func Ready() Return {
 	return Return{
-		intent:     nil,
-		ready:      true,
-		terminated: false,
+		intent: nil,
+		ready:  true,
 	}
 }
 
 func NotReady(intent Intent) Return {
 	return Return{
-		intent:     intent,
-		ready:      false,
-		terminated: false,
-	}
-}
-
-func Terminated() Return {
-	return Return{
-		intent:     nil,
-		ready:      false,
-		terminated: true,
+		intent: intent,
+		ready:  false,
 	}
 }
 
@@ -45,10 +34,6 @@ func (ret Return) Intent() Intent {
 
 func (ret Return) IsReady() bool {
 	return ret.ready
-}
-
-func (ret Return) IsTerminated() bool {
-	return ret.terminated
 }
 
 type ID [32]byte
@@ -77,60 +62,64 @@ func New(id ID, mem Memory, code Code) Process {
 }
 
 func (proc *Process) Exec() Return {
-	ret := Ready()
-
-	for ret.IsReady() {
+	for {
 		if proc.PC == PC(len(proc.Code)) {
-			return Terminated()
+			return NotReady(ErrorCodeOverflow(proc.PC))
 		}
-
-		switch inst := proc.Code[proc.PC].(type) {
-		case instCopy:
-			ret = proc.execInstCopy(inst)
-		case instMove:
-			ret = proc.execInstMove(inst)
-		case instAdd:
-			ret = proc.execInstAdd(inst)
-		case instNeg:
-			ret = proc.execInstNeg(inst)
-		case instSub:
-			ret = proc.execInstSub(inst)
-		case instGenerateRn:
-			ret = proc.execInstGenerateRn(inst)
-		case instGenerateRnZero:
-			ret = proc.execInstGenerateRnZero(inst)
-		case instGenerateRnTuple:
-			ret = proc.execInstGenerateRnTuple(inst)
-		case instMul:
-			ret = proc.execInstMul(inst)
-		case instMulPub:
-			ret = proc.execInstMulPub(inst)
-		case instOpen:
-			ret = proc.execInstOpen(inst)
-		case instExit:
-			ret = proc.execInstExit(inst)
-		case instDebug:
-			ret = proc.execInstDebug(inst)
-
-		default:
-			ret = NotReady(ErrorUnexpectedInst(inst, proc.PC))
+		ret := proc.execInst(proc.Code[proc.PC])
+		if !ret.IsReady() {
+			return ret
 		}
+		proc.PC++
 	}
+}
 
-	return ret
+func (proc *Process) execInst(inst Inst) Return {
+	switch inst := inst.(type) {
+	case instCopy:
+		return proc.execInstCopy(inst)
+	case instMove:
+		return proc.execInstMove(inst)
+	case instAdd:
+		return proc.execInstAdd(inst)
+	case instNeg:
+		return proc.execInstNeg(inst)
+	case instSub:
+		return proc.execInstSub(inst)
+	case instGenerateRn:
+		return proc.execInstGenerateRn(inst)
+	case instGenerateRnZero:
+		return proc.execInstGenerateRnZero(inst)
+	case instGenerateRnTuple:
+		return proc.execInstGenerateRnTuple(inst)
+	case instMul:
+		return proc.execInstMul(inst)
+	case instMulPub:
+		return proc.execInstMulPub(inst)
+	case instOpen:
+		return proc.execInstOpen(inst)
+	case instAsync:
+		return proc.execInstAsync(inst)
+	case instAwait:
+		return proc.execInstAwait(inst)
+	case instExit:
+		return proc.execInstExit(inst)
+	case instDebug:
+		return proc.execInstDebug(inst)
+	default:
+		return NotReady(ErrorUnexpectedInst(inst, proc.PC))
+	}
 }
 
 func (proc *Process) execInstCopy(inst instCopy) Return {
 	*inst.dst = *inst.src
 
-	proc.PC++
 	return Ready()
 }
 
 func (proc *Process) execInstMove(inst instMove) Return {
 	*inst.dst = inst.val
 
-	proc.PC++
 	return Ready()
 }
 
@@ -149,7 +138,6 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -167,7 +155,6 @@ func (proc *Process) execInstNeg(inst instNeg) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -186,7 +173,6 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -195,7 +181,7 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 		σCh := make(chan shamir.Share, 1)
 		inst.σCh = σCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRn(σCh))
+		return NotReady(GenerateRn(proc.iid(), σCh))
 	}
 
 	if !inst.σReady {
@@ -211,7 +197,6 @@ func (proc *Process) execInstGenerateRn(inst instGenerateRn) Return {
 
 	*inst.dst = NewValuePrivate(inst.σ)
 
-	proc.PC++
 	return Ready()
 }
 
@@ -220,7 +205,7 @@ func (proc *Process) execInstGenerateRnZero(inst instGenerateRnZero) Return {
 		σCh := make(chan shamir.Share, 1)
 		inst.σCh = σCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRnZero(σCh))
+		return NotReady(GenerateRnZero(proc.iid(), σCh))
 	}
 
 	if !inst.σReady {
@@ -236,7 +221,6 @@ func (proc *Process) execInstGenerateRnZero(inst instGenerateRnZero) Return {
 
 	*inst.dst = NewValuePrivate(inst.σ)
 
-	proc.PC++
 	return Ready()
 }
 
@@ -247,7 +231,7 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 		inst.ρCh = ρCh
 		inst.σCh = σCh
 		proc.Code[proc.PC] = inst
-		return NotReady(GenerateRnTuple(ρCh, σCh))
+		return NotReady(GenerateRnTuple(proc.iid(), ρCh, σCh))
 	}
 
 	if !inst.ρReady {
@@ -275,7 +259,6 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 	*inst.ρDst = NewValuePrivate(inst.ρ)
 	*inst.σDst = NewValuePrivate(inst.σ)
 
-	proc.PC++
 	return Ready()
 }
 
@@ -303,7 +286,7 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		retCh := make(chan shamir.Share, 1)
 		inst.retCh = retCh
 		proc.Code[proc.PC] = inst
-		return NotReady(Multiply(x.Share, y.Share, ρ.Share, σ.Share, retCh))
+		return NotReady(Multiply(proc.iid(), x.Share, y.Share, ρ.Share, σ.Share, retCh))
 	}
 
 	if !inst.retReady {
@@ -320,7 +303,6 @@ func (proc *Process) execInstMul(inst instMul) Return {
 
 	*inst.dst = NewValuePrivate(inst.ret)
 
-	proc.PC++
 	return Ready()
 }
 
@@ -339,7 +321,7 @@ func (proc *Process) execInstMulPub(inst instMulPub) Return {
 		retCh := make(chan algebra.FpElement, 1)
 		inst.retCh = retCh
 		proc.Code[proc.PC] = inst
-		return NotReady(Open(x.Share.Mul(y.Share), retCh))
+		return NotReady(Open(proc.iid(), x.Share.Mul(y.Share), retCh))
 	}
 
 	if !inst.retReady {
@@ -355,7 +337,6 @@ func (proc *Process) execInstMulPub(inst instMulPub) Return {
 
 	*inst.dst = NewValuePublic(inst.ret)
 
-	proc.PC++
 	return Ready()
 }
 
@@ -370,7 +351,7 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 		retCh := make(chan algebra.FpElement, 1)
 		inst.retCh = retCh
 		proc.Code[proc.PC] = inst
-		return NotReady(Open(v.Share, retCh))
+		return NotReady(Open(proc.iid(), v.Share, retCh))
 	}
 
 	if !inst.retReady {
@@ -386,27 +367,95 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 	*inst.dst = NewValuePublic(inst.ret)
 
+	return Ready()
+}
+
+func (proc *Process) execInstAsync(inst instAsync) Return {
+
+	// Store the current PC and move to the first instruction in the async block
+	pc := proc.PC
 	proc.PC++
+
+	asyncRet := Ready()
+	asyncRetIntents := []Intent{}
+
+	// Execute instructions inside the async block until the required number of
+	// await instructions have been seen
+	for awaits := 1; awaits > 0; proc.PC++ {
+
+		if proc.PC == PC(len(proc.Code)) {
+			return NotReady(ErrorCodeOverflow(proc.PC))
+		}
+
+		// Execute an instruction and store all intent
+		inst := proc.Code[proc.PC]
+
+		// Increment the number of await instructions that need to be seen
+		// before the async block can end
+		if _, ok := inst.(instAsync); ok {
+			awaits++
+			continue
+		}
+		// Decrement the number of await instructions that need to be seen
+		// before the async block can end
+		if _, ok := inst.(instAwait); ok {
+			awaits--
+			continue
+		}
+
+		ret := proc.execInst(inst)
+		if !ret.IsReady() {
+			asyncRet = NotReady(nil)
+			asyncRetIntents = append(asyncRetIntents, ret.Intent())
+		}
+	}
+
+	if !asyncRet.IsReady() {
+		// At least one instruction in the async block is not ready, so we need
+		// to reset the PC to the beginning of the async block and try again
+		// later
+		proc.PC = pc
+		asyncRet = NotReady(Await(proc.iid(), asyncRetIntents))
+	} else {
+		// Decrement the PC to make sure it points to the final await
+		// instruction for the async block
+		proc.PC--
+	}
+
+	return asyncRet
+}
+
+func (proc *Process) execInstAwait(inst instAwait) Return {
+	// Passively ignore the direct execution of await instructions because they
+	// are meaningless outside the context of an async block
 	return Ready()
 }
 
 func (proc *Process) execInstExit(inst instExit) Return {
-
 	values := make([]Value, len(inst.src))
 	for i := range values {
 		values[i] = *(inst.src[i])
 	}
-
-	proc.PC++
-	ret := Terminated()
-	ret.intent = Exit(values)
-	return ret
+	return NotReady(Exit(proc.iid(), values))
 }
 
 func (proc *Process) execInstDebug(inst instDebug) Return {
 	inst.d()
-	proc.PC++
 	return Ready()
+}
+
+func (proc *Process) iid() IntentID {
+	id := IntentID{}
+	copy(id[:32], proc.ID[:32])
+	id[32] = byte(proc.PC)
+	id[33] = byte(proc.PC >> 8)
+	id[34] = byte(proc.PC >> 16)
+	id[35] = byte(proc.PC >> 24)
+	id[36] = byte(proc.PC >> 32)
+	id[37] = byte(proc.PC >> 40)
+	id[38] = byte(proc.PC >> 48)
+	id[39] = byte(proc.PC >> 56)
+	return id
 }
 
 func expandMacros(code *Code) {

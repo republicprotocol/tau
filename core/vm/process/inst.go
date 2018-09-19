@@ -258,6 +258,26 @@ func InstOpen(dst, src Addr) Inst {
 func (inst instOpen) IsInst() {
 }
 
+type instAsync struct {
+}
+
+func InstAsync() Inst {
+	return instAsync{}
+}
+
+func (inst instAsync) IsInst() {
+}
+
+type instAwait struct {
+}
+
+func InstAwait() Inst {
+	return instAwait{}
+}
+
+func (inst instAwait) IsInst() {
+}
+
 type instExit struct {
 	src []Addr
 }

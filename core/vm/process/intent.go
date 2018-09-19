@@ -8,96 +8,142 @@ import (
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
+type IntentID [40]byte
+
 type Intent interface {
-	IsIntent()
+	IntentID() IntentID
 }
 
 type IntentToGenerateRn struct {
+	ID IntentID
+
 	Sigma chan<- shamir.Share
 }
 
-func GenerateRn(σ chan<- shamir.Share) IntentToGenerateRn {
+func GenerateRn(id IntentID, σ chan<- shamir.Share) IntentToGenerateRn {
 	return IntentToGenerateRn{
+		ID: id,
+
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenerateRn) IsIntent() {
+func (intent IntentToGenerateRn) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToGenerateRnTuple struct {
+	ID IntentID
+
 	Rho   chan<- shamir.Share
 	Sigma chan<- shamir.Share
 }
 
-func GenerateRnTuple(ρ, σ chan<- shamir.Share) IntentToGenerateRnTuple {
+func GenerateRnTuple(id IntentID, ρ, σ chan<- shamir.Share) IntentToGenerateRnTuple {
 	return IntentToGenerateRnTuple{
+		ID: id,
+
 		Rho:   ρ,
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenerateRnTuple) IsIntent() {
+func (intent IntentToGenerateRnTuple) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToGenerateRnZero struct {
+	ID IntentID
+
 	Sigma chan<- shamir.Share
 }
 
-func GenerateRnZero(σ chan<- shamir.Share) IntentToGenerateRnZero {
+func GenerateRnZero(id IntentID, σ chan<- shamir.Share) IntentToGenerateRnZero {
 	return IntentToGenerateRnZero{
+		ID: id,
+
 		Sigma: σ,
 	}
 }
 
-func (intent IntentToGenerateRnZero) IsIntent() {
+func (intent IntentToGenerateRnZero) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToMultiply struct {
+	ID         IntentID
 	X, Y       shamir.Share
 	Rho, Sigma shamir.Share
 
 	Ret chan<- shamir.Share
 }
 
-func Multiply(x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultiply {
+func Multiply(id IntentID, x, y, ρ, σ shamir.Share, ret chan<- shamir.Share) IntentToMultiply {
 	return IntentToMultiply{
+		ID:    id,
 		X:     x,
 		Y:     y,
 		Rho:   ρ,
 		Sigma: σ,
-		Ret:   ret,
+
+		Ret: ret,
 	}
 }
 
-func (intent IntentToMultiply) IsIntent() {
+func (intent IntentToMultiply) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToOpen struct {
+	ID    IntentID
 	Value shamir.Share
 
 	Ret chan<- algebra.FpElement
 }
 
-func Open(value shamir.Share, ret chan<- algebra.FpElement) IntentToOpen {
+func Open(id IntentID, value shamir.Share, ret chan<- algebra.FpElement) IntentToOpen {
 	return IntentToOpen{
+		ID:    id,
 		Value: value,
-		Ret:   ret,
+
+		Ret: ret,
 	}
 }
 
-func (intent IntentToOpen) IsIntent() {
+func (intent IntentToOpen) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToExit struct {
+	ID     IntentID
 	Values []Value
 }
 
-func Exit(values []Value) IntentToExit {
-	return IntentToExit{values}
+func Exit(id IntentID, values []Value) IntentToExit {
+	return IntentToExit{
+		ID:     id,
+		Values: values,
+	}
 }
 
-func (intent IntentToExit) IsIntent() {
+func (intent IntentToExit) IntentID() IntentID {
+	return intent.ID
+}
+
+type IntentToAwait struct {
+	ID      IntentID
+	Intents []Intent
+}
+
+func Await(id IntentID, intents []Intent) IntentToAwait {
+	return IntentToAwait{
+		ID:      id,
+		Intents: intents,
+	}
+}
+
+func (intent IntentToAwait) IntentID() IntentID {
+	return intent.ID
 }
 
 type IntentToError struct {
@@ -144,5 +190,6 @@ func ErrorUnexpectedTypeConversion(got, expected interface{}, pc PC) IntentToErr
 	)
 }
 
-func (intent IntentToError) IsIntent() {
+func (intent IntentToError) IntentID() IntentID {
+	return IntentID{}
 }
