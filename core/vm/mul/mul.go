@@ -53,9 +53,11 @@ func (multiplier *multiplier) signalMul(message SignalMul) task.Message {
 
 	share := message.x.Mul(message.y)
 	mul := NewOpenMul(message.MessageID, share.Add(message.ρ))
-	result := multiplier.tryOpenMul(mul)
 
-	return task.NewMessageBatch(mul, result)
+	return task.NewMessageBatch([]task.Message{
+		multiplier.tryOpenMul(mul),
+		mul,
+	})
 }
 
 func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {

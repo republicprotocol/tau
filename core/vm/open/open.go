@@ -53,7 +53,10 @@ func (opener *opener) signal(message Signal) task.Message {
 
 	open := NewOpen(message.MessageID, message.Share)
 
-	return task.NewMessageBatch(opener.tryOpen(open), open)
+	return task.NewMessageBatch([]task.Message{
+		opener.tryOpen(open),
+		open,
+	})
 }
 
 func (opener *opener) tryOpen(message Open) task.Message {

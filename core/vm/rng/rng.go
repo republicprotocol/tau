@@ -174,7 +174,7 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 	messages := rnger.buildRnShareProposals(message)
 	messages[rnger.index-1] = rnger.acceptRnShare(messages[rnger.index-1].(ProposeRnShare))
 
-	return task.NewMessageBatch(messages...)
+	return task.NewMessageBatch(messages)
 }
 
 func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
