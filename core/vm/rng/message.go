@@ -50,14 +50,14 @@ func (message GenerateRnTuple) IsMessage() {
 type RnShares struct {
 	task.MessageID
 
-	Index      uint64
-	RhoBatch   []map[uint64]vss.VShare
-	SigmaBatch []map[uint64]vss.VShare
+	From   uint64
+	Rhos   []map[uint64]vss.VShare
+	Sigmas []map[uint64]vss.VShare
 }
 
 // NewRnShares returns a new RnShares message.
-func NewRnShares(id task.MessageID, index uint64, ρBatch, σBatch []map[uint64]vss.VShare) RnShares {
-	return RnShares{id, index, ρBatch, σBatch}
+func NewRnShares(id task.MessageID, from uint64, ρs, σs []map[uint64]vss.VShare) RnShares {
+	return RnShares{id, from, ρs, σs}
 }
 
 // IsMessage implements the Message interface.
@@ -67,13 +67,14 @@ func (message RnShares) IsMessage() {
 type ProposeRnShare struct {
 	task.MessageID
 
-	RhoBatch   []vss.VShare
-	SigmaBatch []vss.VShare
+	To     uint64
+	Rhos   []vss.VShare
+	Sigmas []vss.VShare
 }
 
 // NewProposeRnShare returns a new ProposeRnShare message.
-func NewProposeRnShare(id task.MessageID, ρBatch, σBatch []vss.VShare) ProposeRnShare {
-	return ProposeRnShare{id, ρBatch, σBatch}
+func NewProposeRnShare(id task.MessageID, to uint64, ρs, σs []vss.VShare) ProposeRnShare {
+	return ProposeRnShare{id, to, ρs, σs}
 }
 
 // IsMessage implements the Message interface.
@@ -83,13 +84,13 @@ func (message ProposeRnShare) IsMessage() {
 type Result struct {
 	task.MessageID
 
-	RhoBatch   []vss.VShare
-	SigmaBatch []vss.VShare
+	Rhos   []vss.VShare
+	Sigmas []vss.VShare
 }
 
 // NewResult returns a new Result message.
-func NewResult(id task.MessageID, ρBatch, σBatch []vss.VShare) Result {
-	return Result{id, ρBatch, σBatch}
+func NewResult(id task.MessageID, ρs, σs []vss.VShare) Result {
+	return Result{id, ρs, σs}
 }
 
 // IsMessage implements the Message interface.
