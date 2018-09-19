@@ -94,37 +94,40 @@ func (vm *VM) exec(exec Exec) task.Message {
 	}
 
 	switch intent := ret.Intent().(type) {
+	case process.IntentToAwait:
+		return vm.execAwaitIntent(proc, intent)
+
+	default:
+		return vm.execIntent(proc, intent)
+	}
+}
+
+func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Message {
+	switch intent := intent.(type) {
 	case process.IntentToError:
 		return task.NewError(intent)
 
 	case process.IntentToExit:
 		return NewResult(intent.Values)
 
-	case process.IntentToAwait:
-		vm.intents[intent.IntentID()] = intent
-		return vm.execAwaitIntent(proc, intent)
-
-	default:
-		vm.intents[intent.IntentID()] = intent
-		return vm.execAsyncIntent(proc, intent)
-	}
-}
-
-func (vm *VM) execAsyncIntent(proc process.Process, intent process.Intent) task.Message {
-	switch intent := intent.(type) {
 	case process.IntentToGenerateRn:
+		vm.intents[intent.IntentID()] = intent
 		vm.rng.Send(rng.NewGenerateRn(iidToMsgid(intent.IntentID())))
 
 	case process.IntentToGenerateRnZero:
+		vm.intents[intent.IntentID()] = intent
 		vm.rng.Send(rng.NewGenerateRnZero(iidToMsgid(intent.IntentID())))
 
 	case process.IntentToGenerateRnTuple:
+		vm.intents[intent.IntentID()] = intent
 		vm.rng.Send(rng.NewGenerateRnTuple(iidToMsgid(intent.IntentID())))
 
 	case process.IntentToMultiply:
+		vm.intents[intent.IntentID()] = intent
 		vm.mul.Send(mul.NewSignalMul(iidToMsgid(intent.IntentID()), intent.X, intent.Y, intent.Rho, intent.Sigma))
 
 	case process.IntentToOpen:
+		vm.intents[intent.IntentID()] = intent
 		vm.open.Send(open.NewSignal(iidToMsgid(intent.IntentID()), intent.Value))
 
 	default:
@@ -135,17 +138,20 @@ func (vm *VM) execAsyncIntent(proc process.Process, intent process.Intent) task.
 
 func (vm *VM) execAwaitIntent(proc process.Process, intent process.IntentToAwait) task.Message {
 	vm.intents[intent.IntentID()] = intent
+
 	messages := []task.Message{}
 	for _, intent := range intent.Intents {
-		if intent != nil {
-			if message := vm.execAsyncIntent(proc, intent); message != nil {
-				messages = append(messages, message)
-			}
+		if intent == nil {
+			continue
+		}
+		if message := vm.execIntent(proc, intent); message != nil {
+			messages = append(messages, message)
 		}
 	}
 	if len(messages) == 0 {
 		return nil
 	}
+
 	return task.NewMessageBatch(messages)
 }
 
