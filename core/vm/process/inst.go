@@ -129,6 +129,20 @@ func InstInv(dst, lhs Addr) Inst {
 func (inst instInv) IsInst() {
 }
 
+type instMod struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
+}
+
+func InstMod(dst, lhs, rhs Addr) Inst {
+	return instMod{dst, lhs, rhs}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMod) IsInst() {
+}
+
 type instGenerateRn struct {
 	dst    Addr
 	σReady bool
