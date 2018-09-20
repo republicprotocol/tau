@@ -84,6 +84,8 @@ func (proc *Process) Exec() Return {
 			return Terminated()
 		}
 
+		// log.Printf("[debug] (vm) executing instruction %T", proc.Code[proc.PC])
+
 		switch inst := proc.Code[proc.PC].(type) {
 		case instCopy:
 			ret = proc.execInstCopy(inst)
@@ -99,6 +101,8 @@ func (proc *Process) Exec() Return {
 			ret = proc.execInstExp(inst)
 		case instInv:
 			ret = proc.execInstInv(inst)
+		case instMod:
+			ret = proc.execInstMod(inst)
 		case instGenerateRn:
 			ret = proc.execInstGenerateRn(inst)
 		case instGenerateRnZero:
@@ -151,7 +155,7 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	case ValuePrivate:
 		ret = lhs.Add(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 	*inst.dst = ret
 
@@ -169,7 +173,7 @@ func (proc *Process) execInstNeg(inst instNeg) Return {
 	case ValuePrivate:
 		ret = lhs.Neg()
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 	*inst.dst = ret
 
@@ -188,7 +192,7 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	case ValuePrivate:
 		ret = lhs.Sub(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 	*inst.dst = ret
 
@@ -205,10 +209,10 @@ func (proc *Process) execInstExp(inst instExp) Return {
 		if rhs, ok := rhs.(ValuePublic); ok {
 			ret = lhs.Exp(rhs)
 		} else {
-			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
 		}
 	} else {
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 
 	*inst.dst = ret
@@ -222,9 +226,29 @@ func (proc *Process) execInstInv(inst instInv) Return {
 
 	ret := Value(nil)
 	if lhs, ok := lhs.(ValuePublic); !ok {
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	} else {
 		ret = lhs.Inv()
+	}
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstMod(inst instMod) Return {
+	lhs := *inst.lhs
+	rhs := *inst.rhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePublic); !ok {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+	} else {
+		if rhs, ok := rhs.(ValuePublic); !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
+		} else {
+			ret = lhs.Mod(rhs)
+		}
 	}
 	*inst.dst = ret
 
@@ -326,16 +350,18 @@ func (proc *Process) execInstMulPub(inst instMulPub) Return {
 	rhs := *inst.rhs
 
 	ret := Value(nil)
-	if lhs, ok := lhs.(ValuePrivate); ok {
-		if rhs, ok := rhs.(ValuePublic); ok {
+	if rhs, ok := rhs.(ValuePublic); ok {
+		switch lhs := lhs.(type) {
+		case ValuePublic:
 			ret = lhs.Mul(rhs)
-		} else {
-			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC))
+		case ValuePrivate:
+			ret = lhs.Mul(rhs)
+		default:
+			return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 		}
 	} else {
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
 	}
-
 	*inst.dst = ret
 
 	proc.PC++
@@ -345,28 +371,49 @@ func (proc *Process) execInstMulPub(inst instMulPub) Return {
 func (proc *Process) execInstMul(inst instMul) Return {
 	if inst.retCh == nil {
 
-		x, ok := (*inst.lhs).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
-		}
-		y, ok := (*inst.rhs).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
-		}
+		switch x := (*inst.lhs).(type) {
 
-		ρ, ok := (*inst.ρ).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.ρ, ValuePrivate{}, proc.PC))
-		}
-		σ, ok := (*inst.σ).(ValuePrivate)
-		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC))
-		}
+		case ValuePublic:
+			switch y := (*inst.rhs).(type) {
+			case ValuePublic:
+				*inst.dst = x.Mul(y)
+				proc.PC++
+				return Ready()
+			case ValuePrivate:
+				*inst.dst = y.Mul(x)
+				proc.PC++
+				return Ready()
+			default:
+				return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC, inst))
+			}
 
-		retCh := make(chan shamir.Share, 1)
-		inst.retCh = retCh
-		proc.Code[proc.PC] = inst
-		return NotReady(Multiply(x.Share, y.Share, ρ.Share, σ.Share, retCh))
+		case ValuePrivate:
+			switch y := (*inst.rhs).(type) {
+			case ValuePublic:
+				*inst.dst = x.Mul(y)
+				proc.PC++
+				return Ready()
+			case ValuePrivate:
+				ρ, ok := (*inst.ρ).(ValuePrivate)
+				if !ok {
+					return NotReady(ErrorUnexpectedTypeConversion(*inst.ρ, ValuePrivate{}, proc.PC, inst))
+				}
+				σ, ok := (*inst.σ).(ValuePrivate)
+				if !ok {
+					return NotReady(ErrorUnexpectedTypeConversion(*inst.σ, ValuePrivate{}, proc.PC, inst))
+				}
+
+				retCh := make(chan shamir.Share, 1)
+				inst.retCh = retCh
+				proc.Code[proc.PC] = inst
+				return NotReady(Multiply(x.Share, y.Share, ρ.Share, σ.Share, retCh))
+			default:
+				return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC, inst))
+			}
+
+		default:
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC, inst))
+		}
 	}
 
 	if !inst.retReady {
@@ -392,11 +439,11 @@ func (proc *Process) execInstMulOpen(inst instMulOpen) Return {
 
 		x, ok := (*inst.lhs).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC, inst))
 		}
 		y, ok := (*inst.rhs).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC, inst))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
@@ -427,7 +474,7 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 		v, ok := (*inst.src).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.src, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.src, ValuePrivate{}, proc.PC, inst))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
