@@ -58,12 +58,25 @@ func (lhs ValuePublic) Sub(rhs Value) (ret Value) {
 	return
 }
 
+func (lhs ValuePublic) Mul(rhs ValuePublic) Value {
+	return ValuePublic{lhs.Value.Mul(rhs.Value)}
+}
+
 func (lhs ValuePublic) Exp(rhs ValuePublic) (ret ValuePublic) {
 	return ValuePublic{lhs.Value.Exp(rhs.Value)}
 }
 
 func (lhs ValuePublic) Inv() Value {
 	return ValuePublic{lhs.Value.Inv()}
+
+}
+
+func (lhs ValuePublic) Mod(rhs ValuePublic) Value {
+	lhsVal := lhs.Value.Value()
+	rhsVal := rhs.Value.Value()
+	lhsVal.Mod(lhsVal, rhsVal)
+
+	return ValuePublic{lhs.Value.NewInSameField(lhsVal)}
 
 }
 
