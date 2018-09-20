@@ -2,6 +2,7 @@ package process
 
 import (
 	"encoding/base64"
+	"fmt"
 	"unsafe"
 
 	"github.com/republicprotocol/oro-go/core/vss"
@@ -65,10 +66,9 @@ func New(id ID, mem Memory, code Code) Process {
 func (proc *Process) Exec() Return {
 	for {
 		if proc.PC == PC(len(proc.Code)) {
-			return NotReady(ErrorCodeOverflow(proc.PC))
+			return NotReady(ErrorCodeOverflow(proc.PC, nil))
 		}
-		ret := proc.execInst(proc.Code[proc.PC])
-		if !ret.IsReady() {
+		if ret := proc.execInst(proc.Code[proc.PC]); !ret.IsReady() {
 			return ret
 		}
 		proc.PC++
@@ -87,16 +87,24 @@ func (proc *Process) execInst(inst Inst) Return {
 		return proc.execInstNeg(inst)
 	case instSub:
 		return proc.execInstSub(inst)
+	case instExp:
+		return proc.execInstExp(inst)
+	case instInv:
+		return proc.execInstInv(inst)
+	case instMod:
+		return proc.execInstMod(inst)
 	case instGenerateRn:
 		return proc.execInstGenerateRn(inst)
 	case instGenerateRnZero:
 		return proc.execInstGenerateRnZero(inst)
 	case instGenerateRnTuple:
 		return proc.execInstGenerateRnTuple(inst)
-	case instMul:
-		return proc.execInstMul(inst)
 	case instMulPub:
 		return proc.execInstMulPub(inst)
+	case instMul:
+		return proc.execInstMul(inst)
+	case instMulOpen:
+		return proc.execInstMulOpen(inst)
 	case instOpen:
 		return proc.execInstOpen(inst)
 	case instAsync:
@@ -141,7 +149,7 @@ func (proc *Process) execInstAdd(inst instAdd) Return {
 	case ValuePrivate:
 		ret = lhs.Add(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 	*inst.dst = ret
 
@@ -158,7 +166,7 @@ func (proc *Process) execInstNeg(inst instNeg) Return {
 	case ValuePrivate:
 		ret = lhs.Neg()
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
 	}
 	*inst.dst = ret
 
@@ -176,7 +184,63 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	case ValuePrivate:
 		ret = lhs.Sub(rhs.(Value))
 	default:
-		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC))
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+	}
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstExp(inst instExp) Return {
+	lhs := *inst.lhs
+	rhs := *inst.rhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePublic); ok {
+		if rhs, ok := rhs.(ValuePublic); ok {
+			ret = lhs.Exp(rhs)
+		} else {
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
+		}
+	} else {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+	}
+
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstInv(inst instInv) Return {
+	lhs := *inst.lhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePublic); !ok {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+	} else {
+		ret = lhs.Inv()
+	}
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
+func (proc *Process) execInstMod(inst instMod) Return {
+	lhs := *inst.lhs
+	rhs := *inst.rhs
+
+	ret := Value(nil)
+	if lhs, ok := lhs.(ValuePublic); !ok {
+		return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+	} else {
+		if rhs, ok := rhs.(ValuePublic); !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
+		} else {
+			ret = lhs.Mod(rhs)
+		}
 	}
 	*inst.dst = ret
 
@@ -281,7 +345,134 @@ func (proc *Process) execInstGenerateRnTuple(inst instGenerateRnTuple) Return {
 	return Ready()
 }
 
+func (proc *Process) execInstMulPub(inst instMulPub) Return {
+	lhs := *inst.lhs
+	rhs := *inst.rhs
+
+	ret := Value(nil)
+	if rhs, ok := rhs.(ValuePublic); ok {
+		switch lhs := lhs.(type) {
+		case ValuePublic:
+			ret = lhs.Mul(rhs)
+		case ValuePrivate:
+			ret = lhs.Mul(rhs)
+		default:
+			return NotReady(ErrorUnexpectedTypeConversion(lhs, nil, proc.PC, inst))
+		}
+	} else {
+		return NotReady(ErrorUnexpectedTypeConversion(rhs, nil, proc.PC, inst))
+	}
+	*inst.dst = ret
+
+	proc.PC++
+	return Ready()
+}
+
 func (proc *Process) execInstMul(inst instMul) Return {
+	switch (*inst.lhs).(type) {
+	case ValuePublic:
+		switch (*inst.rhs).(type) {
+		case ValuePublic:
+			return proc.execInstMulPubPub(inst)
+		case ValuePrivate:
+			return proc.execInstMulPubPriv(inst)
+		default:
+			panic(fmt.Sprintf("unexpected value type %T", *inst.lhs))
+		}
+	case ValuePrivate:
+		switch (*inst.rhs).(type) {
+		case ValuePublic:
+			return proc.execInstMulPrivPub(inst)
+		case ValuePrivate:
+			return proc.execInstMulPrivPriv(inst)
+		default:
+			panic(fmt.Sprintf("unexpected value type %T", *inst.lhs))
+		}
+	default:
+		panic(fmt.Sprintf("unexpected value type %T", *inst.lhs))
+	}
+}
+
+func (proc *Process) execInstMulPubPub(inst instMul) Return {
+	size := unsafe.Sizeof(Value(nil))
+
+	lhs := unsafe.Pointer(inst.lhs)
+	rhs := unsafe.Pointer(inst.rhs)
+	dst := unsafe.Pointer(inst.dst)
+
+	for b := 0; b < inst.batch; b++ {
+		xPtr := (*Value)(unsafe.Pointer(uintptr(lhs) + uintptr(b)*size))
+		yPtr := (*Value)(unsafe.Pointer(uintptr(rhs) + uintptr(b)*size))
+
+		x, ok := (*xPtr).(ValuePublic)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePublic{}, proc.PC, inst))
+		}
+		y, ok := (*yPtr).(ValuePublic)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePublic{}, proc.PC, inst))
+		}
+
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(b)*size)) = x.Mul(y)
+	}
+
+	return Ready()
+}
+
+func (proc *Process) execInstMulPubPriv(inst instMul) Return {
+	size := unsafe.Sizeof(Value(nil))
+
+	lhs := unsafe.Pointer(inst.lhs)
+	rhs := unsafe.Pointer(inst.rhs)
+	dst := unsafe.Pointer(inst.dst)
+
+	for b := 0; b < inst.batch; b++ {
+		xPtr := (*Value)(unsafe.Pointer(uintptr(lhs) + uintptr(b)*size))
+		yPtr := (*Value)(unsafe.Pointer(uintptr(rhs) + uintptr(b)*size))
+
+		x, ok := (*xPtr).(ValuePublic)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePublic{}, proc.PC, inst))
+		}
+		y, ok := (*yPtr).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePrivate{}, proc.PC, inst))
+		}
+
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(b)*size)) = y.Mul(x)
+	}
+
+	return Ready()
+}
+
+func (proc *Process) execInstMulPrivPub(inst instMul) Return {
+	size := unsafe.Sizeof(Value(nil))
+
+	lhs := unsafe.Pointer(inst.lhs)
+	rhs := unsafe.Pointer(inst.rhs)
+	dst := unsafe.Pointer(inst.dst)
+
+	for b := 0; b < inst.batch; b++ {
+		xPtr := (*Value)(unsafe.Pointer(uintptr(lhs) + uintptr(b)*size))
+		yPtr := (*Value)(unsafe.Pointer(uintptr(rhs) + uintptr(b)*size))
+
+		x, ok := (*xPtr).(ValuePrivate)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePublic{}, proc.PC, inst))
+		}
+		y, ok := (*yPtr).(ValuePublic)
+		if !ok {
+			return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePrivate{}, proc.PC, inst))
+		}
+
+		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(b)*size)) = x.Mul(y)
+	}
+
+	return Ready()
+}
+
+func (proc *Process) execInstMulPrivPriv(inst instMul) Return {
+	size := unsafe.Sizeof(Value(nil))
 
 	if inst.retCh == nil {
 
@@ -290,7 +481,6 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		ρs := make([]shamir.Share, inst.batch)
 		σs := make([]shamir.Share, inst.batch)
 
-		size := unsafe.Sizeof(Value(nil))
 		lhs := unsafe.Pointer(inst.lhs)
 		rhs := unsafe.Pointer(inst.rhs)
 		ρσs := unsafe.Pointer(inst.ρσs)
@@ -303,20 +493,20 @@ func (proc *Process) execInstMul(inst instMul) Return {
 
 			x, ok := (*xPtr).(ValuePrivate)
 			if !ok {
-				return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePrivate{}, proc.PC))
+				return NotReady(ErrorUnexpectedTypeConversion(*xPtr, ValuePrivate{}, proc.PC, inst))
 			}
 			y, ok := (*yPtr).(ValuePrivate)
 			if !ok {
-				return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePrivate{}, proc.PC))
+				return NotReady(ErrorUnexpectedTypeConversion(*yPtr, ValuePrivate{}, proc.PC, inst))
 			}
 
 			ρ, ok := (*ρPtr).(ValuePrivate)
 			if !ok {
-				return NotReady(ErrorUnexpectedTypeConversion(*ρPtr, ValuePrivate{}, proc.PC))
+				return NotReady(ErrorUnexpectedTypeConversion(*ρPtr, ValuePrivate{}, proc.PC, inst))
 			}
 			σ, ok := (*σPtr).(ValuePrivate)
 			if !ok {
-				return NotReady(ErrorUnexpectedTypeConversion(*σPtr, ValuePrivate{}, proc.PC))
+				return NotReady(ErrorUnexpectedTypeConversion(*σPtr, ValuePrivate{}, proc.PC, inst))
 			}
 
 			xs[b] = x.Share
@@ -342,7 +532,6 @@ func (proc *Process) execInstMul(inst instMul) Return {
 		}
 	}
 
-	size := unsafe.Sizeof(Value(nil))
 	dst := unsafe.Pointer(inst.dst)
 	for b := 0; b < inst.batch; b++ {
 		*(*Value)(unsafe.Pointer(uintptr(dst) + uintptr(b)*size)) = NewValuePrivate(inst.ret[b])
@@ -351,16 +540,16 @@ func (proc *Process) execInstMul(inst instMul) Return {
 	return Ready()
 }
 
-func (proc *Process) execInstMulPub(inst instMulPub) Return {
+func (proc *Process) execInstMulOpen(inst instMulOpen) Return {
 	if inst.retCh == nil {
 
 		x, ok := (*inst.lhs).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.lhs, ValuePrivate{}, proc.PC, inst))
 		}
 		y, ok := (*inst.rhs).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.rhs, ValuePrivate{}, proc.PC, inst))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
@@ -390,7 +579,7 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 		v, ok := (*inst.src).(ValuePrivate)
 		if !ok {
-			return NotReady(ErrorUnexpectedTypeConversion(*inst.src, ValuePrivate{}, proc.PC))
+			return NotReady(ErrorUnexpectedTypeConversion(*inst.src, ValuePrivate{}, proc.PC, inst))
 		}
 
 		retCh := make(chan algebra.FpElement, 1)
@@ -429,7 +618,7 @@ func (proc *Process) execInstAsync(inst instAsync) Return {
 	for awaits := 1; awaits > 0; proc.PC++ {
 
 		if proc.PC == PC(len(proc.Code)) {
-			return NotReady(ErrorCodeOverflow(proc.PC))
+			return NotReady(ErrorCodeOverflow(proc.PC, inst))
 		}
 
 		// Execute an instruction and store all intent

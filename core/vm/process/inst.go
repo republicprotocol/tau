@@ -79,7 +79,6 @@ type instNeg struct {
 	lhs Addr
 }
 
-// InstNeg a Value and move the result to a destination Addr.
 func InstNeg(dst, lhs Addr) Inst {
 	return instNeg{dst, lhs}
 }
@@ -102,6 +101,49 @@ func InstSub(dst, lhs, rhs Addr) Inst {
 
 // IsInst implements the Inst interface.
 func (inst instSub) IsInst() {
+}
+
+type instExp struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
+}
+
+// InstExp will pop two public values form the stack, raise one to the power of
+// the other, and then push the result to the stack. This Inst is synchronous.
+func InstExp(dst, lhs, rhs Addr) Inst {
+	return instExp{dst, lhs, rhs}
+}
+
+// IsInst implements the Inst interface.
+func (inst instExp) IsInst() {
+}
+
+type instInv struct {
+	dst Addr
+	lhs Addr
+}
+
+func InstInv(dst, lhs Addr) Inst {
+	return instInv{dst, lhs}
+}
+
+// IsInst implements the Inst interface.
+func (inst instInv) IsInst() {
+}
+
+type instMod struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
+}
+
+func InstMod(dst, lhs, rhs Addr) Inst {
+	return instMod{dst, lhs, rhs}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMod) IsInst() {
 }
 
 type instGenerateRn struct {
@@ -188,6 +230,24 @@ func InstGenerateRnTuple(dst Addr, batch int) Inst {
 func (inst instGenerateRnTuple) IsInst() {
 }
 
+type instMulPub struct {
+	dst Addr
+	lhs Addr
+	rhs Addr
+}
+
+func InstMulPub(dst, lhs, rhs Addr) Inst {
+	return instMulPub{
+		dst: dst,
+		lhs: lhs,
+		rhs: rhs,
+	}
+}
+
+// IsInst implements the Inst interface.
+func (inst instMulPub) IsInst() {
+}
+
 type instMul struct {
 	dst   Addr
 	lhs   Addr
@@ -221,7 +281,7 @@ func InstMul(dst, lhs, rhs, ρσs Addr, batch int) Inst {
 func (inst instMul) IsInst() {
 }
 
-type instMulPub struct {
+type instMulOpen struct {
 	dst      Addr
 	lhs      Addr
 	rhs      Addr
@@ -230,11 +290,11 @@ type instMulPub struct {
 	ret      algebra.FpElement
 }
 
-// InstMulPub a left-hand private Value with a right-hand private Value and open
-// the result into a public Value. The public Value is moved to a destination
-// Addr. This instruction is asynchronous.
-func InstMulPub(dst, lhs, rhs Addr) Inst {
-	return instMulPub{
+// InstMulOpen a left-hand private Value with a right-hand private Value and
+// open the result into a public Value. The public Value is moved to a
+// destination Addr. This instruction is asynchronous.
+func InstMulOpen(dst, lhs, rhs Addr) Inst {
+	return instMulOpen{
 		dst:      dst,
 		lhs:      lhs,
 		rhs:      rhs,
@@ -245,7 +305,7 @@ func InstMulPub(dst, lhs, rhs Addr) Inst {
 }
 
 // IsInst implements the Inst interface.
-func (inst instMulPub) IsInst() {
+func (inst instMulOpen) IsInst() {
 }
 
 type instOpen struct {
