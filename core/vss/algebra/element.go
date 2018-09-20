@@ -13,6 +13,10 @@ type FpElement struct {
 	prime, value *big.Int
 }
 
+func (lhs FpElement) Value() *big.Int {
+	return big.NewInt(0).Set(lhs.value)
+}
+
 // FpElements is a slice.
 type FpElements []FpElement
 
