@@ -84,8 +84,6 @@ func (proc *Process) Exec() Return {
 			return Terminated()
 		}
 
-		// log.Printf("[debug] (vm) executing instruction %T", proc.Code[proc.PC])
-
 		switch inst := proc.Code[proc.PC].(type) {
 		case instCopy:
 			ret = proc.execInstCopy(inst)
