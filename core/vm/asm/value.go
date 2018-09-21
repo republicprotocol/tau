@@ -1,9 +1,13 @@
-package process
+package asm
 
 import (
+	"unsafe"
+
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
+
+var SizeOfValue = unsafe.Sizeof(Value(nil))
 
 // Value is the interface of any struct that can be pushed on to the stack.
 type Value interface {
