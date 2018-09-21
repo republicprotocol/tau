@@ -3,27 +3,33 @@ package open
 import (
 	"fmt"
 
+	"github.com/republicprotocol/co-go"
+
+	"github.com/republicprotocol/oro-go/core/vss/algebra"
+
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 )
 
 type opener struct {
-	n, k        uint64
-	sharesCache shamir.Shares
+	index uint64
+
+	n, k uint64
 
 	signals map[task.MessageID]Signal
 	opens   map[task.MessageID]map[uint64]Open
 	results map[task.MessageID]Result
 }
 
-func New(n, k uint64, cap int) task.Task {
-	return task.New(task.NewIO(cap), newOpener(n, k))
+func New(index, n, k uint64, cap int) task.Task {
+	return task.New(task.NewIO(cap), newOpener(index, n, k))
 }
 
-func newOpener(n, k uint64) *opener {
+func newOpener(index, n, k uint64) *opener {
 	return &opener{
+		index: index,
+
 		n: n, k: k,
-		sharesCache: make(shamir.Shares, n),
 
 		signals: map[task.MessageID]Signal{},
 		opens:   map[task.MessageID]map[uint64]Open{},
@@ -51,7 +57,7 @@ func (opener *opener) signal(message Signal) task.Message {
 	}
 	opener.signals[message.MessageID] = message
 
-	open := NewOpen(message.MessageID, message.Share)
+	open := NewOpen(message.MessageID, opener.index, message.Shares)
 
 	return task.NewMessageBatch([]task.Message{
 		opener.tryOpen(open),
@@ -63,7 +69,7 @@ func (opener *opener) tryOpen(message Open) task.Message {
 	if _, ok := opener.opens[message.MessageID]; !ok {
 		opener.opens[message.MessageID] = map[uint64]Open{}
 	}
-	opener.opens[message.MessageID][message.Index()] = message
+	opener.opens[message.MessageID][message.From] = message
 
 	// Do not continue if there is an insufficient number of shares
 	if uint64(len(opener.opens[message.MessageID])) < opener.k {
@@ -78,16 +84,24 @@ func (opener *opener) tryOpen(message Open) task.Message {
 		return nil
 	}
 
-	n := 0
-	for _, opening := range opener.opens[message.MessageID] {
-		opener.sharesCache[n] = opening.Share
-		n++
-	}
-	value, err := shamir.Join(opener.sharesCache[:n])
-	if err != nil {
-		return task.NewError(err)
-	}
-	result := NewResult(message.MessageID, value)
+	batch := len(message.Shares)
+	values := make([]algebra.FpElement, batch)
+
+	co.ForAll(batch, func(b int) {
+		sharesCache := make([]shamir.Share, opener.n)
+
+		n := 0
+		for _, opening := range opener.opens[message.MessageID] {
+			sharesCache[n] = opening.Shares[b]
+			n++
+		}
+		value, err := shamir.Join(sharesCache[:n])
+		if err != nil {
+			panic(err)
+		}
+		values[b] = value
+	})
+	result := NewResult(message.MessageID, values)
 
 	opener.results[message.MessageID] = result
 	delete(opener.signals, message.MessageID)

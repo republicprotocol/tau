@@ -7,7 +7,8 @@ import (
 	"math/rand"
 
 	"github.com/republicprotocol/oro-go/core/task"
-	"github.com/republicprotocol/oro-go/core/vm/process"
+	"github.com/republicprotocol/oro-go/core/vm/asm"
+	"github.com/republicprotocol/oro-go/core/vm/proc"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"
@@ -128,18 +129,18 @@ var _ = Describe("Virtual Machine", func() {
 
 					id := [32]byte{0x69}
 					a, b := SecretField.Random(), SecretField.Random()
-					valueA, valueB := process.NewValuePublic(a), process.NewValuePublic(b)
-					expected := process.NewValuePublic(a.Add(b))
+					valueA, valueB := asm.NewValuePublic(a), asm.NewValuePublic(b)
+					expected := asm.NewValuePublic(a.Add(b))
 
 					for i := range vms {
-						mem := process.NewMemory(2)
-						code := process.Code{
-							process.InstMove(mem.At(0), valueA),
-							process.InstMove(mem.At(1), valueB),
-							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
-							process.InstExit(mem.At(0)),
+						mem := asm.Alloc(2)
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), valueA),
+							asm.InstMove(mem.Offset(1), valueB),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
+							asm.InstExit(mem.Offset(0), 1, 1),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -148,7 +149,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(expected.Value)).To(BeTrue())
 					}
@@ -172,18 +173,18 @@ var _ = Describe("Virtual Machine", func() {
 					sharesB := shamir.Split(polyB, uint64(entry.n))
 
 					for i := range vms {
-						valueA := process.NewValuePrivate(sharesA[i])
-						valueB := process.NewValuePrivate(sharesB[i])
+						valueA := asm.NewValuePrivate(sharesA[i])
+						valueB := asm.NewValuePrivate(sharesB[i])
 
-						mem := process.NewMemory(2)
-						code := process.Code{
-							process.InstMove(mem.At(0), valueA),
-							process.InstMove(mem.At(1), valueB),
-							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						mem := asm.Alloc(2)
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), valueA),
+							asm.InstMove(mem.Offset(1), valueB),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+							asm.InstExit(mem.Offset(0), 1, 1),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -192,7 +193,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(a.Add(b))).To(BeTrue())
 					}
@@ -214,18 +215,18 @@ var _ = Describe("Virtual Machine", func() {
 					shares := shamir.Split(poly, uint64(entry.n))
 
 					for i := range vms {
-						valuePub := process.NewValuePublic(pub)
-						valuePriv := process.NewValuePrivate(shares[i])
+						valuePub := asm.NewValuePublic(pub)
+						valuePriv := asm.NewValuePrivate(shares[i])
 
-						mem := process.NewMemory(2)
-						code := process.Code{
-							process.InstMove(mem.At(0), valuePub),
-							process.InstMove(mem.At(1), valuePriv),
-							process.InstAdd(mem.At(0), mem.At(0), mem.At(1)),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						mem := asm.Alloc(2)
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), valuePub),
+							asm.InstMove(mem.Offset(1), valuePriv),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+							asm.InstExit(mem.Offset(0), 1, 1),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -234,7 +235,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(pub.Add(priv))).To(BeTrue())
 					}
@@ -253,12 +254,12 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 
 					for i := range vms {
-						mem := process.NewMemory(2)
-						code := process.Code{
-							process.InstGenerateRnTuple(mem.At(0), 1),
-							process.InstExit(mem.At(0), mem.At(1)),
+						mem := asm.Alloc(2)
+						code := []asm.Inst{
+							asm.InstGenerateRnTuple(mem.Offset(0), mem.Offset(1), 1, 1, 1),
+							asm.InstExit(mem.Offset(0), 1, 2),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -269,11 +270,11 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 60).Should(Receive(&actual))
 
-						rho, ok := actual.result.Values[0].(process.ValuePrivate)
+						rho, ok := actual.result.Values[0].(asm.ValuePrivate)
 						Expect(ok).To(BeTrue())
 						rhoShares[i] = rho.Share
 
-						sigma, ok := actual.result.Values[1].(process.ValuePrivate)
+						sigma, ok := actual.result.Values[1].(asm.ValuePrivate)
 						Expect(ok).To(BeTrue())
 						sigmaShares[i] = sigma.Share
 					}
@@ -308,20 +309,20 @@ var _ = Describe("Virtual Machine", func() {
 					sharesB := shamir.Split(polyB, uint64(entry.n))
 
 					for i := range vms {
-						valueA := process.NewValuePrivate(sharesA[i])
-						valueB := process.NewValuePrivate(sharesB[i])
+						valueA := asm.NewValuePrivate(sharesA[i])
+						valueB := asm.NewValuePrivate(sharesB[i])
 
 						id := [32]byte{0x69}
-						mem := process.NewMemory(4)
-						code := process.Code{
-							process.InstMove(mem.At(0), valueA),
-							process.InstMove(mem.At(1), valueB),
-							process.InstGenerateRnTuple(mem.At(2), 1),
-							process.InstMul(mem.At(0), mem.At(0), mem.At(1), mem.At(2), 1),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						mem := asm.Alloc(4)
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), valueA),
+							asm.InstMove(mem.Offset(1), valueB),
+							asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1, 1, 1),
+							asm.InstMul(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1, 1, 1, 1, 1, 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+							asm.InstExit(mem.Offset(0), 1, 1),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -330,7 +331,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 5).Should(Receive(&actual))
 
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						Expect(res.Value.Eq(a.Mul(b))).To(BeTrue())
 					}
@@ -359,17 +360,17 @@ var _ = Describe("Virtual Machine", func() {
 						shares := shamir.Split(poly, uint64(entry.n))
 
 						for j := range vms {
-							value := process.NewValuePrivate(shares[j])
+							value := asm.NewValuePrivate(shares[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(1)
-							code := process.Code{
-								process.InstMove(mem.At(0), value),
-								process.MacroBitwiseNot(mem.At(0), mem.At(0), SecretField),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstExit(mem.At(0)),
+							mem := asm.Alloc(1)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), value),
+								proc.MacroBitwiseNot(mem.Offset(0), mem.Offset(0), SecretField),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+								asm.InstExit(mem.Offset(0), 1, 1),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -378,7 +379,7 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 1).Should(Receive(&actual))
 
-							res, ok := actual.result.Values[0].(process.ValuePublic)
+							res, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
@@ -412,19 +413,19 @@ var _ = Describe("Virtual Machine", func() {
 						sharesY := shamir.Split(polyY, uint64(entry.n))
 
 						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
+							valueX := asm.NewValuePrivate(sharesX[j])
+							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(2)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueX),
-								process.InstMove(mem.At(1), valueY),
-								process.MacroBitwiseOr(mem.At(0), mem.At(0), mem.At(1)),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstExit(mem.At(0)),
+							mem := asm.Alloc(2)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueX),
+								asm.InstMove(mem.Offset(1), valueY),
+								proc.MacroBitwiseOr(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+								asm.InstExit(mem.Offset(0), 1, 1),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -433,7 +434,7 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 1).Should(Receive(&actual))
 
-							res, ok := actual.result.Values[0].(process.ValuePublic)
+							res, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
@@ -467,19 +468,19 @@ var _ = Describe("Virtual Machine", func() {
 						sharesY := shamir.Split(polyY, uint64(entry.n))
 
 						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
+							valueX := asm.NewValuePrivate(sharesX[j])
+							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(2)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueX),
-								process.InstMove(mem.At(1), valueY),
-								process.MacroBitwiseXor(mem.At(0), mem.At(0), mem.At(1)),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstExit(mem.At(0)),
+							mem := asm.Alloc(2)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueX),
+								asm.InstMove(mem.Offset(1), valueY),
+								proc.MacroBitwiseXor(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+								asm.InstExit(mem.Offset(0), 1, 1),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -488,7 +489,7 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 1).Should(Receive(&actual))
 
-							res, ok := actual.result.Values[0].(process.ValuePublic)
+							res, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
@@ -522,19 +523,19 @@ var _ = Describe("Virtual Machine", func() {
 						sharesY := shamir.Split(polyY, uint64(entry.n))
 
 						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
+							valueX := asm.NewValuePrivate(sharesX[j])
+							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(2)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueX),
-								process.InstMove(mem.At(1), valueY),
-								process.MacroBitwiseAnd(mem.At(0), mem.At(0), mem.At(1)),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstExit(mem.At(0)),
+							mem := asm.Alloc(2)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueX),
+								asm.InstMove(mem.Offset(1), valueY),
+								proc.MacroBitwiseAnd(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+								asm.InstExit(mem.Offset(0), 1, 1),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -543,7 +544,7 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 1).Should(Receive(&actual))
 
-							res, ok := actual.result.Values[0].(process.ValuePublic)
+							res, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(res.Value.Eq(assignment.out)).To(BeTrue())
@@ -578,20 +579,20 @@ var _ = Describe("Virtual Machine", func() {
 
 						// Check that computing the generator is correct
 						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
+							valueX := asm.NewValuePrivate(sharesX[j])
+							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(2)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueX),
-								process.InstMove(mem.At(1), valueY),
-								process.MacroBitwisePropGen(mem.At(0), mem.At(1), mem.At(0), mem.At(1)),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstOpen(mem.At(1), mem.At(1)),
-								process.InstExit(mem.At(0), mem.At(1)),
+							mem := asm.Alloc(2)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueX),
+								asm.InstMove(mem.Offset(1), valueY),
+								proc.MacroBitwisePropGen(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1)),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
+								asm.InstOpen(mem.Offset(1), mem.Offset(1), 1, 1, 1),
+								asm.InstExit(mem.Offset(0), 1, 2),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -600,9 +601,9 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 5).Should(Receive(&actual))
 
-							resP, ok := actual.result.Values[0].(process.ValuePublic)
+							resP, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
-							resG, ok := actual.result.Values[1].(process.ValuePublic)
+							resG, ok := actual.result.Values[1].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(resP.Value.Eq(assignment.p)).To(BeTrue())
@@ -638,21 +639,20 @@ var _ = Describe("Virtual Machine", func() {
 
 						// Check that computing the generator is correct
 						for j := range vms {
-							valueX := process.NewValuePrivate(sharesX[j])
-							valueY := process.NewValuePrivate(sharesY[j])
+							valueX := asm.NewValuePrivate(sharesX[j])
+							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(6)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueX),
-								process.InstMove(mem.At(1), valueY),
-								process.InstGenerateRnTuple(mem.At(2), 2),
-								process.MacroBitwisePropGenN(mem[0:], mem[1:], mem[0:], mem[1:], mem[2:], 1),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstOpen(mem.At(1), mem.At(1)),
-								process.InstExit(mem.At(0), mem.At(1)),
+							mem := asm.Alloc(6)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueX),
+								asm.InstMove(mem.Offset(1), valueY),
+								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 2, 2, 2),
+								proc.MacroBitwisePropGenN(mem[0:], mem[1:], mem[0:], mem[1:], mem[2:], 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 2),
+								asm.InstExit(mem.Offset(0), 1, 2),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -661,9 +661,9 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 5).Should(Receive(&actual))
 
-							resP, ok := actual.result.Values[0].(process.ValuePublic)
+							resP, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
-							resG, ok := actual.result.Values[1].(process.ValuePublic)
+							resG, ok := actual.result.Values[1].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(resP.Value.Eq(assignment.p)).To(BeTrue())
@@ -715,24 +715,23 @@ var _ = Describe("Virtual Machine", func() {
 
 						// Check that computing the generator is correct
 						for j := range vms {
-							valueP1 := process.NewValuePrivate(sharesP1[j])
-							valueG1 := process.NewValuePrivate(sharesG1[j])
-							valueP2 := process.NewValuePrivate(sharesP2[j])
-							valueG2 := process.NewValuePrivate(sharesG2[j])
+							valueP1 := asm.NewValuePrivate(sharesP1[j])
+							valueG1 := asm.NewValuePrivate(sharesG1[j])
+							valueP2 := asm.NewValuePrivate(sharesP2[j])
+							valueG2 := asm.NewValuePrivate(sharesG2[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(10)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueP1),
-								process.InstMove(mem.At(1), valueG1),
-								process.InstMove(mem.At(2), valueP2),
-								process.InstMove(mem.At(3), valueG2),
-								process.MacroBitwiseOpCLA(mem.At(0), mem.At(1), mem.At(0), mem.At(1), mem.At(2), mem.At(3)),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstOpen(mem.At(1), mem.At(1)),
-								process.InstExit(mem.At(0), mem.At(1)),
+							mem := asm.Alloc(10)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueP1),
+								asm.InstMove(mem.Offset(1), valueG1),
+								asm.InstMove(mem.Offset(2), valueP2),
+								asm.InstMove(mem.Offset(3), valueG2),
+								proc.MacroBitwiseOpCLA(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3)),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 2),
+								asm.InstExit(mem.Offset(0), 1, 2),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -741,9 +740,9 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 10).Should(Receive(&actual))
 
-							resPP, ok := actual.result.Values[0].(process.ValuePublic)
+							resPP, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
-							resGG, ok := actual.result.Values[1].(process.ValuePublic)
+							resGG, ok := actual.result.Values[1].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(resPP.Value.Eq(assignment.pp)).To(BeTrue())
@@ -796,25 +795,24 @@ var _ = Describe("Virtual Machine", func() {
 
 						// Check that computing the generator is correct
 						for j := range vms {
-							valueP1 := process.NewValuePrivate(sharesP1[j])
-							valueG1 := process.NewValuePrivate(sharesG1[j])
-							valueP2 := process.NewValuePrivate(sharesP2[j])
-							valueG2 := process.NewValuePrivate(sharesG2[j])
+							valueP1 := asm.NewValuePrivate(sharesP1[j])
+							valueG1 := asm.NewValuePrivate(sharesG1[j])
+							valueP2 := asm.NewValuePrivate(sharesP2[j])
+							valueG2 := asm.NewValuePrivate(sharesG2[j])
 
 							id := idFromUint64(uint64(i))
-							mem := process.NewMemory(10)
-							code := process.Code{
-								process.InstMove(mem.At(0), valueP1),
-								process.InstMove(mem.At(1), valueP2),
-								process.InstMove(mem.At(2), valueG1),
-								process.InstMove(mem.At(3), valueG2),
-								process.InstGenerateRnTuple(mem.At(4), 3),
-								process.MacroBitwiseOpCLAN(mem[0:], mem[2:], mem[0:], mem[2:], mem[4:], 1),
-								process.InstOpen(mem.At(0), mem.At(0)),
-								process.InstOpen(mem.At(2), mem.At(2)),
-								process.InstExit(mem.At(0), mem.At(2)),
+							mem := asm.Alloc(10)
+							code := []asm.Inst{
+								asm.InstMove(mem.Offset(0), valueP1),
+								asm.InstMove(mem.Offset(1), valueP2),
+								asm.InstMove(mem.Offset(2), valueG1),
+								asm.InstMove(mem.Offset(3), valueG2),
+								asm.InstGenerateRnTuple(mem.Offset(4), mem.Offset(5), 2, 2, 3),
+								proc.MacroBitwiseOpCLAN(mem[0:], mem[2:], mem[0:], mem[2:], mem[4:], 1),
+								asm.InstOpen(mem.Offset(0), 2, 2, 2),
+								asm.InstExit(mem.Offset(0), 2, 2),
 							}
-							proc := process.New(id, mem, code)
+							proc := proc.New(id, mem, code)
 
 							vms[j].IO().InputWriter() <- NewExec(proc)
 						}
@@ -823,9 +821,9 @@ var _ = Describe("Virtual Machine", func() {
 							var actual TestResult
 							Eventually(results, 10).Should(Receive(&actual))
 
-							resPP, ok := actual.result.Values[0].(process.ValuePublic)
+							resPP, ok := actual.result.Values[0].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
-							resGG, ok := actual.result.Values[1].(process.ValuePublic)
+							resGG, ok := actual.result.Values[1].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							Expect(resPP.Value.Eq(assignment.pp)).To(BeTrue())
@@ -865,11 +863,11 @@ var _ = Describe("Virtual Machine", func() {
 						bTemp.Div(bTemp, big.NewInt(2))
 					}
 
-					aVals := make([][]process.ValuePrivate, entry.n)
-					bVals := make([][]process.ValuePrivate, entry.n)
+					aVals := make([][]asm.ValuePrivate, entry.n)
+					bVals := make([][]asm.ValuePrivate, entry.n)
 					for i := range aVals {
-						aVals[i] = make([]process.ValuePrivate, k)
-						bVals[i] = make([]process.ValuePrivate, k)
+						aVals[i] = make([]asm.ValuePrivate, k)
+						bVals[i] = make([]asm.ValuePrivate, k)
 					}
 
 					for i := uint64(0); i < k; i++ {
@@ -879,25 +877,25 @@ var _ = Describe("Virtual Machine", func() {
 						sharesB := shamir.Split(polyB, uint64(entry.n))
 
 						for j, share := range sharesA {
-							aVals[j][i] = process.NewValuePrivate(share)
+							aVals[j][i] = asm.NewValuePrivate(share)
 						}
 						for j, share := range sharesB {
-							bVals[j][i] = process.NewValuePrivate(share)
+							bVals[j][i] = asm.NewValuePrivate(share)
 						}
 					}
 
 					for i := range vms {
-						mem := process.NewMemory(128)
+						mem := asm.Alloc(128)
 						for j := uint64(0); j < k; j++ {
 							mem[j] = aVals[i][j]
 							mem[j+k] = bVals[i][j]
 						}
-						code := process.Code{
-							process.MacroBitwiseLT(mem.At(0), mem.At(0), mem.At(int(k)), SecretField, int(k)),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						code := []asm.Inst{
+							proc.MacroBitwiseLT(mem.Offset(0), mem.Offset(0), mem.Offset(int(k)), SecretField, int(k)),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+							asm.InstExit(mem.Offset(0)),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -905,7 +903,7 @@ var _ = Describe("Virtual Machine", func() {
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						if a.Cmp(b) == -1 {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
@@ -928,18 +926,18 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 					for i := range vms {
 						// Generate 10 random bits
-						mem := process.NewMemory(10)
-						memLocations := make([]*process.Value, 10)
-						code := make(process.Code, 0, 21)
+						mem := asm.Alloc(10)
+						memLocations := make([]*asm.Value, 10)
+						code := make([]asm.Inst, 0, 21)
 						for j := 0; j < 10; j++ {
-							memLocations[j] = mem.At(j)
+							memLocations[j] = mem.Offset(j)
 							code = append(code,
-								process.MacroRandBit(mem.At(j), SecretField),
-								process.InstOpen(mem.At(j), mem.At(j)),
+								proc.MacroRandBit(mem.Offset(j), SecretField),
+								asm.InstOpen(mem.Offset(j), mem.Offset(j)),
 							)
 						}
-						code = append(code, process.InstExit(memLocations...))
-						proc := process.New(id, mem, code)
+						code = append(code, asm.InstExit(memLocations...))
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -948,7 +946,7 @@ var _ = Describe("Virtual Machine", func() {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
 						for _, value := range actual.result.Values {
-							res, ok := value.(process.ValuePublic)
+							res, ok := value.(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 
 							// Expect the result to be zero or one
@@ -973,20 +971,20 @@ var _ = Describe("Virtual Machine", func() {
 
 					id := [32]byte{0x69}
 					for i := range vms {
-						mem := process.NewMemory(1)
-						memLocations := make([]process.Value, 32)
-						memLocPtrs := make([]*process.Value, 32)
+						mem := asm.Alloc(1)
+						memLocations := make([]asm.Value, 32)
+						memLocPtrs := make([]*asm.Value, 32)
 
 						for i := range memLocPtrs {
 							memLocPtrs[i] = &memLocations[i]
 						}
 
-						code := process.Code{
-							process.InstMove(mem.At(0), process.NewValuePublic(a)),
-							process.MacroBits(&memLocations[0], mem.At(0), 32, SecretField),
-							process.InstExit(memLocPtrs...),
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), asm.NewValuePublic(a)),
+							proc.MacroBits(&memLocations[0], mem.Offset(0), 32, SecretField),
+							asm.InstExit(memLocPtrs...),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -999,7 +997,7 @@ var _ = Describe("Virtual Machine", func() {
 						two := SecretField.NewInField(big.NewInt(2))
 
 						for i := len(actual.result.Values) - 1; i >= 0; i-- {
-							res, ok := actual.result.Values[i].(process.ValuePublic)
+							res, ok := actual.result.Values[i].(asm.ValuePublic)
 							Expect(ok).To(BeTrue())
 							acc = acc.Mul(two)
 							acc = acc.Add(res.Value)
@@ -1038,15 +1036,15 @@ var _ = Describe("Virtual Machine", func() {
 
 					id := [32]byte{0x69}
 					for i := range vms {
-						mem := process.NewMemory(1)
+						mem := asm.Alloc(1)
 
-						code := process.Code{
-							process.InstMove(mem.At(0), process.NewValuePrivate(shares[i])),
-							process.MacroMod2m(mem.At(0), mem.At(0), k, m, 10, SecretField),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), asm.NewValuePrivate(shares[i])),
+							proc.MacroMod2m(mem.Offset(0), mem.Offset(0), k, m, 10, SecretField),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+							asm.InstExit(mem.Offset(0)),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -1054,7 +1052,7 @@ var _ = Describe("Virtual Machine", func() {
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 
 						twoPow := big.NewInt(0).SetUint64(uint64(1) << m)
@@ -1089,15 +1087,15 @@ var _ = Describe("Virtual Machine", func() {
 
 					id := [32]byte{0x69}
 					for i := range vms {
-						mem := process.NewMemory(2)
-						code := process.Code{
-							process.InstMove(mem.At(0), process.NewValuePrivate(sharesA[i])),
-							process.InstMove(mem.At(1), process.NewValuePrivate(sharesB[i])),
-							process.MacroLT(mem.At(0), mem.At(0), mem.At(1), k, 1, SecretField),
-							process.InstOpen(mem.At(0), mem.At(0)),
-							process.InstExit(mem.At(0)),
+						mem := asm.Alloc(2)
+						code := []asm.Inst{
+							asm.InstMove(mem.Offset(0), asm.NewValuePrivate(sharesA[i])),
+							asm.InstMove(mem.Offset(1), asm.NewValuePrivate(sharesB[i])),
+							proc.MacroLT(mem.Offset(0), mem.Offset(0), mem.Offset(1), k, 1, SecretField),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+							asm.InstExit(mem.Offset(0)),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -1105,7 +1103,7 @@ var _ = Describe("Virtual Machine", func() {
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						if a.Value().Cmp(b.Value()) == -1 {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
@@ -1146,11 +1144,11 @@ var _ = Describe("Virtual Machine", func() {
 						bTemp.Div(bTemp, big.NewInt(2))
 					}
 
-					aVals := make([][]process.ValuePrivate, entry.n)
-					bVals := make([][]process.ValuePrivate, entry.n)
+					aVals := make([][]asm.ValuePrivate, entry.n)
+					bVals := make([][]asm.ValuePrivate, entry.n)
 					for i := range aVals {
-						aVals[i] = make([]process.ValuePrivate, 64)
-						bVals[i] = make([]process.ValuePrivate, 64)
+						aVals[i] = make([]asm.ValuePrivate, 64)
+						bVals[i] = make([]asm.ValuePrivate, 64)
 					}
 
 					for i := 0; i < 64; i++ {
@@ -1160,25 +1158,25 @@ var _ = Describe("Virtual Machine", func() {
 						sharesB := shamir.Split(polyB, uint64(entry.n))
 
 						for j, share := range sharesA {
-							aVals[j][i] = process.NewValuePrivate(share)
+							aVals[j][i] = asm.NewValuePrivate(share)
 						}
 						for j, share := range sharesB {
-							bVals[j][i] = process.NewValuePrivate(share)
+							bVals[j][i] = asm.NewValuePrivate(share)
 						}
 					}
 
 					for i := range vms {
-						mem := process.NewMemory(129)
+						mem := asm.Alloc(129)
 						for j := 0; j < 64; j++ {
 							mem[j] = aVals[i][j]
 							mem[64+j] = bVals[i][j]
 						}
-						code := process.Code{
-							process.MacroBitwiseCOutN(mem.At(128), mem[0:], mem[64:], SecretField, 64),
-							process.InstOpen(mem.At(128), mem.At(128)),
-							process.InstExit(mem.At(128)),
+						code := []asm.Inst{
+							proc.MacroBitwiseCOutN(mem.Offset(128), mem[0:], mem[64:], SecretField, 64),
+							asm.InstOpen(mem.Offset(128), mem.Offset(128)),
+							asm.InstExit(mem.Offset(128)),
 						}
-						proc := process.New(id, mem, code)
+						proc := proc.New(id, mem, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -1186,7 +1184,7 @@ var _ = Describe("Virtual Machine", func() {
 					for _ = range vms {
 						var actual TestResult
 						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(process.ValuePublic)
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
 						if a.Cmp(b) == -1 {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())

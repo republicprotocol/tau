@@ -4,17 +4,18 @@ import (
 	"fmt"
 
 	"github.com/republicprotocol/oro-go/core/task"
+	"github.com/republicprotocol/oro-go/core/vm/asm"
 	"github.com/republicprotocol/oro-go/core/vm/mul"
 	"github.com/republicprotocol/oro-go/core/vm/open"
-	"github.com/republicprotocol/oro-go/core/vm/process"
+	"github.com/republicprotocol/oro-go/core/vm/proc"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 )
 
 type VM struct {
 	index   uint64
-	procs   map[process.ID]process.Process
-	intents map[process.IntentID]process.Intent
+	procs   map[proc.ID]proc.Proc
+	intents map[proc.IntentID]proc.Intent
 
 	rng  task.Task
 	mul  task.Task
@@ -24,7 +25,7 @@ type VM struct {
 func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
 	rng := rng.New(scheme, index, n, k, n-k, cap)
 	mul := mul.New(index, n, k, cap)
-	open := open.New(n, k, cap)
+	open := open.New(index, n, k, cap)
 	vm := newVM(scheme, index, rng, mul, open)
 	return task.New(task.NewIO(cap), vm, vm.rng, vm.mul, vm.open)
 }
@@ -36,8 +37,8 @@ func newVM(scheme pedersen.Pedersen, index uint64, rng, mul, open task.Task) *VM
 		rng:     rng,
 		mul:     mul,
 		open:    open,
-		procs:   map[process.ID]process.Process{},
-		intents: map[process.IntentID]process.Intent{},
+		procs:   map[proc.ID]proc.Proc{},
+		intents: map[proc.IntentID]proc.Intent{},
 	}
 }
 
@@ -80,49 +81,40 @@ func (vm *VM) Reduce(message task.Message) task.Message {
 }
 
 func (vm *VM) exec(exec Exec) task.Message {
-	proc := exec.proc
-	vm.procs[proc.ID] = proc
+	process := exec.process
+	vm.procs[process.ID] = process
 
-	ret := proc.Exec()
-	vm.procs[proc.ID] = proc
+	intent := process.Exec()
+	vm.procs[process.ID] = process
 
-	if ret.IsReady() {
-		return task.NewError(fmt.Errorf("process %v is ready after execution", proc.ID))
-	}
-	if ret.Intent() == nil {
-		return task.NewError(fmt.Errorf("process %v has no intent after execution", proc.ID))
-	}
-
-	return vm.execIntent(proc, ret.Intent())
+	return vm.execIntent(process, intent)
 }
 
-func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Message {
-	switch intent := intent.(type) {
-	case process.IntentToError:
-		return task.NewError(intent)
+func (vm *VM) execIntent(process proc.Proc, intent proc.Intent) task.Message {
 
-	case process.IntentToExit:
-		return NewResult(intent.Values)
+	switch state := intent.State().(type) {
+	case *asm.InstGenerateRnState:
+		vm.intents[intent.IID()] = intent
+		vm.rng.Send(rng.NewGenerateRn(iidToMsgid(intent.IID()), state.Num))
 
-	case process.IntentToGenerateRn:
-		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRn(iidToMsgid(intent.IntentID()), intent.Batch))
+	case *asm.InstGenerateRnZeroState:
+		vm.intents[intent.IID()] = intent
+		vm.rng.Send(rng.NewGenerateRnZero(iidToMsgid(intent.IID()), state.Num))
 
-	case process.IntentToGenerateRnZero:
-		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRnZero(iidToMsgid(intent.IntentID()), intent.Batch))
+	case *asm.InstGenerateRnTupleState:
+		vm.intents[intent.IID()] = intent
+		vm.rng.Send(rng.NewGenerateRnTuple(iidToMsgid(intent.IID()), state.Num))
 
-	case process.IntentToGenerateRnTuple:
-		vm.intents[intent.IntentID()] = intent
-		vm.rng.Send(rng.NewGenerateRnTuple(iidToMsgid(intent.IntentID()), intent.Batch))
+	case *asm.InstMulState:
+		vm.intents[intent.IID()] = intent
+		vm.mul.Send(mul.NewMul(iidToMsgid(intent.IID()), state.Xs, state.Ys, state.Rhos, state.Sigmas))
 
-	case process.IntentToMultiply:
-		vm.intents[intent.IntentID()] = intent
-		vm.mul.Send(mul.NewMul(iidToMsgid(intent.IntentID()), intent.Xs, intent.Ys, intent.Rhos, intent.Sigmas))
+	case *asm.InstOpenState:
+		vm.intents[intent.IID()] = intent
+		vm.open.Send(open.NewSignal(iidToMsgid(intent.IID()), state.Shares))
 
-	case process.IntentToOpen:
-		vm.intents[intent.IntentID()] = intent
-		vm.open.Send(open.NewSignal(iidToMsgid(intent.IntentID()), intent.Value))
+	case *asm.InstExitState:
+		return NewResult(state.Values)
 
 	default:
 		panic(fmt.Sprintf("unexpected intent type %T", intent))
@@ -163,41 +155,20 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 		return nil
 	}
 
-	switch intent := intent.(type) {
-	case process.IntentToGenerateRn:
+	switch state := intent.State().(type) {
+	case *asm.InstGenerateRnState:
+		state.Sigmas = message.Sigmas
 
-		select {
-		case intent.Sigmas <- message.Sigmas:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
+	case *asm.InstGenerateRnZeroState:
+		state.Sigmas = message.Sigmas
 
-	case process.IntentToGenerateRnZero:
-
-		select {
-		case intent.Sigmas <- message.Sigmas:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
-
-	case process.IntentToGenerateRnTuple:
-
-		select {
-		case intent.Rhos <- message.Rhos:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
-
-		select {
-		case intent.Sigmas <- message.Sigmas:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
+	case *asm.InstGenerateRnTupleState:
+		state.Rhos = message.Rhos
+		state.Sigmas = message.Sigmas
 
 	default:
 		panic(fmt.Sprintf("unexpected intent type %T", intent))
 	}
-
 	delete(vm.intents, msgidToIID(message.MessageID))
 
 	return vm.exec(NewExec(vm.procs[msgidToPid(message.MessageID)]))
@@ -213,17 +184,13 @@ func (vm *VM) recvInternalMulResult(message mul.Result) task.Message {
 		return nil
 	}
 
-	switch intent := intent.(type) {
-	case process.IntentToMultiply:
-		select {
-		case intent.Ret <- message.Shares:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
+	switch state := intent.State().(type) {
+	case *asm.InstMulState:
+		state.Results = message.Shares
+
 	default:
 		return task.NewError(fmt.Errorf("unexpected intent type %T", intent))
 	}
-
 	delete(vm.intents, msgidToIID(message.MessageID))
 
 	return vm.exec(NewExec(vm.procs[msgidToPid(message.MessageID)]))
@@ -239,36 +206,32 @@ func (vm *VM) recvInternalOpenResult(message open.Result) task.Message {
 		return nil
 	}
 
-	switch intent := intent.(type) {
-	case process.IntentToOpen:
-		select {
-		case intent.Ret <- message.Value:
-		default:
-			return task.NewError(fmt.Errorf("unavailable intent"))
-		}
+	switch state := intent.State().(type) {
+	case *asm.InstOpenState:
+		state.Results = message.Values
+
 	default:
 		return task.NewError(fmt.Errorf("unexpected intent type %T", intent))
 	}
-
 	delete(vm.intents, msgidToIID(message.MessageID))
 
 	return vm.exec(NewExec(vm.procs[msgidToPid(message.MessageID)]))
 }
 
-func iidToMsgid(iid process.IntentID) task.MessageID {
+func iidToMsgid(iid proc.IntentID) task.MessageID {
 	id := task.MessageID{}
 	copy(id[:40], iid[:40])
 	return id
 }
 
-func msgidToIID(msgid task.MessageID) process.IntentID {
-	iid := process.IntentID{}
+func msgidToIID(msgid task.MessageID) proc.IntentID {
+	iid := proc.IntentID{}
 	copy(iid[:40], msgid[:40])
 	return iid
 }
 
-func msgidToPid(msgid task.MessageID) process.ID {
-	pid := process.ID{}
+func msgidToPid(msgid task.MessageID) proc.ID {
+	pid := proc.ID{}
 	copy(pid[:32], msgid[:32])
 	return pid
 }

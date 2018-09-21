@@ -4,35 +4,36 @@ import (
 	"fmt"
 
 	"github.com/republicprotocol/oro-go/core/task"
-	"github.com/republicprotocol/oro-go/core/vm/process"
+	"github.com/republicprotocol/oro-go/core/vm/asm"
+	"github.com/republicprotocol/oro-go/core/vm/proc"
 )
 
 type Exec struct {
-	proc process.Process
+	process proc.Proc
 }
 
-func NewExec(proc process.Process) Exec {
+func NewExec(process proc.Proc) Exec {
 	return Exec{
-		proc,
+		process,
 	}
 }
 
 func (message Exec) String() string {
-	return fmt.Sprintf("vm.Exec {\n\tproc: %v\n}", message.proc)
+	return fmt.Sprintf("vm.Exec {\n\tproc: %v\n}", message.process)
 }
 
 func (message Exec) IsMessage() {
 }
 
 type Result struct {
-	Values []process.Value
+	Values []asm.Value
 }
 
 func (message Result) String() string {
 	return fmt.Sprintf("vm.Result {\n\tvalues: %v\n}", message.Values)
 }
 
-func NewResult(values []process.Value) Result {
+func NewResult(values []asm.Value) Result {
 	return Result{values}
 }
 

@@ -1,4 +1,4 @@
-package process_test
+package proc_test
 
 import (
 	"testing"

@@ -41,3 +41,24 @@ func (addr Addr) Offset(offset int) Addr {
 		mem: addr.mem[offset:],
 	}
 }
+
+type AddrIter struct {
+	addr Addr
+	step int
+}
+
+func NewAddrIter(addr Addr, step int) AddrIter {
+	return AddrIter{addr, step}
+}
+
+func (addrIter AddrIter) Store(offset int, value Value) {
+	addrIter.addr.Store(offset*addrIter.step, value)
+}
+
+func (addrIter AddrIter) Load(offset int) Value {
+	return addrIter.addr.Load(offset * addrIter.step)
+}
+
+func (addrIter AddrIter) Offset(offset int) AddrIter {
+	return AddrIter{addrIter.addr.Offset(offset * addrIter.step), addrIter.step}
+}
