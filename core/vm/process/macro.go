@@ -127,7 +127,7 @@ func MacroBitwiseOpCLAN(propDst, genDst, props, gens, rs Memory, n int) Inst {
 	return InstMacro(code)
 }
 
-func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits uint) Inst {
+func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits int) Inst {
 
 	size := unsafe.Sizeof(interface{}(nil))
 	tmps := make([]Value, 2*bits)
@@ -155,7 +155,7 @@ func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits uin
 	remaining := bits
 	for remaining != 1 {
 		pairs := remaining / 2
-		for j := uint(0); j < pairs; j++ {
+		for j := 0; j < pairs; j++ {
 			c := Code{
 				MacroBitwiseOpCLA(
 					&tmps[2*j],
@@ -171,8 +171,8 @@ func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits uin
 
 		if remaining%2 == 1 {
 			code = append(code,
-				InstCopy(&tmps[2*pairs], &tmps[4*pairs]),
-				InstCopy(&tmps[2*pairs+1], &tmps[4*pairs+1]),
+				InstCopy(&tmps[2*pairs], &tmps[4*pairs], 1, 1),
+				InstCopy(&tmps[2*pairs+1], &tmps[4*pairs+1], 1, 1),
 			)
 
 			remaining = (remaining + 1) / 2
@@ -181,19 +181,19 @@ func MacroBitwiseCOut(dst, lhs, rhs Addr, carry bool, field algebra.Fp, bits uin
 		}
 	}
 
-	code = append(code, InstCopy(dst, &tmps[1]))
+	code = append(code, InstCopy(dst, &tmps[1], 1, 1))
 
 	return InstMacro(code)
 }
 
-func MacroBitwiseLT(dst, lhs, rhs Addr, field algebra.Fp, bits uint) Inst {
+func MacroBitwiseLT(dst, lhs, rhs Addr, field algebra.Fp, bits int) Inst {
 
 	size := unsafe.Sizeof(interface{}(nil))
 	tmps := make([]Value, bits)
 	rhsPtr := unsafe.Pointer(rhs)
 
 	code := make(Code, 0)
-	for i := uint(0); i < bits; i++ {
+	for i := 0; i < bits; i++ {
 		code = append(code,
 			MacroBitwiseNot(
 				&tmps[i],
@@ -227,7 +227,7 @@ func MacroRandBit(dst Addr, field algebra.Fp) Inst {
 	e = e.Add(field.NewInField(big.NewInt(1)))
 
 	code := Code{
-		InstGenerateRn(dst),
+		InstGenerateRn(dst, 1),
 		InstMulOpen(tmp1, dst, dst),
 		InstMove(tmp2, NewValuePublic(e)),
 		InstExp(tmp2, tmp1, tmp2),
@@ -255,7 +255,7 @@ func MacroBits(dst, src Addr, bits uint64, field algebra.Fp) Inst {
 		InstMove(tmp1, two),
 		InstMove(tmp2, two),
 		InstInv(tmp2, tmp2),
-		InstCopy(tmp3, src),
+		InstCopy(tmp3, src, 1, 1),
 	}
 
 	for i := uint64(0); i < bits; i++ {
@@ -356,7 +356,7 @@ func MacroMod2m(dst, src Addr, bits, m, kappa uint64, field algebra.Fp) Inst {
 		InstMove(tmp3, twoPowerM),
 		InstMod(tmp1, tmp1, tmp3),
 		MacroBits(&tmpBits[0], tmp1, m, field),
-		MacroBitwiseLT(tmp4, &tmpBits[0], &tmpRandBits[0], field, uint(m)),
+		MacroBitwiseLT(tmp4, &tmpBits[0], &tmpRandBits[0], field, int(m)),
 		InstMulPub(tmp4, tmp4, tmp3),
 		InstAdd(tmp4, tmp4, tmp1),
 		InstSub(dst, tmp4, tmp2),

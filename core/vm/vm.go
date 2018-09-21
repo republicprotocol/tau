@@ -93,13 +93,7 @@ func (vm *VM) exec(exec Exec) task.Message {
 		return task.NewError(fmt.Errorf("process %v has no intent after execution", proc.ID))
 	}
 
-	switch intent := ret.Intent().(type) {
-	case process.IntentToAwait:
-		return vm.execAwaitIntent(proc, intent)
-
-	default:
-		return vm.execIntent(proc, intent)
-	}
+	return vm.execIntent(proc, ret.Intent())
 }
 
 func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Message {
@@ -134,25 +128,6 @@ func (vm *VM) execIntent(proc process.Process, intent process.Intent) task.Messa
 		panic(fmt.Sprintf("unexpected intent type %T", intent))
 	}
 	return nil
-}
-
-func (vm *VM) execAwaitIntent(proc process.Process, intent process.IntentToAwait) task.Message {
-	vm.intents[intent.IntentID()] = intent
-
-	messages := []task.Message{}
-	for _, intent := range intent.Intents {
-		if intent == nil {
-			continue
-		}
-		if message := vm.execIntent(proc, intent); message != nil {
-			messages = append(messages, message)
-		}
-	}
-	if len(messages) == 0 {
-		return nil
-	}
-
-	return task.NewMessageBatch(messages)
 }
 
 func (vm *VM) invoke(message RemoteProcedureCall) task.Message {

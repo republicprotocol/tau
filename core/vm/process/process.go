@@ -3,6 +3,7 @@ package process
 import (
 	"encoding/base64"
 	"fmt"
+	"log"
 	"unsafe"
 
 	"github.com/republicprotocol/oro-go/core/vss"
@@ -107,13 +108,10 @@ func (proc *Process) execInst(inst Inst) Return {
 		return proc.execInstMulOpen(inst)
 	case instOpen:
 		return proc.execInstOpen(inst)
-	case instAsync:
-		return proc.execInstAsync(inst)
-	case instAwait:
-		return proc.execInstAwait(inst)
 	case instExit:
 		return proc.execInstExit(inst)
 	case instDebug:
+		log.Println("send help")
 		return proc.execInstDebug(inst)
 	default:
 		return NotReady(ErrorUnexpectedInst(inst, proc.PC))
@@ -188,7 +186,6 @@ func (proc *Process) execInstSub(inst instSub) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -209,7 +206,6 @@ func (proc *Process) execInstExp(inst instExp) Return {
 
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -224,7 +220,6 @@ func (proc *Process) execInstInv(inst instInv) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -364,7 +359,6 @@ func (proc *Process) execInstMulPub(inst instMulPub) Return {
 	}
 	*inst.dst = ret
 
-	proc.PC++
 	return Ready()
 }
 
@@ -601,67 +595,6 @@ func (proc *Process) execInstOpen(inst instOpen) Return {
 
 	*inst.dst = NewValuePublic(inst.ret)
 
-	return Ready()
-}
-
-func (proc *Process) execInstAsync(inst instAsync) Return {
-
-	// Store the current PC and move to the first instruction in the async block
-	pc := proc.PC
-	proc.PC++
-
-	asyncRet := Ready()
-	asyncRetIntents := []Intent{}
-
-	// Execute instructions inside the async block until the required number of
-	// await instructions have been seen
-	for awaits := 1; awaits > 0; proc.PC++ {
-
-		if proc.PC == PC(len(proc.Code)) {
-			return NotReady(ErrorCodeOverflow(proc.PC, inst))
-		}
-
-		// Execute an instruction and store all intent
-		inst := proc.Code[proc.PC]
-
-		// Increment the number of await instructions that need to be seen
-		// before the async block can end
-		if _, ok := inst.(instAsync); ok {
-			awaits++
-			continue
-		}
-		// Decrement the number of await instructions that need to be seen
-		// before the async block can end
-		if _, ok := inst.(instAwait); ok {
-			awaits--
-			continue
-		}
-
-		ret := proc.execInst(inst)
-		if !ret.IsReady() {
-			asyncRet = NotReady(nil)
-			asyncRetIntents = append(asyncRetIntents, ret.Intent())
-		}
-	}
-
-	if !asyncRet.IsReady() {
-		// At least one instruction in the async block is not ready, so we need
-		// to reset the PC to the beginning of the async block and try again
-		// later
-		proc.PC = pc
-		asyncRet = NotReady(Await(proc.iid(), asyncRetIntents))
-	} else {
-		// Decrement the PC to make sure it points to the final await
-		// instruction for the async block
-		proc.PC--
-	}
-
-	return asyncRet
-}
-
-func (proc *Process) execInstAwait(inst instAwait) Return {
-	// Passively ignore the direct execution of await instructions because they
-	// are meaningless outside the context of an async block
 	return Ready()
 }
 
