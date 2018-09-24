@@ -16,8 +16,9 @@ type Inst interface {
 	// the future.
 	Eval(State) Result
 
-	// Expand an Inst into all of its inner instructions.
-	Expand() []Inst
+	// Expand an Inst into all of its inner instructions. A boolean is returned
+	// that indicates whether or not an expansion happened.
+	Expand() ([]Inst, bool)
 }
 
 type instMacro struct {
@@ -32,8 +33,8 @@ func (inst instMacro) Eval(State) Result {
 	panic("evaluation of macro")
 }
 
-func (inst instMacro) Expand() []Inst {
-	return inst.insts
+func (inst instMacro) Expand() ([]Inst, bool) {
+	return inst.insts, true
 }
 
 type instDebug struct {
@@ -49,18 +50,18 @@ func (inst instDebug) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instDebug) Expand() []Inst {
-	return []Inst{inst}
+func (inst instDebug) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instCopy struct {
-	dst AddrIter
-	src AddrIter
+	dst Memory
+	src Memory
 
 	n int
 }
 
-func InstCopy(dst, src AddrIter, n int) Inst {
+func InstCopy(dst, src Memory, n int) Inst {
 	return instCopy{dst, src, n}
 }
 
@@ -71,17 +72,17 @@ func (inst instCopy) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instCopy) Expand() []Inst {
-	return []Inst{inst}
+func (inst instCopy) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instMove struct {
-	dst AddrIter
+	dst Memory
 
 	values []Value
 }
 
-func InstMove(dst AddrIter, values ...Value) Inst {
+func InstMove(dst Memory, values ...Value) Inst {
 	return instMove{dst, values}
 }
 
@@ -92,19 +93,19 @@ func (inst instMove) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instMove) Expand() []Inst {
-	return []Inst{inst}
+func (inst instMove) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instAdd struct {
-	dst AddrIter
-	lhs AddrIter
-	rhs AddrIter
+	dst Memory
+	lhs Memory
+	rhs Memory
 
 	n int
 }
 
-func InstAdd(dst, lhs, rhs AddrIter, n int) Inst {
+func InstAdd(dst, lhs, rhs Memory, n int) Inst {
 	return instAdd{dst, lhs, rhs, n}
 }
 
@@ -124,19 +125,19 @@ func (inst instAdd) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instAdd) Expand() []Inst {
-	return []Inst{inst}
+func (inst instAdd) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instSub struct {
-	dst AddrIter
-	lhs AddrIter
-	rhs AddrIter
+	dst Memory
+	lhs Memory
+	rhs Memory
 
 	n int
 }
 
-func InstSub(dst, lhs, rhs AddrIter, n int) Inst {
+func InstSub(dst, lhs, rhs Memory, n int) Inst {
 	return instSub{dst, lhs, rhs, n}
 }
 
@@ -156,31 +157,29 @@ func (inst instSub) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instSub) Expand() []Inst {
-	return []Inst{inst}
+func (inst instSub) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instNeg struct {
-	dst Addr
-	src Addr
+	dst Memory
+	src Memory
 
-	dstStep int
-	srcStep int
-	n       int
+	n int
 }
 
-func InstNeg(dst, src Addr, dstStep, srcStep, n int) Inst {
-	return instNeg{dst, src, dstStep, srcStep, n}
+func InstNeg(dst, src Memory, n int) Inst {
+	return instNeg{dst, src, n}
 }
 
 func (inst instNeg) Eval(State) Result {
 	for i := 0; i < inst.n; i++ {
-		src := inst.src.Load(i * inst.srcStep)
+		src := inst.src.Load(i)
 		switch src := src.(type) {
 		case ValuePublic:
-			inst.dst.Store(i*inst.dstStep, src.Neg())
+			inst.dst.Store(i, src.Neg())
 		case ValuePrivate:
-			inst.dst.Store(i*inst.dstStep, src.Neg())
+			inst.dst.Store(i, src.Neg())
 		default:
 			panic(fmt.Sprintf("unexpected value type %T", src))
 		}
@@ -188,34 +187,31 @@ func (inst instNeg) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instNeg) Expand() []Inst {
-	return []Inst{inst}
+func (inst instNeg) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instExp struct {
-	dst Addr
-	lhs Addr
-	rhs Addr
+	dst Memory
+	lhs Memory
+	rhs Memory
 
-	dstStep int
-	lhsStep int
-	rhsStep int
-	n       int
+	n int
 }
 
-func InstExp(dst, lhs, rhs Addr, dstStep, lhsStep, rhsStep, n int) Inst {
-	return instExp{dst, lhs, rhs, dstStep, lhsStep, rhsStep, n}
+func InstExp(dst, lhs, rhs Memory, n int) Inst {
+	return instExp{dst, lhs, rhs, n}
 }
 
 func (inst instExp) Eval(State) Result {
 	for i := 0; i < inst.n; i++ {
-		lhs := inst.lhs.Load(i * inst.lhsStep)
-		rhs := inst.rhs.Load(i * inst.rhsStep)
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
 		switch lhs := lhs.(type) {
 		case ValuePublic:
 			switch rhs := rhs.(type) {
 			case ValuePublic:
-				inst.dst.Store(i*inst.dstStep, lhs.Exp(rhs))
+				inst.dst.Store(i, lhs.Exp(rhs))
 			default:
 				panic(fmt.Sprintf("unexpected value type %T", rhs))
 			}
@@ -226,29 +222,27 @@ func (inst instExp) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instExp) Expand() []Inst {
-	return []Inst{inst}
+func (inst instExp) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instInv struct {
-	dst Addr
-	src Addr
+	dst Memory
+	src Memory
 
-	dstStep int
-	srcStep int
-	n       int
+	n int
 }
 
-func InstInv(dst, src Addr, dstStep, srcStep, n int) Inst {
-	return instInv{dst, src, dstStep, srcStep, n}
+func InstInv(dst, src Memory, n int) Inst {
+	return instInv{dst, src, n}
 }
 
 func (inst instInv) Eval(State) Result {
 	for i := 0; i < inst.n; i++ {
-		src := inst.src.Load(i * inst.srcStep)
+		src := inst.src.Load(i)
 		switch src := src.(type) {
 		case ValuePublic:
-			inst.dst.Store(i*inst.dstStep, src.Inv())
+			inst.dst.Store(i, src.Inv())
 		default:
 			panic(fmt.Sprintf("unexpected value type %T", src))
 		}
@@ -256,34 +250,31 @@ func (inst instInv) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instInv) Expand() []Inst {
-	return []Inst{inst}
+func (inst instInv) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instMod struct {
-	dst Addr
-	lhs Addr
-	rhs Addr
+	dst Memory
+	lhs Memory
+	rhs Memory
 
-	dstStep int
-	lhsStep int
-	rhsStep int
-	n       int
+	n int
 }
 
-func InstMod(dst, lhs, rhs Addr, dstStep, lhsStep, rhsStep, n int) Inst {
-	return instMod{dst, lhs, rhs, dstStep, lhsStep, rhsStep, n}
+func InstMod(dst, lhs, rhs Memory, n int) Inst {
+	return instMod{dst, lhs, rhs, n}
 }
 
 func (inst instMod) Eval(State) Result {
 	for i := 0; i < inst.n; i++ {
-		lhs := inst.lhs.Load(i * inst.lhsStep)
-		rhs := inst.rhs.Load(i * inst.rhsStep)
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
 		switch lhs := lhs.(type) {
 		case ValuePublic:
 			switch rhs := rhs.(type) {
 			case ValuePublic:
-				inst.dst.Store(i*inst.dstStep, lhs.Mod(rhs))
+				inst.dst.Store(i, lhs.Mod(rhs))
 			default:
 				panic(fmt.Sprintf("unexpected value type %T", rhs))
 			}
@@ -294,24 +285,18 @@ func (inst instMod) Eval(State) Result {
 	return Ready()
 }
 
-func (inst instMod) Expand() []Inst {
-	return []Inst{inst}
+func (inst instMod) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instGenerateRn struct {
-	dst Addr
+	dst Memory
 
-	dstStep int
-	n       int
+	n int
 }
 
-func InstGenerateRn(dst Addr, dstStep, n int) Inst {
-	return instGenerateRn{
-		dst: dst,
-
-		dstStep: dstStep,
-		n:       n,
-	}
+func InstGenerateRn(dst Memory, n int) Inst {
+	return instGenerateRn{dst, n}
 }
 
 func (inst instGenerateRn) Eval(state State) Result {
@@ -321,7 +306,7 @@ func (inst instGenerateRn) Eval(state State) Result {
 	switch state := state.(type) {
 	case *InstGenerateRnState:
 		for i := 0; i < inst.n; i++ {
-			inst.dst.Store(i*inst.dstStep, NewValuePrivate(state.Sigmas[i].Share()))
+			inst.dst.Store(i, NewValuePrivate(state.Sigmas[i].Share()))
 		}
 		return Ready()
 	default:
@@ -329,24 +314,18 @@ func (inst instGenerateRn) Eval(state State) Result {
 	}
 }
 
-func (inst instGenerateRn) Expand() []Inst {
-	return []Inst{inst}
+func (inst instGenerateRn) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instGenerateRnZero struct {
-	dst Addr
+	dst Memory
 
-	dstStep int
-	n       int
+	n int
 }
 
-func InstGenerateRnZero(dst Addr, dstStep, n int) Inst {
-	return instGenerateRnZero{
-		dst: dst,
-
-		dstStep: dstStep,
-		n:       n,
-	}
+func InstGenerateRnZero(dst Memory, n int) Inst {
+	return instGenerateRnZero{dst, n}
 }
 
 func (inst instGenerateRnZero) Eval(state State) Result {
@@ -356,7 +335,7 @@ func (inst instGenerateRnZero) Eval(state State) Result {
 	switch state := state.(type) {
 	case *InstGenerateRnZeroState:
 		for i := 0; i < inst.n; i++ {
-			inst.dst.Store(i*inst.dstStep, NewValuePrivate(state.Sigmas[i].Share()))
+			inst.dst.Store(i, NewValuePrivate(state.Sigmas[i].Share()))
 		}
 		return Ready()
 	default:
@@ -364,28 +343,19 @@ func (inst instGenerateRnZero) Eval(state State) Result {
 	}
 }
 
-func (inst instGenerateRnZero) Expand() []Inst {
-	return []Inst{inst}
+func (inst instGenerateRnZero) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instGenerateRnTuple struct {
-	ρDst Addr
-	σDst Addr
+	ρDst Memory
+	σDst Memory
 
-	ρDstStep int
-	σDstStep int
-	n        int
+	n int
 }
 
-func InstGenerateRnTuple(ρDst, σDst Addr, ρDstStep, σDstStep, n int) Inst {
-	return instGenerateRnTuple{
-		ρDst: ρDst,
-		σDst: σDst,
-
-		ρDstStep: ρDstStep,
-		σDstStep: σDstStep,
-		n:        n,
-	}
+func InstGenerateRnTuple(ρDst, σDst Memory, n int) Inst {
+	return instGenerateRnTuple{ρDst, σDst, n}
 }
 
 func (inst instGenerateRnTuple) Eval(state State) Result {
@@ -395,8 +365,8 @@ func (inst instGenerateRnTuple) Eval(state State) Result {
 	switch state := state.(type) {
 	case *InstGenerateRnTupleState:
 		for i := 0; i < inst.n; i++ {
-			inst.ρDst.Store(i*inst.ρDstStep, NewValuePrivate(state.Rhos[i].Share()))
-			inst.σDst.Store(i*inst.σDstStep, NewValuePrivate(state.Sigmas[i].Share()))
+			inst.ρDst.Store(i, NewValuePrivate(state.Rhos[i].Share()))
+			inst.σDst.Store(i, NewValuePrivate(state.Sigmas[i].Share()))
 		}
 		return Ready()
 	default:
@@ -404,39 +374,29 @@ func (inst instGenerateRnTuple) Eval(state State) Result {
 	}
 }
 
-func (inst instGenerateRnTuple) Expand() []Inst {
-	return []Inst{inst}
+func (inst instGenerateRnTuple) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instMul struct {
-	dst  Addr
-	lhs  Addr
-	rhs  Addr
-	ρSrc Addr
-	σSrc Addr
+	dst Memory
+	lhs Memory
+	rhs Memory
+	ρs  Memory
+	σs  Memory
 
-	dstStep  int
-	lhsStep  int
-	rhsStep  int
-	ρSrcStep int
-	σSrcStep int
-	n        int
+	n int
 }
 
-func InstMul(dst, lhs, rhs, ρSrc, σSrc Addr, dstStep, lhsStep, rhsStep, ρSrcStep, σSrcStep, n int) Inst {
+func InstMul(dst, lhs, rhs, ρs, σs Memory, n int) Inst {
 	return instMul{
-		dst:  dst,
-		lhs:  lhs,
-		rhs:  rhs,
-		ρSrc: ρSrc,
-		σSrc: σSrc,
+		dst: dst,
+		lhs: lhs,
+		rhs: rhs,
+		ρs:  ρs,
+		σs:  σs,
 
-		dstStep:  dstStep,
-		lhsStep:  lhsStep,
-		rhsStep:  rhsStep,
-		ρSrcStep: ρSrcStep,
-		σSrcStep: σSrcStep,
-		n:        n,
+		n: n,
 	}
 }
 
@@ -465,33 +425,33 @@ func (inst instMul) Eval(state State) Result {
 	}
 }
 
-func (inst instMul) Expand() []Inst {
-	return []Inst{inst}
+func (inst instMul) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 func (inst instMul) evalPubPub(state State) Result {
 	for i := 0; i < inst.n; i++ {
-		lhs := inst.lhs.Load(i * inst.lhsStep)
-		rhs := inst.rhs.Load(i * inst.rhsStep)
-		inst.dst.Store(i*inst.dstStep, rhs.(ValuePublic).Mul(lhs.(ValuePublic)))
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
+		inst.dst.Store(i, rhs.(ValuePublic).Mul(lhs.(ValuePublic)))
 	}
 	return Ready()
 }
 
 func (inst instMul) evalPubPriv(state State) Result {
 	for i := 0; i < inst.n; i++ {
-		lhs := inst.lhs.Load(i * inst.lhsStep)
-		rhs := inst.rhs.Load(i * inst.rhsStep)
-		inst.dst.Store(i*inst.dstStep, rhs.(ValuePrivate).Mul(lhs.(ValuePublic)))
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
+		inst.dst.Store(i, rhs.(ValuePrivate).Mul(lhs.(ValuePublic)))
 	}
 	return Ready()
 }
 
 func (inst instMul) evalPrivPub(state State) Result {
 	for i := 0; i < inst.n; i++ {
-		lhs := inst.lhs.Load(i * inst.lhsStep)
-		rhs := inst.rhs.Load(i * inst.rhsStep)
-		inst.dst.Store(i*inst.dstStep, lhs.(ValuePrivate).Mul(rhs.(ValuePublic)))
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
+		inst.dst.Store(i, lhs.(ValuePrivate).Mul(rhs.(ValuePublic)))
 	}
 	return Ready()
 }
@@ -500,21 +460,21 @@ func (inst instMul) evalPrivPriv(state State) Result {
 	if state == nil {
 		mulState := NewInstMulState(inst.n)
 		for i := 0; i < inst.n; i++ {
-			x, ok := inst.lhs.Load(i * inst.lhsStep).(ValuePrivate)
+			x, ok := inst.lhs.Load(i).(ValuePrivate)
 			if !ok {
-				panic(fmt.Sprintf("unexpected value type %T", inst.lhs.Load(i*inst.lhsStep)))
+				panic(fmt.Sprintf("unexpected value type %T", inst.lhs.Load(i)))
 			}
-			y, ok := inst.rhs.Load(i * inst.rhsStep).(ValuePrivate)
+			y, ok := inst.rhs.Load(i).(ValuePrivate)
 			if !ok {
-				panic(fmt.Sprintf("unexpected value type %T", inst.rhs.Load(i*inst.rhsStep)))
+				panic(fmt.Sprintf("unexpected value type %T", inst.rhs.Load(i)))
 			}
-			ρ, ok := inst.ρSrc.Load(i * inst.ρSrcStep).(ValuePrivate)
+			ρ, ok := inst.ρs.Load(i).(ValuePrivate)
 			if !ok {
-				panic(fmt.Sprintf("unexpected value type %T", inst.ρSrc.Load(i*inst.ρSrcStep)))
+				panic(fmt.Sprintf("unexpected value type %T", inst.ρs.Load(i)))
 			}
-			σ, ok := inst.σSrc.Load(i * inst.σSrcStep).(ValuePrivate)
+			σ, ok := inst.σs.Load(i).(ValuePrivate)
 			if !ok {
-				panic(fmt.Sprintf("unexpected value type %T", inst.σSrc.Load(i*inst.σSrcStep)))
+				panic(fmt.Sprintf("unexpected value type %T", inst.σs.Load(i)))
 			}
 			mulState.Xs[i] = x.Share
 			mulState.Ys[i] = y.Share
@@ -526,7 +486,7 @@ func (inst instMul) evalPrivPriv(state State) Result {
 	switch state := state.(type) {
 	case *InstMulState:
 		for i := 0; i < inst.n; i++ {
-			inst.dst.Store(i*inst.dstStep, NewValuePrivate(state.Results[i]))
+			inst.dst.Store(i, NewValuePrivate(state.Results[i]))
 		}
 		return Ready()
 	default:
@@ -535,22 +495,18 @@ func (inst instMul) evalPrivPriv(state State) Result {
 }
 
 type instOpen struct {
-	dst Addr
-	src Addr
+	dst Memory
+	src Memory
 
-	dstStep int
-	srcStep int
-	n       int
+	n int
 }
 
-func InstOpen(dst, src Addr, dstStep, srcStep, n int) Inst {
+func InstOpen(dst, src Memory, n int) Inst {
 	return instOpen{
 		dst: dst,
 		src: src,
 
-		dstStep: dstStep,
-		srcStep: srcStep,
-		n:       n,
+		n: n,
 	}
 }
 
@@ -558,9 +514,9 @@ func (inst instOpen) Eval(state State) Result {
 	if state == nil {
 		openState := NewInstOpenState(inst.n)
 		for i := 0; i < inst.n; i++ {
-			value, ok := inst.src.Load(i * inst.srcStep).(ValuePrivate)
+			value, ok := inst.src.Load(i).(ValuePrivate)
 			if !ok {
-				panic(fmt.Sprintf("unexpected value type %T", inst.src.Load(i*inst.srcStep)))
+				panic(fmt.Sprintf("unexpected value type %T", inst.src.Load(i)))
 			}
 			openState.Shares[i] = value.Share
 		}
@@ -569,7 +525,7 @@ func (inst instOpen) Eval(state State) Result {
 	switch state := state.(type) {
 	case *InstOpenState:
 		for i := 0; i < inst.n; i++ {
-			inst.dst.Store(i*inst.dstStep, NewValuePublic(state.Results[i]))
+			inst.dst.Store(i, NewValuePublic(state.Results[i]))
 		}
 		return Ready()
 	default:
@@ -577,29 +533,28 @@ func (inst instOpen) Eval(state State) Result {
 	}
 }
 
-func (inst instOpen) Expand() []Inst {
-	return []Inst{inst}
+func (inst instOpen) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }
 
 type instExit struct {
-	src Addr
+	src Memory
 
-	srcStep int
-	n       int
+	n int
 }
 
-func InstExit(src Addr, srcStep, n int) Inst {
-	return instExit{src, srcStep, n}
+func InstExit(src Memory, n int) Inst {
+	return instExit{src, n}
 }
 
 func (inst instExit) Eval(State) Result {
 	state := NewInstExitState(inst.n)
 	for i := 0; i < inst.n; i++ {
-		state.Values[i] = inst.src.Load(i * inst.srcStep)
+		state.Values[i] = inst.src.Load(i)
 	}
 	return Exit(state)
 }
 
-func (inst instExit) Expand() []Inst {
-	return []Inst{inst}
+func (inst instExit) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
 }

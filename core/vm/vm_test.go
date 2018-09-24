@@ -97,9 +97,9 @@ var _ = Describe("Virtual Machine", func() {
 	}
 
 	// RandomBool returns a random boolean with equal probability.
-	randomBool := func() bool {
-		return rand.Float32() < 0.5
-	}
+	// randomBool := func() bool {
+	// 	return rand.Float32() < 0.5
+	// }
 
 	Context("when running the virtual machines in a fully connected network", func() {
 
@@ -133,12 +133,12 @@ var _ = Describe("Virtual Machine", func() {
 					expected := asm.NewValuePublic(a.Add(b))
 
 					for i := range vms {
-						mem := asm.Alloc(2)
+						mem := asm.NewAddrIter(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
-							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
-							asm.InstExit(mem.Offset(0), 1, 1),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1),
+							asm.InstExit(mem.Offset(0), 1),
 						}
 						proc := proc.New(id, code)
 
@@ -176,13 +176,13 @@ var _ = Describe("Virtual Machine", func() {
 						valueA := asm.NewValuePrivate(sharesA[i])
 						valueB := asm.NewValuePrivate(sharesB[i])
 
-						mem := asm.Alloc(2)
+						mem := asm.NewAddrIter(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
-							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-							asm.InstExit(mem.Offset(0), 1, 1),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
 						}
 						proc := proc.New(id, code)
 
@@ -218,13 +218,13 @@ var _ = Describe("Virtual Machine", func() {
 						valuePub := asm.NewValuePublic(pub)
 						valuePriv := asm.NewValuePrivate(shares[i])
 
-						mem := asm.Alloc(2)
+						mem := asm.NewAddrIter(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valuePub),
 							asm.InstMove(mem.Offset(1), valuePriv),
-							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1, 1, 1, 1),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-							asm.InstExit(mem.Offset(0), 1, 1),
+							asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
 						}
 						proc := proc.New(id, code)
 
@@ -254,10 +254,10 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 
 					for i := range vms {
-						mem := asm.Alloc(2)
+						mem := asm.NewAddrIter(asm.Alloc(2), 1)
 						code := []asm.Inst{
-							asm.InstGenerateRnTuple(mem.Offset(0), mem.Offset(1), 1, 1, 1),
-							asm.InstExit(mem.Offset(0), 1, 2),
+							asm.InstGenerateRnTuple(mem.Offset(0), mem.Offset(1), 1),
+							asm.InstExit(mem.Offset(0), 2),
 						}
 						proc := proc.New(id, code)
 
@@ -313,14 +313,14 @@ var _ = Describe("Virtual Machine", func() {
 						valueB := asm.NewValuePrivate(sharesB[i])
 
 						id := [32]byte{0x69}
-						mem := asm.Alloc(4)
+						mem := asm.NewAddrIter(asm.Alloc(4), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
-							asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1, 1, 1),
-							asm.InstMul(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1, 1, 1, 1, 1, 1),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-							asm.InstExit(mem.Offset(0), 1, 1),
+							asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
+							asm.InstMul(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
 						}
 						proc := proc.New(id, code)
 
@@ -363,12 +363,12 @@ var _ = Describe("Virtual Machine", func() {
 							value := asm.NewValuePrivate(shares[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(1)
+							mem := asm.NewAddrIter(asm.Alloc(1), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), value),
-								proc.MacroBitwiseNot(mem.Offset(0), mem.Offset(0), SecretField),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-								asm.InstExit(mem.Offset(0), 1, 1),
+								proc.MacroBitwiseNot(mem.Offset(0), mem.Offset(0), 1, SecretField),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+								asm.InstExit(mem.Offset(0), 1),
 							}
 							proc := proc.New(id, code)
 
@@ -417,13 +417,14 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(2)
+							mem := asm.NewAddrIter(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
-								proc.MacroBitwiseOr(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-								asm.InstExit(mem.Offset(0), 1, 1),
+								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
+								proc.MacroBitwiseOr(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+								asm.InstExit(mem.Offset(0), 1),
 							}
 							proc := proc.New(id, code)
 
@@ -472,13 +473,14 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(2)
+							mem := asm.NewAddrIter(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
-								proc.MacroBitwiseXor(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-								asm.InstExit(mem.Offset(0), 1, 1),
+								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
+								proc.MacroBitwiseXor(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+								asm.InstExit(mem.Offset(0), 1),
 							}
 							proc := proc.New(id, code)
 
@@ -527,13 +529,14 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(2)
+							mem := asm.NewAddrIter(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
-								proc.MacroBitwiseAnd(mem.Offset(0), mem.Offset(0), mem.Offset(1)),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-								asm.InstExit(mem.Offset(0), 1, 1),
+								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
+								proc.MacroBitwiseAnd(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+								asm.InstExit(mem.Offset(0), 1),
 							}
 							proc := proc.New(id, code)
 
@@ -583,74 +586,15 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(2)
+							mem := asm.NewAddrIter(asm.Alloc(6), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
-								proc.MacroBitwisePropGen(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1)),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 1),
-								asm.InstOpen(mem.Offset(1), mem.Offset(1), 1, 1, 1),
-								asm.InstExit(mem.Offset(0), 1, 2),
-							}
-							proc := proc.New(id, code)
-
-							vms[j].IO().InputWriter() <- NewExec(proc)
-						}
-
-						for _ = range vms {
-							var actual TestResult
-							Eventually(results, 5).Should(Receive(&actual))
-
-							resP, ok := actual.result.Values[0].(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-							resG, ok := actual.result.Values[1].(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-
-							Expect(resP.Value.Eq(assignment.p)).To(BeTrue())
-							Expect(resG.Value.Eq(assignment.g)).To(BeTrue())
-						}
-					}
-				}, 5)
-
-				It("should correctly compute the propagator and generator in parallel", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					logicTable := []struct {
-						x, y, p, g algebra.FpElement
-					}{
-						{Zero, Zero, Zero, Zero},
-						{Zero, One, One, Zero},
-						{One, Zero, One, Zero},
-						{One, One, Zero, One},
-					}
-
-					for i, assignment := range logicTable {
-						polyX := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.x)
-						polyY := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.y)
-						sharesX := shamir.Split(polyX, uint64(entry.n))
-						sharesY := shamir.Split(polyY, uint64(entry.n))
-
-						// Check that computing the generator is correct
-						for j := range vms {
-							valueX := asm.NewValuePrivate(sharesX[j])
-							valueY := asm.NewValuePrivate(sharesY[j])
-
-							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(6)
-							code := []asm.Inst{
-								asm.InstMove(mem.Offset(0), valueX),
-								asm.InstMove(mem.Offset(1), valueY),
-								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 2, 2, 2),
-								proc.MacroBitwisePropGenN(mem[0:], mem[1:], mem[0:], mem[1:], mem[2:], 1),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 2),
-								asm.InstExit(mem.Offset(0), 1, 2),
+								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(4), 2),
+								proc.MacroBitwisePropGen(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(4), 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+								asm.InstOpen(mem.Offset(1), mem.Offset(1), 1),
+								asm.InstExit(mem.Offset(0), 2),
 							}
 							proc := proc.New(id, code)
 
@@ -721,15 +665,16 @@ var _ = Describe("Virtual Machine", func() {
 							valueG2 := asm.NewValuePrivate(sharesG2[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(10)
+							mem := asm.NewAddrIter(asm.Alloc(10), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueP1),
 								asm.InstMove(mem.Offset(1), valueG1),
 								asm.InstMove(mem.Offset(2), valueP2),
 								asm.InstMove(mem.Offset(3), valueG2),
-								proc.MacroBitwiseOpCLA(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3)),
-								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1, 1, 2),
-								asm.InstExit(mem.Offset(0), 1, 2),
+								asm.InstGenerateRnTuple(mem.Offset(4), mem.Offset(7), 3),
+								proc.MacroBitwiseOpCLA(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), mem.Offset(4), mem.Offset(7), 1),
+								asm.InstOpen(mem.Offset(0), mem.Offset(0), 2),
+								asm.InstExit(mem.Offset(0), 2),
 							}
 							proc := proc.New(id, code)
 
@@ -752,368 +697,7 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
-				It("should correctly compute the CLA operation in parallel", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					logicTable := []struct {
-						p1, g1, p2, g2, pp, gg algebra.FpElement
-					}{
-						{Zero, Zero, Zero, Zero, Zero, Zero},
-						{Zero, Zero, Zero, One, Zero, One},
-						{Zero, Zero, One, Zero, Zero, Zero},
-						{Zero, Zero, One, One, Zero, One},
-						{Zero, One, Zero, Zero, Zero, Zero},
-						{Zero, One, Zero, One, Zero, One},
-						{Zero, One, One, Zero, Zero, One},
-						{Zero, One, One, One, Zero, One},
-						{One, Zero, Zero, Zero, Zero, Zero},
-						{One, Zero, Zero, One, Zero, One},
-						{One, Zero, One, Zero, One, Zero},
-						{One, Zero, One, One, One, One},
-						{One, One, Zero, Zero, Zero, Zero},
-						{One, One, Zero, One, Zero, One},
-						{One, One, One, Zero, One, One},
-						{One, One, One, One, One, One},
-					}
-
-					for i, assignment := range logicTable {
-						polyP1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p1)
-						polyG1 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g1)
-						polyP2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.p2)
-						polyG2 := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), assignment.g2)
-						sharesP1 := shamir.Split(polyP1, uint64(entry.n))
-						sharesG1 := shamir.Split(polyG1, uint64(entry.n))
-						sharesP2 := shamir.Split(polyP2, uint64(entry.n))
-						sharesG2 := shamir.Split(polyG2, uint64(entry.n))
-
-						// Check that computing the generator is correct
-						for j := range vms {
-							valueP1 := asm.NewValuePrivate(sharesP1[j])
-							valueG1 := asm.NewValuePrivate(sharesG1[j])
-							valueP2 := asm.NewValuePrivate(sharesP2[j])
-							valueG2 := asm.NewValuePrivate(sharesG2[j])
-
-							id := idFromUint64(uint64(i))
-							mem := asm.Alloc(10)
-							code := []asm.Inst{
-								asm.InstMove(mem.Offset(0), valueP1),
-								asm.InstMove(mem.Offset(1), valueP2),
-								asm.InstMove(mem.Offset(2), valueG1),
-								asm.InstMove(mem.Offset(3), valueG2),
-								asm.InstGenerateRnTuple(mem.Offset(4), mem.Offset(5), 2, 2, 3),
-								proc.MacroBitwiseOpCLAN(mem[0:], mem[2:], mem[0:], mem[2:], mem[4:], 1),
-								asm.InstOpen(mem.Offset(0), 2, 2, 2),
-								asm.InstExit(mem.Offset(0), 2, 2),
-							}
-							proc := proc.New(id, mem, code)
-
-							vms[j].IO().InputWriter() <- NewExec(proc)
-						}
-
-						for _ = range vms {
-							var actual TestResult
-							Eventually(results, 10).Should(Receive(&actual))
-
-							resPP, ok := actual.result.Values[0].(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-							resGG, ok := actual.result.Values[1].(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-
-							Expect(resPP.Value.Eq(assignment.pp)).To(BeTrue())
-							Expect(resGG.Value.Eq(assignment.gg)).To(BeTrue())
-						}
-
-					}
-				}, 10)
-
-				It("should compare k bit numbers with the CLA adder", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					id := [32]byte{0x69}
-
-					k := uint64(15)
-					a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-					b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-
-					aTemp := big.NewInt(0).Set(a)
-					bTemp := big.NewInt(0).Set(b)
-
-					aBits := make([]algebra.FpElement, k)
-					bBits := make([]algebra.FpElement, k)
-					for i := range aBits {
-						ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
-						br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
-						aBits[i] = SecretField.NewInField(ar)
-						bBits[i] = SecretField.NewInField(br)
-						aTemp.Div(aTemp, big.NewInt(2))
-						bTemp.Div(bTemp, big.NewInt(2))
-					}
-
-					aVals := make([][]asm.ValuePrivate, entry.n)
-					bVals := make([][]asm.ValuePrivate, entry.n)
-					for i := range aVals {
-						aVals[i] = make([]asm.ValuePrivate, k)
-						bVals[i] = make([]asm.ValuePrivate, k)
-					}
-
-					for i := uint64(0); i < k; i++ {
-						polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), aBits[i])
-						polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), bBits[i])
-						sharesA := shamir.Split(polyA, uint64(entry.n))
-						sharesB := shamir.Split(polyB, uint64(entry.n))
-
-						for j, share := range sharesA {
-							aVals[j][i] = asm.NewValuePrivate(share)
-						}
-						for j, share := range sharesB {
-							bVals[j][i] = asm.NewValuePrivate(share)
-						}
-					}
-
-					for i := range vms {
-						mem := asm.Alloc(128)
-						for j := uint64(0); j < k; j++ {
-							mem[j] = aVals[i][j]
-							mem[j+k] = bVals[i][j]
-						}
-						code := []asm.Inst{
-							proc.MacroBitwiseLT(mem.Offset(0), mem.Offset(0), mem.Offset(int(k)), SecretField, int(k)),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
-							asm.InstExit(mem.Offset(0)),
-						}
-						proc := proc.New(id, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
-					}
-
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(asm.ValuePublic)
-						Expect(ok).To(BeTrue())
-						if a.Cmp(b) == -1 {
-							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
-						} else {
-							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
-						}
-					}
-				}, 10)
-
-				It("should generate random bits", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					id := [32]byte{0x69}
-					for i := range vms {
-						// Generate 10 random bits
-						mem := asm.Alloc(10)
-						memLocations := make([]*asm.Value, 10)
-						code := make([]asm.Inst, 0, 21)
-						for j := 0; j < 10; j++ {
-							memLocations[j] = mem.Offset(j)
-							code = append(code,
-								proc.MacroRandBit(mem.Offset(j), SecretField),
-								asm.InstOpen(mem.Offset(j), mem.Offset(j)),
-							)
-						}
-						code = append(code, asm.InstExit(memLocations...))
-						proc := proc.New(id, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
-					}
-
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 10).Should(Receive(&actual))
-						for _, value := range actual.result.Values {
-							res, ok := value.(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-
-							// Expect the result to be zero or one
-							if !res.Value.IsZero() {
-								Expect(res.Value.IsOne()).To(BeTrue())
-							}
-						}
-					}
-				})
-
-				It("should compute the binary representation of a number", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					a := SecretField.NewInField(big.NewInt(0).SetUint64(uint64(rand.Uint32())))
-
-					id := [32]byte{0x69}
-					for i := range vms {
-						mem := asm.Alloc(1)
-						memLocations := make([]asm.Value, 32)
-						memLocPtrs := make([]*asm.Value, 32)
-
-						for i := range memLocPtrs {
-							memLocPtrs[i] = &memLocations[i]
-						}
-
-						code := []asm.Inst{
-							asm.InstMove(mem.Offset(0), asm.NewValuePublic(a)),
-							proc.MacroBits(&memLocations[0], mem.Offset(0), 32, SecretField),
-							asm.InstExit(memLocPtrs...),
-						}
-						proc := proc.New(id, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
-					}
-
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 10).Should(Receive(&actual))
-
-						acc := SecretField.NewInField(big.NewInt(0))
-						two := SecretField.NewInField(big.NewInt(2))
-
-						for i := len(actual.result.Values) - 1; i >= 0; i-- {
-							res, ok := actual.result.Values[i].(asm.ValuePublic)
-							Expect(ok).To(BeTrue())
-							acc = acc.Mul(two)
-							acc = acc.Add(res.Value)
-
-							// Expect the result to be zero or one
-							if !res.Value.IsZero() {
-								Expect(res.Value.IsOne()).To(BeTrue())
-							}
-						}
-
-						Expect(acc.Eq(a)).To(BeTrue())
-					}
-				})
-
-				It("should compute integers modulo powers of two", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					k := uint64(16)
-					m := uint64(15)
-					a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-					poly := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
-					shares := shamir.Split(poly, uint64(entry.n))
-
-					negCase := randomBool()
-					negCase = false
-					if negCase {
-						a = a.Neg()
-					}
-
-					id := [32]byte{0x69}
-					for i := range vms {
-						mem := asm.Alloc(1)
-
-						code := []asm.Inst{
-							asm.InstMove(mem.Offset(0), asm.NewValuePrivate(shares[i])),
-							proc.MacroMod2m(mem.Offset(0), mem.Offset(0), k, m, 10, SecretField),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
-							asm.InstExit(mem.Offset(0)),
-						}
-						proc := proc.New(id, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
-					}
-
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(asm.ValuePublic)
-						Expect(ok).To(BeTrue())
-
-						twoPow := big.NewInt(0).SetUint64(uint64(1) << m)
-						var mod *big.Int
-						if negCase {
-							mod = big.NewInt(0).Mod(big.NewInt(0).Neg(a.Neg().Value()), twoPow)
-						} else {
-							mod = big.NewInt(0).Mod(a.Value(), twoPow)
-						}
-
-						Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
-					}
-				}, 5)
-
-				FIt("should compare integers", func(doneT Done) {
-					defer close(doneT)
-					defer GinkgoRecover()
-
-					done := make(chan (struct{}))
-					vms := initVMs(entry.n, entry.k, entry.bufferCap)
-					results := runVMs(done, vms)
-
-					defer close(done)
-
-					k := uint64(30)
-					a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-					b := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-					polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
-					polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), b)
-					sharesA := shamir.Split(polyA, uint64(entry.n))
-					sharesB := shamir.Split(polyB, uint64(entry.n))
-
-					id := [32]byte{0x69}
-					for i := range vms {
-						mem := asm.Alloc(2)
-						code := []asm.Inst{
-							asm.InstMove(mem.Offset(0), asm.NewValuePrivate(sharesA[i])),
-							asm.InstMove(mem.Offset(1), asm.NewValuePrivate(sharesB[i])),
-							proc.MacroLT(mem.Offset(0), mem.Offset(0), mem.Offset(1), k, 1, SecretField),
-							asm.InstOpen(mem.Offset(0), mem.Offset(0)),
-							asm.InstExit(mem.Offset(0)),
-						}
-						proc := proc.New(id, mem, code)
-
-						vms[i].IO().InputWriter() <- NewExec(proc)
-					}
-
-					for _ = range vms {
-						var actual TestResult
-						Eventually(results, 10).Should(Receive(&actual))
-						res, ok := actual.result.Values[0].(asm.ValuePublic)
-						Expect(ok).To(BeTrue())
-						if a.Value().Cmp(b.Value()) == -1 {
-							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
-						} else {
-							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
-						}
-					}
-				}, 10)
-
-				It("should compare 64 bit numbers with the CLA adder in parallel", func(doneT Done) {
+				FIt("should correctly compute the carry out operation", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -1166,17 +750,19 @@ var _ = Describe("Virtual Machine", func() {
 					}
 
 					for i := range vms {
-						mem := asm.Alloc(129)
+						mem := asm.NewAddrIter(asm.Alloc(1), 1)
+						memA := asm.NewAddrIter(asm.Alloc(64), 1)
+						memB := asm.NewAddrIter(asm.Alloc(64), 1)
 						for j := 0; j < 64; j++ {
-							mem[j] = aVals[i][j]
-							mem[64+j] = bVals[i][j]
+							memA.Store(j, aVals[i][j])
+							memB.Store(j, bVals[i][j])
 						}
 						code := []asm.Inst{
-							proc.MacroBitwiseCOutN(mem.Offset(128), mem[0:], mem[64:], SecretField, 64),
-							asm.InstOpen(mem.Offset(128), mem.Offset(128)),
-							asm.InstExit(mem.Offset(128)),
+							proc.MacroBitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), true, 64, SecretField),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
 						}
-						proc := proc.New(id, mem, code)
+						proc := proc.New(id, code)
 
 						vms[i].IO().InputWriter() <- NewExec(proc)
 					}
@@ -1193,6 +779,287 @@ var _ = Describe("Virtual Machine", func() {
 						}
 					}
 				}, 10)
+
+				// It("should compare k bit numbers with the CLA adder", func(doneT Done) {
+				// 	defer close(doneT)
+				// 	defer GinkgoRecover()
+
+				// 	done := make(chan (struct{}))
+				// 	vms := initVMs(entry.n, entry.k, entry.bufferCap)
+				// 	results := runVMs(done, vms)
+
+				// 	defer close(done)
+
+				// 	id := [32]byte{0x69}
+
+				// 	k := uint64(15)
+				// 	a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+				// 	b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+
+				// 	aTemp := big.NewInt(0).Set(a)
+				// 	bTemp := big.NewInt(0).Set(b)
+
+				// 	aBits := make([]algebra.FpElement, k)
+				// 	bBits := make([]algebra.FpElement, k)
+				// 	for i := range aBits {
+				// 		ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
+				// 		br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
+				// 		aBits[i] = SecretField.NewInField(ar)
+				// 		bBits[i] = SecretField.NewInField(br)
+				// 		aTemp.Div(aTemp, big.NewInt(2))
+				// 		bTemp.Div(bTemp, big.NewInt(2))
+				// 	}
+
+				// 	aVals := make([][]asm.ValuePrivate, entry.n)
+				// 	bVals := make([][]asm.ValuePrivate, entry.n)
+				// 	for i := range aVals {
+				// 		aVals[i] = make([]asm.ValuePrivate, k)
+				// 		bVals[i] = make([]asm.ValuePrivate, k)
+				// 	}
+
+				// 	for i := uint64(0); i < k; i++ {
+				// 		polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), aBits[i])
+				// 		polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), bBits[i])
+				// 		sharesA := shamir.Split(polyA, uint64(entry.n))
+				// 		sharesB := shamir.Split(polyB, uint64(entry.n))
+
+				// 		for j, share := range sharesA {
+				// 			aVals[j][i] = asm.NewValuePrivate(share)
+				// 		}
+				// 		for j, share := range sharesB {
+				// 			bVals[j][i] = asm.NewValuePrivate(share)
+				// 		}
+				// 	}
+
+				// 	for i := range vms {
+				// 		memA := asm.Alloc(64)
+				// 		memB := asm.Alloc(64)
+				// 		for j := 0; j < int(k); j++ {
+				// 			memA.Store(j, aVals[i][j])
+				// 			memB.Store(j, bVals[i][j])
+				// 		}
+				// 		code := []asm.Inst{
+				// 			proc.MacroBitwiseLT(mem.Offset(0), mem.Offset(0), mem.Offset(int(k)), SecretField, int(k)),
+				// 			asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+				// 			asm.InstExit(mem.Offset(0)),
+				// 		}
+				// 		proc := proc.New(id, mem, code)
+
+				// 		vms[i].IO().InputWriter() <- NewExec(proc)
+				// 	}
+
+				// 	for _ = range vms {
+				// 		var actual TestResult
+				// 		Eventually(results, 10).Should(Receive(&actual))
+				// 		res, ok := actual.result.Values[0].(asm.ValuePublic)
+				// 		Expect(ok).To(BeTrue())
+				// 		if a.Cmp(b) == -1 {
+				// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
+				// 		} else {
+				// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
+				// 		}
+				// 	}
+				// }, 10)
+
+				// It("should generate random bits", func(doneT Done) {
+				// 	defer close(doneT)
+				// 	defer GinkgoRecover()
+
+				// 	done := make(chan (struct{}))
+				// 	vms := initVMs(entry.n, entry.k, entry.bufferCap)
+				// 	results := runVMs(done, vms)
+
+				// 	defer close(done)
+
+				// 	id := [32]byte{0x69}
+				// 	for i := range vms {
+				// 		// Generate 10 random bits
+				// 		mem := asm.Alloc(10)
+				// 		memLocations := make([]*asm.Value, 10)
+				// 		code := make([]asm.Inst, 0, 21)
+				// 		for j := 0; j < 10; j++ {
+				// 			memLocations[j] = mem.Offset(j)
+				// 			code = append(code,
+				// 				proc.MacroRandBit(mem.Offset(j), SecretField),
+				// 				asm.InstOpen(mem.Offset(j), mem.Offset(j)),
+				// 			)
+				// 		}
+				// 		code = append(code, asm.InstExit(memLocations...))
+				// 		proc := proc.New(id, mem, code)
+
+				// 		vms[i].IO().InputWriter() <- NewExec(proc)
+				// 	}
+
+				// 	for _ = range vms {
+				// 		var actual TestResult
+				// 		Eventually(results, 10).Should(Receive(&actual))
+				// 		for _, value := range actual.result.Values {
+				// 			res, ok := value.(asm.ValuePublic)
+				// 			Expect(ok).To(BeTrue())
+
+				// 			// Expect the result to be zero or one
+				// 			if !res.Value.IsZero() {
+				// 				Expect(res.Value.IsOne()).To(BeTrue())
+				// 			}
+				// 		}
+				// 	}
+				// })
+
+				// It("should compute the binary representation of a number", func(doneT Done) {
+				// 	defer close(doneT)
+				// 	defer GinkgoRecover()
+
+				// 	done := make(chan (struct{}))
+				// 	vms := initVMs(entry.n, entry.k, entry.bufferCap)
+				// 	results := runVMs(done, vms)
+
+				// 	defer close(done)
+
+				// 	a := SecretField.NewInField(big.NewInt(0).SetUint64(uint64(rand.Uint32())))
+
+				// 	id := [32]byte{0x69}
+				// 	for i := range vms {
+				// 		mem := asm.Alloc(1)
+				// 		memLocations := make([]asm.Value, 32)
+				// 		memLocPtrs := make([]*asm.Value, 32)
+
+				// 		for i := range memLocPtrs {
+				// 			memLocPtrs[i] = &memLocations[i]
+				// 		}
+
+				// 		code := []asm.Inst{
+				// 			asm.InstMove(mem.Offset(0), asm.NewValuePublic(a)),
+				// 			proc.MacroBits(&memLocations[0], mem.Offset(0), 32, SecretField),
+				// 			asm.InstExit(memLocPtrs...),
+				// 		}
+				// 		proc := proc.New(id, mem, code)
+
+				// 		vms[i].IO().InputWriter() <- NewExec(proc)
+				// 	}
+
+				// 	for _ = range vms {
+				// 		var actual TestResult
+				// 		Eventually(results, 10).Should(Receive(&actual))
+
+				// 		acc := SecretField.NewInField(big.NewInt(0))
+				// 		two := SecretField.NewInField(big.NewInt(2))
+
+				// 		for i := len(actual.result.Values) - 1; i >= 0; i-- {
+				// 			res, ok := actual.result.Values[i].(asm.ValuePublic)
+				// 			Expect(ok).To(BeTrue())
+				// 			acc = acc.Mul(two)
+				// 			acc = acc.Add(res.Value)
+
+				// 			// Expect the result to be zero or one
+				// 			if !res.Value.IsZero() {
+				// 				Expect(res.Value.IsOne()).To(BeTrue())
+				// 			}
+				// 		}
+
+				// 		Expect(acc.Eq(a)).To(BeTrue())
+				// 	}
+				// })
+
+				// It("should compute integers modulo powers of two", func(doneT Done) {
+				// 	defer close(doneT)
+				// 	defer GinkgoRecover()
+
+				// 	done := make(chan (struct{}))
+				// 	vms := initVMs(entry.n, entry.k, entry.bufferCap)
+				// 	results := runVMs(done, vms)
+
+				// 	defer close(done)
+
+				// 	k := uint64(16)
+				// 	m := uint64(15)
+				// 	a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+				// 	poly := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
+				// 	shares := shamir.Split(poly, uint64(entry.n))
+
+				// 	negCase := randomBool()
+				// 	negCase = false
+				// 	if negCase {
+				// 		a = a.Neg()
+				// 	}
+
+				// 	id := [32]byte{0x69}
+				// 	for i := range vms {
+				// 		mem := asm.Alloc(1)
+
+				// 		code := []asm.Inst{
+				// 			asm.InstMove(mem.Offset(0), asm.NewValuePrivate(shares[i])),
+				// 			proc.MacroMod2m(mem.Offset(0), mem.Offset(0), k, m, 10, SecretField),
+				// 			asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+				// 			asm.InstExit(mem.Offset(0)),
+				// 		}
+				// 		proc := proc.New(id, mem, code)
+
+				// 		vms[i].IO().InputWriter() <- NewExec(proc)
+				// 	}
+
+				// 	for _ = range vms {
+				// 		var actual TestResult
+				// 		Eventually(results, 10).Should(Receive(&actual))
+				// 		res, ok := actual.result.Values[0].(asm.ValuePublic)
+				// 		Expect(ok).To(BeTrue())
+
+				// 		twoPow := big.NewInt(0).SetUint64(uint64(1) << m)
+				// 		var mod *big.Int
+				// 		if negCase {
+				// 			mod = big.NewInt(0).Mod(big.NewInt(0).Neg(a.Neg().Value()), twoPow)
+				// 		} else {
+				// 			mod = big.NewInt(0).Mod(a.Value(), twoPow)
+				// 		}
+
+				// 		Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
+				// 	}
+				// }, 5)
+
+				// FIt("should compare integers", func(doneT Done) {
+				// 	defer close(doneT)
+				// 	defer GinkgoRecover()
+
+				// 	done := make(chan (struct{}))
+				// 	vms := initVMs(entry.n, entry.k, entry.bufferCap)
+				// 	results := runVMs(done, vms)
+
+				// 	defer close(done)
+
+				// 	k := uint64(30)
+				// 	a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+				// 	b := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+				// 	polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
+				// 	polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), b)
+				// 	sharesA := shamir.Split(polyA, uint64(entry.n))
+				// 	sharesB := shamir.Split(polyB, uint64(entry.n))
+
+				// 	id := [32]byte{0x69}
+				// 	for i := range vms {
+				// 		mem := asm.Alloc(2)
+				// 		code := []asm.Inst{
+				// 			asm.InstMove(mem.Offset(0), asm.NewValuePrivate(sharesA[i])),
+				// 			asm.InstMove(mem.Offset(1), asm.NewValuePrivate(sharesB[i])),
+				// 			proc.MacroLT(mem.Offset(0), mem.Offset(0), mem.Offset(1), k, 1, SecretField),
+				// 			asm.InstOpen(mem.Offset(0), mem.Offset(0)),
+				// 			asm.InstExit(mem.Offset(0)),
+				// 		}
+				// 		proc := proc.New(id, mem, code)
+
+				// 		vms[i].IO().InputWriter() <- NewExec(proc)
+				// 	}
+
+				// 	for _ = range vms {
+				// 		var actual TestResult
+				// 		Eventually(results, 10).Should(Receive(&actual))
+				// 		res, ok := actual.result.Values[0].(asm.ValuePublic)
+				// 		Expect(ok).To(BeTrue())
+				// 		if a.Value().Cmp(b.Value()) == -1 {
+				// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
+				// 		} else {
+				// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
+				// 		}
+				// 	}
+				// }, 10)
 
 			})
 		}

@@ -25,7 +25,7 @@ type Proc struct {
 }
 
 func New(id ID, insts []asm.Inst) Proc {
-
+	expandMacros(&insts)
 	return Proc{
 		ID: id,
 
@@ -74,8 +74,11 @@ func (process *Proc) iid() IntentID {
 
 func expandMacros(code *[]asm.Inst) {
 	for i := 0; i < len(*code); i++ {
-		temp := append((*code)[i].Expand(), (*code)[i+1:]...)
-		*code = append((*code)[:i], temp...)
-		i--
+		insts, instDidExpand := (*code)[i].Expand()
+		if instDidExpand {
+			temp := append(insts, (*code)[i+1:]...)
+			*code = append((*code)[:i], temp...)
+			i--
+		}
 	}
 }
