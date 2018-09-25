@@ -72,6 +72,13 @@ var _ = Describe("Buffer", func() {
 					Expect(buffer.IsEmpty()).To(BeTrue())
 				})
 			})
+
+			Context("when peeking", func() {
+				It("should return a non-nil peeker", func() {
+					buffer := buildFullBuffer(entry.cap)
+					Expect(buffer.Peek()).ToNot(BeNil())
+				})
+			})
 		})
 
 		Context("when the buffer is empty", func() {
@@ -125,6 +132,13 @@ var _ = Describe("Buffer", func() {
 					}
 					Expect(buffer.IsFull()).To(BeFalse())
 					Expect(buffer.IsEmpty()).To(BeTrue())
+				})
+			})
+
+			Context("when peeking", func() {
+				It("should return a nil peeker", func() {
+					buffer := buildEmptyBuffer(entry.cap)
+					Expect(buffer.Peek()).To(BeNil())
 				})
 			})
 		})
@@ -187,6 +201,13 @@ var _ = Describe("Buffer", func() {
 					}
 					Expect(buffer.IsFull()).To(BeFalse())
 					Expect(buffer.IsEmpty()).To(BeFalse())
+				})
+			})
+
+			Context("when peeking", func() {
+				It("should return a non-nil peeker", func() {
+					buffer := buildHalfFullBuffer(entry.cap)
+					Expect(buffer.Peek()).ToNot(BeNil())
 				})
 			})
 		})
