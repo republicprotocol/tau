@@ -93,11 +93,11 @@ func Mod2M(dst, src asm.Memory, bits, m, kappa int, field algebra.Fp) asm.Inst {
 		asm.InstMul(tmp4, tmp4, tmpRandBits, nil, nil, bits+kappa),
 
 		// Random number from first m bits
-		asm.InstAdd(asm.NewAddrIter(tmp4, 0), asm.NewAddrIter(tmp4, 0), asm.NewAddrIter(tmp4.Offset(1), 1), m-1),
+		asm.InstAdd(asm.MemoryMapper(tmp4, 0), asm.MemoryMapper(tmp4, 0), asm.MemoryMapper(tmp4.Offset(1), 1), m-1),
 		asm.InstCopy(tmp2, tmp4, 1),
 
 		// Random number from all bits
-		asm.InstAdd(asm.NewAddrIter(tmp4, 0), asm.NewAddrIter(tmp4, 0), asm.NewAddrIter(tmp4.Offset(m), 1), bits+kappa-m),
+		asm.InstAdd(asm.MemoryMapper(tmp4, 0), asm.MemoryMapper(tmp4, 0), asm.MemoryMapper(tmp4.Offset(m), 1), bits+kappa-m),
 		asm.InstCopy(tmp3, tmp4, 1),
 
 		// Mod2m

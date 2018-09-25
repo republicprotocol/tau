@@ -135,7 +135,7 @@ var _ = Describe("Virtual Machine", func() {
 					expected := asm.NewValuePublic(a.Add(b))
 
 					for i := range vms {
-						mem := asm.NewAddrIter(asm.Alloc(2), 1)
+						mem := asm.MemoryMapper(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
@@ -178,7 +178,7 @@ var _ = Describe("Virtual Machine", func() {
 						valueA := asm.NewValuePrivate(sharesA[i])
 						valueB := asm.NewValuePrivate(sharesB[i])
 
-						mem := asm.NewAddrIter(asm.Alloc(2), 1)
+						mem := asm.MemoryMapper(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
@@ -220,7 +220,7 @@ var _ = Describe("Virtual Machine", func() {
 						valuePub := asm.NewValuePublic(pub)
 						valuePriv := asm.NewValuePrivate(shares[i])
 
-						mem := asm.NewAddrIter(asm.Alloc(2), 1)
+						mem := asm.MemoryMapper(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valuePub),
 							asm.InstMove(mem.Offset(1), valuePriv),
@@ -256,7 +256,7 @@ var _ = Describe("Virtual Machine", func() {
 					id := [32]byte{0x69}
 
 					for i := range vms {
-						mem := asm.NewAddrIter(asm.Alloc(2), 1)
+						mem := asm.MemoryMapper(asm.Alloc(2), 1)
 						code := []asm.Inst{
 							asm.InstGenerateRnTuple(mem.Offset(0), mem.Offset(1), 1),
 							asm.InstExit(mem.Offset(0), 2),
@@ -315,7 +315,7 @@ var _ = Describe("Virtual Machine", func() {
 						valueB := asm.NewValuePrivate(sharesB[i])
 
 						id := [32]byte{0x69}
-						mem := asm.NewAddrIter(asm.Alloc(4), 1)
+						mem := asm.MemoryMapper(asm.Alloc(4), 1)
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), valueA),
 							asm.InstMove(mem.Offset(1), valueB),
@@ -365,7 +365,7 @@ var _ = Describe("Virtual Machine", func() {
 							value := asm.NewValuePrivate(shares[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(1), 1)
+							mem := asm.MemoryMapper(asm.Alloc(1), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), value),
 								macro.BitwiseNot(mem.Offset(0), mem.Offset(0), 1, SecretField),
@@ -419,7 +419,7 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(4), 1)
+							mem := asm.MemoryMapper(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
@@ -475,7 +475,7 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(4), 1)
+							mem := asm.MemoryMapper(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
@@ -531,7 +531,7 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(4), 1)
+							mem := asm.MemoryMapper(asm.Alloc(4), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
@@ -588,7 +588,7 @@ var _ = Describe("Virtual Machine", func() {
 							valueY := asm.NewValuePrivate(sharesY[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(6), 1)
+							mem := asm.MemoryMapper(asm.Alloc(6), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
@@ -667,7 +667,7 @@ var _ = Describe("Virtual Machine", func() {
 							valueG2 := asm.NewValuePrivate(sharesG2[j])
 
 							id := idFromUint64(uint64(i))
-							mem := asm.NewAddrIter(asm.Alloc(10), 1)
+							mem := asm.MemoryMapper(asm.Alloc(10), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), valueP1),
 								asm.InstMove(mem.Offset(1), valueG1),

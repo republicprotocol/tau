@@ -4,7 +4,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/collection/buffer"
 )
 
 type IO interface {

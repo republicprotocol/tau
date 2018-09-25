@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/collection/buffer"
 	"github.com/republicprotocol/oro-go/core/vm/task"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"

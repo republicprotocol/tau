@@ -114,10 +114,10 @@ func BitwiseCarryOut(dst, lhs, rhs asm.Memory, carryIn bool, bits int, field alg
 			BitwiseOpCLA(
 				props,
 				gens,
-				asm.NewAddrIter(props, 2),
-				asm.NewAddrIter(gens, 2),
-				asm.NewAddrIter(props.Offset(1), 2),
-				asm.NewAddrIter(gens.Offset(1), 2),
+				asm.MemoryMapper(props, 2),
+				asm.MemoryMapper(gens, 2),
+				asm.MemoryMapper(props.Offset(1), 2),
+				asm.MemoryMapper(gens.Offset(1), 2),
 				ρs.Offset(rnOffset), // This will consume 3N random numbers
 				σs.Offset(rnOffset), // This will consume 3N random numbers
 				pairs,

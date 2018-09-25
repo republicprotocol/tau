@@ -3,7 +3,7 @@ package node
 import (
 	"encoding"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/collection/buffer"
 )
 
 type Sender (chan<- Message)

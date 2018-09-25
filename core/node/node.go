@@ -3,7 +3,7 @@ package node
 import (
 	"log"
 
-	"github.com/republicprotocol/oro-go/core/buffer"
+	"github.com/republicprotocol/oro-go/core/collection/buffer"
 )
 
 // A Node in the network can send and receive messages to and from other Nodes
