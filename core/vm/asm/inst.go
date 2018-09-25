@@ -494,6 +494,125 @@ func (inst instMul) evalPrivPriv(state State) Result {
 	}
 }
 
+type instMulOpen struct {
+	dst Memory
+	lhs Memory
+	rhs Memory
+
+	n int
+}
+
+func InstMulOpen(dst, lhs, rhs Memory, n int) Inst {
+	return instMulOpen{
+		dst: dst,
+		lhs: lhs,
+		rhs: rhs,
+
+		n: n,
+	}
+}
+
+func (inst instMulOpen) Eval(state State) Result {
+	switch lhs := inst.lhs.Load(0).(type) {
+	case ValuePublic:
+		switch rhs := inst.rhs.Load(0).(type) {
+		case ValuePublic:
+			return inst.evalPubPub(state)
+		case ValuePrivate:
+			return inst.evalPubPriv(state)
+		default:
+			panic(fmt.Sprintf("unexpected type %v", rhs))
+		}
+	case ValuePrivate:
+		switch rhs := inst.rhs.Load(0).(type) {
+		case ValuePublic:
+			return inst.evalPrivPub(state)
+		case ValuePrivate:
+			return inst.evalPrivPriv(state)
+		default:
+			panic(fmt.Sprintf("unexpected type %v", rhs))
+		}
+	default:
+		panic(fmt.Sprintf("unexpected type %v", lhs))
+	}
+}
+
+func (inst instMulOpen) evalPubPub(state State) Result {
+	for i := 0; i < inst.n; i++ {
+		lhs := inst.lhs.Load(i)
+		rhs := inst.rhs.Load(i)
+		inst.dst.Store(i, rhs.(ValuePublic).Mul(lhs.(ValuePublic)))
+	}
+	return Ready()
+}
+
+func (inst instMulOpen) evalPubPriv(state State) Result {
+	if state == nil {
+		openState := NewInstOpenState(inst.n)
+		for i := 0; i < inst.n; i++ {
+			lhs := inst.lhs.Load(i)
+			rhs := inst.rhs.Load(i)
+			openState.Shares[i] = rhs.(ValuePrivate).Mul(lhs.(ValuePublic)).(ValuePrivate).Share
+		}
+		return NotReady(openState)
+	}
+	switch state := state.(type) {
+	case *InstOpenState:
+		for i := 0; i < inst.n; i++ {
+			inst.dst.Store(i, NewValuePublic(state.Results[i]))
+		}
+		return Ready()
+	default:
+		panic(fmt.Sprintf("unexpected state type %T", state))
+	}
+}
+
+func (inst instMulOpen) evalPrivPub(state State) Result {
+	if state == nil {
+		openState := NewInstOpenState(inst.n)
+		for i := 0; i < inst.n; i++ {
+			lhs := inst.lhs.Load(i)
+			rhs := inst.rhs.Load(i)
+			openState.Shares[i] = lhs.(ValuePrivate).Mul(rhs.(ValuePublic)).(ValuePrivate).Share
+		}
+		return NotReady(openState)
+	}
+	switch state := state.(type) {
+	case *InstOpenState:
+		for i := 0; i < inst.n; i++ {
+			inst.dst.Store(i, NewValuePublic(state.Results[i]))
+		}
+		return Ready()
+	default:
+		panic(fmt.Sprintf("unexpected state type %T", state))
+	}
+}
+
+func (inst instMulOpen) evalPrivPriv(state State) Result {
+	if state == nil {
+		openState := NewInstOpenState(inst.n)
+		for i := 0; i < inst.n; i++ {
+			lhs := inst.lhs.Load(i).(ValuePrivate).Share
+			rhs := inst.rhs.Load(i).(ValuePrivate).Share
+			openState.Shares[i] = lhs.Mul(rhs)
+		}
+		return NotReady(openState)
+	}
+	switch state := state.(type) {
+	case *InstOpenState:
+		for i := 0; i < inst.n; i++ {
+			inst.dst.Store(i, NewValuePublic(state.Results[i]))
+		}
+		return Ready()
+	default:
+		panic(fmt.Sprintf("unexpected state type %T", state))
+	}
+}
+
+func (inst instMulOpen) Expand() ([]Inst, bool) {
+	return []Inst{inst}, false
+}
+
 type instOpen struct {
 	dst Memory
 	src Memory
