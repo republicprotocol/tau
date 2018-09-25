@@ -3,7 +3,6 @@ package vm_test
 import (
 	"encoding/binary"
 	"fmt"
-	"log"
 	"math/big"
 	"math/rand"
 
@@ -920,16 +919,11 @@ var _ = Describe("Virtual Machine", func() {
 							mod = big.NewInt(0).Mod(a.Value(), twoPow)
 						}
 
-						if mod.Cmp(res.Value.Value()) == 0 {
-							log.Printf("SUCCESS => %v", res.Value.Value())
-						} else {
-							log.Printf("MOD => %v\nGOT => %v", mod, res.Value.Value())
-						}
 						Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
 					}
 				}, 5)
 
-				FIt("should compare integers", func(doneT Done) {
+				It("should compare integers", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
