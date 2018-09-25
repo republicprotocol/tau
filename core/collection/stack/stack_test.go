@@ -3,7 +3,7 @@ package stack_test
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	. "github.com/republicprotocol/oro-go/core/stack"
+	. "github.com/republicprotocol/oro-go/core/collection/stack"
 )
 
 var _ = Describe("Stack", func() {
@@ -31,7 +31,8 @@ var _ = Describe("Stack", func() {
 	table := []struct {
 		cap int
 	}{
-		{2}, {4}, {8}, {16},
+		// Skip capacity 1 because a half buffer cannot be created
+		{2}, {4}, {16}, {64}, {256}, {1024},
 	}
 
 	for _, entry := range table {
@@ -40,7 +41,7 @@ var _ = Describe("Stack", func() {
 		Context("when the stack is full", func() {
 
 			Context("when checking the stack state", func() {
-				It("should be full ", func() {
+				It("should be full", func() {
 					stack := buildFullStack(entry.cap)
 					Expect(stack.IsFull()).To(BeTrue())
 				})
