@@ -9,6 +9,7 @@ import (
 
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/asm"
+	"github.com/republicprotocol/oro-go/core/vm/macro"
 	"github.com/republicprotocol/oro-go/core/vm/proc"
 	"github.com/republicprotocol/oro-go/core/vm/rng"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
@@ -367,7 +368,7 @@ var _ = Describe("Virtual Machine", func() {
 							mem := asm.NewAddrIter(asm.Alloc(1), 1)
 							code := []asm.Inst{
 								asm.InstMove(mem.Offset(0), value),
-								proc.MacroBitwiseNot(mem.Offset(0), mem.Offset(0), 1, SecretField),
+								macro.BitwiseNot(mem.Offset(0), mem.Offset(0), 1, SecretField),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 								asm.InstExit(mem.Offset(0), 1),
 							}
@@ -423,7 +424,7 @@ var _ = Describe("Virtual Machine", func() {
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
 								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
-								proc.MacroBitwiseOr(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								macro.BitwiseOr(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 								asm.InstExit(mem.Offset(0), 1),
 							}
@@ -479,7 +480,7 @@ var _ = Describe("Virtual Machine", func() {
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
 								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
-								proc.MacroBitwiseXor(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								macro.BitwiseXor(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 								asm.InstExit(mem.Offset(0), 1),
 							}
@@ -535,7 +536,7 @@ var _ = Describe("Virtual Machine", func() {
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
 								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(3), 1),
-								proc.MacroBitwiseAnd(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
+								macro.BitwiseAnd(mem.Offset(0), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), 1),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 								asm.InstExit(mem.Offset(0), 1),
 							}
@@ -592,7 +593,7 @@ var _ = Describe("Virtual Machine", func() {
 								asm.InstMove(mem.Offset(0), valueX),
 								asm.InstMove(mem.Offset(1), valueY),
 								asm.InstGenerateRnTuple(mem.Offset(2), mem.Offset(4), 2),
-								proc.MacroBitwisePropGen(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(4), 1),
+								macro.BitwisePropGen(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(4), 1),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 								asm.InstOpen(mem.Offset(1), mem.Offset(1), 1),
 								asm.InstExit(mem.Offset(0), 2),
@@ -673,7 +674,7 @@ var _ = Describe("Virtual Machine", func() {
 								asm.InstMove(mem.Offset(2), valueP2),
 								asm.InstMove(mem.Offset(3), valueG2),
 								asm.InstGenerateRnTuple(mem.Offset(4), mem.Offset(7), 3),
-								proc.MacroBitwiseOpCLA(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), mem.Offset(4), mem.Offset(7), 1),
+								macro.BitwiseOpCLA(mem.Offset(0), mem.Offset(1), mem.Offset(0), mem.Offset(1), mem.Offset(2), mem.Offset(3), mem.Offset(4), mem.Offset(7), 1),
 								asm.InstOpen(mem.Offset(0), mem.Offset(0), 2),
 								asm.InstExit(mem.Offset(0), 2),
 							}
@@ -759,7 +760,7 @@ var _ = Describe("Virtual Machine", func() {
 							memB.Store(j, bVals[i][j])
 						}
 						code := []asm.Inst{
-							proc.MacroBitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), true, 63, SecretField),
+							macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), true, 63, SecretField),
 							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 							asm.InstExit(mem.Offset(0), 1),
 						}
@@ -796,7 +797,7 @@ var _ = Describe("Virtual Machine", func() {
 						// Generate 10 random bits
 						mem := asm.Alloc(10)
 						code := []asm.Inst{
-							proc.MacroRandBit(mem, 10, SecretField),
+							macro.GenerateRandomBit(mem, 10, SecretField),
 							asm.InstOpen(mem, mem, 10),
 							asm.InstExit(mem, 10),
 						}
@@ -837,7 +838,7 @@ var _ = Describe("Virtual Machine", func() {
 						mem := asm.Alloc(33)
 						code := []asm.Inst{
 							asm.InstMove(mem, asm.NewValuePublic(a)),
-							proc.MacroBits(mem.Offset(1), mem.Offset(0), 32, SecretField),
+							macro.Bits(mem.Offset(1), mem.Offset(0), 32, SecretField),
 							asm.InstExit(mem.Offset(1), 32),
 						}
 						proc := proc.New(id, code)
@@ -896,7 +897,7 @@ var _ = Describe("Virtual Machine", func() {
 
 						code := []asm.Inst{
 							asm.InstMove(mem, asm.NewValuePrivate(shares[i])),
-							proc.MacroMod2m(mem, mem, int(k), int(m), 10, SecretField),
+							macro.Mod2M(mem, mem, int(k), int(m), 10, SecretField),
 							asm.InstOpen(mem, mem, 1),
 							asm.InstExit(mem, 1),
 						}
@@ -952,7 +953,7 @@ var _ = Describe("Virtual Machine", func() {
 						code := []asm.Inst{
 							asm.InstMove(mem.Offset(0), asm.NewValuePrivate(sharesA[i])),
 							asm.InstMove(mem.Offset(1), asm.NewValuePrivate(sharesB[i])),
-							proc.MacroLT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(k), 1, SecretField),
+							macro.LT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(k), 1, SecretField),
 							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 							asm.InstExit(mem.Offset(0), 1),
 						}
