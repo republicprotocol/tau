@@ -7,6 +7,7 @@ import (
 	"github.com/republicprotocol/oro-go/core/collection/buffer"
 )
 
+// IO is used to buffer and flush Messages between Tasks.
 type IO interface {
 	Flush(done <-chan struct{}, reducer Reducer, children Children) bool
 
@@ -28,6 +29,8 @@ type inputOutput struct {
 	w    chan Message
 }
 
+// NewIO returns a synchronous buffered IO. It can buffer a limited capacity of
+// Messages, after which it will drop all new Messages that are written.
 func NewIO(cap int) IO {
 	r := make(chan Message, cap)
 	w := make(chan Message, cap)
@@ -133,6 +136,7 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 func (io *inputOutput) WriteIn(message Message) bool {
 	ok := io.ibuf.Enqueue(message)
 	if !ok {
+		// TODO: Support for configurable logging.
 		log.Printf("[error] (io, write) buffer overflow")
 	}
 	return ok
@@ -141,6 +145,7 @@ func (io *inputOutput) WriteIn(message Message) bool {
 func (io *inputOutput) WriteOut(message Message) bool {
 	ok := io.obuf.Enqueue(message)
 	if !ok {
+		// TODO: Support for configurable logging.
 		log.Printf("[error] (io, write) buffer overflow")
 	}
 	return ok
@@ -163,7 +168,6 @@ func (io *inputOutput) OutputReader() <-chan Message {
 }
 
 func (io *inputOutput) reduceMessage(reducer Reducer, message Message) Message {
-	// log.Printf("[debug] reducing message %T", message)
 	if messages, ok := message.(MessageBatch); ok {
 		for i := 0; i < len(messages); i++ {
 			if messages[i] != nil {
