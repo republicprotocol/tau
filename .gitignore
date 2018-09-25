@@ -1,3 +1,5 @@
 .vscode
+*.blockprofile
 *.coverprofile
 *.cpuprofile
+*.memprofile
