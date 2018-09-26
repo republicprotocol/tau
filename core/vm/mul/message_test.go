@@ -1,1 +1,0 @@
-package mul_test

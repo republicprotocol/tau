@@ -1,15 +1,15 @@
 package mul_test
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
-	mathRand "math/rand"
+	"math/rand"
 	"time"
 
 	"github.com/republicprotocol/co-go"
 	"github.com/republicprotocol/oro-go/core/task"
+	"github.com/republicprotocol/oro-go/core/taskutils"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
 
@@ -22,34 +22,44 @@ var _ = Describe("Multipliers", func() {
 
 	fp := algebra.NewField(big.NewInt(8113765242226142771))
 
-	randomMessageID := func() (task.MessageID, error) {
-		mathRand.Seed(time.Now().UnixNano())
-		messageID := task.MessageID{}
-		_, err := rand.Read(messageID[:])
-		return messageID, err
-	}
-
-	init := func(n, k uint64, cap int) []task.Task {
-		tasks := make([]task.Task, n)
-		for i := 0; i < len(tasks); i++ {
-			tasks[i] = New(uint64(i)+1, n, k, cap)
+	init := func(n, k uint64, cap int) task.Tasks {
+		ts := make(task.Tasks, n)
+		for i := range ts {
+			ts[i] = New(uint64(i), n, k, cap)
 		}
-		return tasks
+		return ts
 	}
 
-	run := func(done <-chan struct{}, tasks []task.Task) {
-		co.ParForAll(tasks, func(i int) {
-			tasks[i].Run(done)
-		})
+	run := func(done <-chan struct{}, results chan<- Result, ts task.Tasks, simulatedFailureRate float64, simulatedFailureLimit int) {
+		task.New(task.NewIO(1024), task.NewReducer(func(message task.Message) task.Message {
+
+			switch message := message.(type) {
+
+			case Result:
+				select {
+				case <-done:
+				case results <- message:
+				}
+
+			default:
+				taskutils.RouteMessage(done, message, ts, simulatedFailureRate, simulatedFailureLimit)
+			}
+
+			return nil
+
+		}), ts...).Run(done)
 	}
 
-	verifyShares := func(shares shamir.Shares, n, k uint64) (algebra.FpElement, error) {
+	verifyShares := func(shares shamir.Shares, k uint64) (algebra.FpElement, error) {
 		secret, err := shamir.Join(shares)
 		if err != nil {
 			return secret, err
 		}
-		for i := uint64(0); i < n-k; i++ {
-			kSecret, err := shamir.Join(shares[i : i+k])
+		for i := 0; i < len(shares); i++ {
+			rand.Shuffle(len(shares), func(i, j int) {
+				shares[i], shares[j] = shares[j], shares[i]
+			})
+			kSecret, err := shamir.Join(shares[:k])
 			if err != nil {
 				return secret, err
 			}
@@ -60,105 +70,111 @@ var _ = Describe("Multipliers", func() {
 		return secret, nil
 	}
 
-	multiply := func(messageID task.MessageID, tasks []task.Task, n, k uint64) algebra.FpElement {
+	sendMulMessage := func(messageID task.MessageID, tasks []task.Task, n, k uint64) algebra.FpElement {
 		x := fp.Random()
 		y := fp.Random()
 		r := fp.Random()
 
-		xPoly := algebra.NewRandomPolynomial(fp, uint(k/2)-1, x)
+		xPoly := algebra.NewRandomPolynomial(fp, uint(k+1)/2-1, x)
 		xShares := shamir.Split(xPoly, n)
 
-		yPoly := algebra.NewRandomPolynomial(fp, uint(k/2)-1, y)
+		yPoly := algebra.NewRandomPolynomial(fp, uint(k+1)/2-1, y)
 		yShares := shamir.Split(yPoly, n)
 
 		ρPoly := algebra.NewRandomPolynomial(fp, uint(k)-1, r)
 		ρShares := shamir.Split(ρPoly, n)
 
-		σPoly := algebra.NewRandomPolynomial(fp, uint(k/2)-1, r)
+		σPoly := algebra.NewRandomPolynomial(fp, uint(k+1)/2-1, r)
 		σShares := shamir.Split(σPoly, n)
 
 		co.ParForAll(tasks, func(i int) {
-			tasks[i].Channel().Send(NewSignalMul(messageID, xShares[i], yShares[i], ρShares[i], σShares[i]))
+			tasks[i].IO().InputWriter() <- NewMul(messageID, shamir.Shares{xShares[i]}, shamir.Shares{yShares[i]}, shamir.Shares{ρShares[i]}, shamir.Shares{σShares[i]})
 		})
 
 		return x.Mul(y)
 	}
 
-	routeMessage := func(done <-chan struct{}, message task.Message, tasks []task.Task, failureRate int) {
-		for _, task := range tasks {
-			if mathRand.Intn(100) < failureRate {
-				// Simluate an unstable network connection and randomly drop
-				// messages
-				continue
-			}
-			task.Channel().Send(message)
-		}
-	}
+	runMultiplication := func(n, k uint64, cap int, failureRate float64, failureRateLimit int) (expectedResult, gotResult algebra.FpElement, err error) {
 
-	routeMessages := func(done <-chan struct{}, tasks []task.Task, failureRate int) <-chan Result {
+		multipliers := init(n, k, cap)
+		done := make(chan struct{})
+		results := make(chan Result)
 
-		io := task.NewIO(len(tasks))
-		results := make(chan Result, len(tasks))
+		expectedResult = sendMulMessage(taskutils.RandomMessageID(), multipliers, n, k)
+		sharesResult := map[uint64]shamir.Share{}
 
-		go func() {
-			defer close(results)
-
-			channels := make([]task.Channel, len(tasks))
-			for i := range channels {
-				channels[i] = tasks[i].Channel()
-			}
-
-			for {
-				message, ok := io.Flush(done, channels...)
-				if !ok {
-					return
-				}
-				if message != nil {
-					switch message := message.(type) {
-					case Result:
-						select {
-						case <-done:
-						case results <- message:
-						}
-					case task.Error:
-						panic(message)
-					default:
-						routeMessage(done, message, tasks, failureRate)
+		co.ParBegin(
+			func() {
+				run(done, results, multipliers, failureRate, failureRateLimit)
+			},
+			func() {
+				defer close(done)
+				for result := range results {
+					sharesResult[result.Shares[0].Index()] = result.Shares[0]
+					if len(sharesResult) == int(n)-2*failureRateLimit {
+						break
 					}
 				}
-			}
-		}()
+			})
 
-		return results
+		shares := shamir.Shares{}
+		for _, share := range sharesResult {
+			shares = append(shares, share)
+		}
+
+		gotResult, err = verifyShares(shares, (k+1)/2)
+		return
 	}
+
+	BeforeEach(func() {
+		rand.Seed(time.Now().Unix())
+	})
 
 	Context("when closing the done channel", func() {
 
-		table := []struct {
-			n uint64
+		tableNK := []struct {
+			n, k uint64
 		}{
-			{1}, {2}, {4}, {8}, {16}, {32}, {64},
+			{1, 1},
+			{3, 2},
+			{6, 4},
+			{12, 8},
+			{24, 16},
+		}
+		tableCap := []struct {
+			cap int
+		}{
+			{1},
+			{2},
+			{4},
+			{8},
+			{16},
 		}
 
-		for _, entry := range table {
-			entry := entry
+		for _, entryNK := range tableNK {
+			entryNK := entryNK
 
-			Context(fmt.Sprintf("when n = %v", entry.n), func() {
-				It("should clean up and shutdown", func(doneT Done) {
-					defer close(doneT)
+			for _, entryCap := range tableCap {
+				entryCap := entryCap
 
-					tasks := init(entry.n, 1, 1)
-					done := make(chan struct{})
+				Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
+					It("should shutdown and clean up", func(doneT Done) {
+						defer close(doneT)
 
-					co.ParBegin(
-						func() {
-							run(done, tasks)
-						},
-						func() {
-							close(done)
-						})
+						multipliers := init(entryNK.n, entryNK.k, entryCap.cap)
+						done := make(chan struct{})
+						results := make(chan Result)
+
+						co.ParBegin(
+							func() {
+								run(done, results, multipliers, 0.0, 0)
+							},
+							func() {
+								close(done)
+							})
+					})
 				})
-			})
+			}
 		}
 	})
 
@@ -167,6 +183,7 @@ var _ = Describe("Multipliers", func() {
 		tableNK := []struct {
 			n, k uint64
 		}{
+			{1, 1},
 			{3, 2},
 			{6, 4},
 			{12, 8},
@@ -189,53 +206,12 @@ var _ = Describe("Multipliers", func() {
 				entryCap := entryCap
 
 				Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
-					It("should multiply two field elements", func(doneT Done) {
+					It("should use secure multiparty computations to multiply", func(doneT Done) {
 						defer close(doneT)
 
-						mathRand.Seed(time.Now().UnixNano())
-						multipliers := init(entryNK.n, entryNK.k, entryCap.cap)
-
-						done := make(chan struct{})
-						co.ParBegin(
-							func() {
-								run(done, multipliers)
-							},
-							func() {
-								defer GinkgoRecover()
-
-								messageID, err := randomMessageID()
-								Expect(err).To(BeNil())
-								expectedResult := multiply(messageID, multipliers, entryNK.n, entryNK.k)
-
-								results := routeMessages(done, multipliers, 0)
-								mulShares := map[uint64]shamir.Share{}
-								func() {
-									// Close the done channel when we are
-									// finished collecting results
-									defer close(done)
-
-									// Expect to collect a result from each Rnger
-									for result := range results {
-										mulShares[result.Share.Index()] = result.Share
-										if len(mulShares) == int(entryNK.n) {
-											return
-										}
-									}
-								}()
-
-								// Extract the Shamir's secret shares from the results
-								shares := shamir.Shares{}
-								for _, mulShare := range mulShares {
-									shares = append(shares, mulShare)
-								}
-
-								// Reconstruct the secret using different subsets
-								// of shares and expect that all reconstructed
-								// secrets are equal
-								result, err := verifyShares(shares, entryNK.n, entryNK.k)
-								Expect(err).To(BeNil())
-								Expect(result.Eq(expectedResult)).To(BeTrue())
-							})
+						expectedResult, gotResult, err := runMultiplication(entryNK.n, entryNK.k, entryCap.cap, 0.0, 0)
+						Expect(err).To(BeNil())
+						Expect(expectedResult.Eq(gotResult)).To(BeTrue())
 					})
 				})
 			}
@@ -262,9 +238,9 @@ var _ = Describe("Multipliers", func() {
 			{1024},
 		}
 		tableFailureRate := []struct {
-			failureRate int
+			failureRate float64
 		}{
-			{1}, {5}, {10}, {15}, {20},
+			{0.01}, {0.05}, {0.10}, {0.15}, {0.20}, {0.25}, {0.30}, {0.35}, {0.40}, {0.45}, {0.50},
 		}
 
 		for _, entryNK := range tableNK {
@@ -278,53 +254,21 @@ var _ = Describe("Multipliers", func() {
 
 					Context(fmt.Sprintf("when the failure rate of the network is %v%%", entryFailureRate.failureRate), func() {
 						Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
-							It("should multiply two private variables", func(doneT Done) {
+
+							It("should use secure multiparty computations to multiply", func(doneT Done) {
 								defer close(doneT)
 
-								mathRand.Seed(time.Now().UnixNano())
-								multipliers := init(entryNK.n, entryNK.k, entryCap.cap)
+								expectedResult, gotResult, err := runMultiplication(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k))
+								Expect(err).To(BeNil())
+								Expect(expectedResult.Eq(gotResult)).To(BeTrue())
+							})
 
-								done := make(chan struct{})
-								co.ParBegin(
-									func() {
-										run(done, multipliers)
-									},
-									func() {
-										defer GinkgoRecover()
+							It("should result in consistent shares", func(doneT Done) {
+								defer close(doneT)
 
-										messageID, err := randomMessageID()
-										Expect(err).To(BeNil())
-										expectedMul := multiply(messageID, multipliers, entryNK.n, entryNK.k)
-
-										results := routeMessages(done, multipliers, entryFailureRate.failureRate)
-										mulShares := map[uint64]shamir.Share{}
-										func() {
-											// Close the done channel when we are
-											// finished collecting results
-											defer close(done)
-
-											// Expect to collect a result from each Rnger
-											for result := range results {
-												mulShares[result.Share.Index()] = result.Share
-												if len(mulShares) == int(entryNK.k) {
-													return
-												}
-											}
-										}()
-
-										// Extract the Shamir's secret shares from the results
-										shares := shamir.Shares{}
-										for _, mulShare := range mulShares {
-											shares = append(shares, mulShare)
-										}
-
-										// Reconstruct the secret using different subsets
-										// of shares and expect that all reconstructed
-										// secrets are equal
-										mul, err := verifyShares(shares, entryNK.k, entryNK.k/2)
-										Expect(err).To(BeNil())
-										Expect(mul.Eq(expectedMul)).To(BeTrue())
-									})
+								expectedResult, gotResult, err := runMultiplication(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, (int(entryNK.n-entryNK.k)+1)/2)
+								Expect(err).To(BeNil())
+								Expect(expectedResult.Eq(gotResult)).To(BeTrue())
 							})
 						})
 					})
