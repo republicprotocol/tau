@@ -88,6 +88,8 @@ var _ = Describe("Multipliers", func() {
 		σShares := shamir.Split(σPoly, n)
 
 		co.ParForAll(tasks, func(i int) {
+			// Send the mul twice, with a delay, to trigger the short-circuit result
+			tasks[i].IO().InputWriter() <- NewMul(messageID, shamir.Shares{xShares[i]}, shamir.Shares{yShares[i]}, shamir.Shares{ρShares[i]}, shamir.Shares{σShares[i]})
 			tasks[i].IO().InputWriter() <- NewMul(messageID, shamir.Shares{xShares[i]}, shamir.Shares{yShares[i]}, shamir.Shares{ρShares[i]}, shamir.Shares{σShares[i]})
 		})
 

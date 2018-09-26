@@ -14,9 +14,9 @@ type multiplier struct {
 
 	n, k uint64
 
-	muls    map[task.MessageID]Mul
-	opens   map[task.MessageID]map[uint64]OpenMul
-	results map[task.MessageID]Result
+	muls      map[task.MessageID]Mul
+	mulShares map[task.MessageID]map[uint64]BroadcastMulShares
+	results   map[task.MessageID]Result
 }
 
 func New(index, n, k uint64, cap int) task.Task {
@@ -29,9 +29,9 @@ func newMultiplier(index, n, k uint64, cap int) *multiplier {
 
 		n: n, k: k,
 
-		muls:    map[task.MessageID]Mul{},
-		opens:   map[task.MessageID]map[uint64]OpenMul{},
-		results: map[task.MessageID]Result{},
+		muls:      map[task.MessageID]Mul{},
+		mulShares: map[task.MessageID]map[uint64]BroadcastMulShares{},
+		results:   map[task.MessageID]Result{},
 	}
 }
 
@@ -41,7 +41,7 @@ func (multiplier *multiplier) Reduce(message task.Message) task.Message {
 	case Mul:
 		return multiplier.mul(message)
 
-	case OpenMul:
+	case BroadcastMulShares:
 		return multiplier.tryOpenMul(message)
 
 	default:
@@ -63,22 +63,22 @@ func (multiplier *multiplier) mul(message Mul) task.Message {
 		shares[b] = share.Add(message.ρs[b])
 	})
 
-	mul := NewOpenMul(message.MessageID, multiplier.index, shares)
+	mulShares := NewBroadcastMulShares(message.MessageID, multiplier.index, shares)
 
 	return task.NewMessageBatch([]task.Message{
-		multiplier.tryOpenMul(mul),
-		mul,
+		multiplier.tryOpenMul(mulShares),
+		mulShares,
 	})
 }
 
-func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
-	if _, ok := multiplier.opens[message.MessageID]; !ok {
-		multiplier.opens[message.MessageID] = map[uint64]OpenMul{}
+func (multiplier *multiplier) tryOpenMul(message BroadcastMulShares) task.Message {
+	if _, ok := multiplier.mulShares[message.MessageID]; !ok {
+		multiplier.mulShares[message.MessageID] = map[uint64]BroadcastMulShares{}
 	}
-	multiplier.opens[message.MessageID][message.From] = message
+	multiplier.mulShares[message.MessageID][message.From] = message
 
 	// Do not continue if there is an insufficient number of shares
-	if uint64(len(multiplier.opens[message.MessageID])) < multiplier.k {
+	if uint64(len(multiplier.mulShares[message.MessageID])) < multiplier.k {
 		return nil
 	}
 	// Do not continue if we have not received a signal to open
@@ -97,7 +97,7 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 		sharesCache := make([]shamir.Share, multiplier.n)
 
 		n := 0
-		for _, opening := range multiplier.opens[message.MessageID] {
+		for _, opening := range multiplier.mulShares[message.MessageID] {
 			sharesCache[n] = opening.Shares[b]
 			n++
 		}
@@ -114,17 +114,17 @@ func (multiplier *multiplier) tryOpenMul(message OpenMul) task.Message {
 
 	multiplier.results[message.MessageID] = result
 	delete(multiplier.muls, message.MessageID)
-	delete(multiplier.opens, message.MessageID)
+	delete(multiplier.mulShares, message.MessageID)
 
 	return result
 }
 
 // A Mul message signals to a Multiplier that it should open intermediate
-// multiplication shares with other Multipliers. Before receiving a Mul
-// message for a particular task.MessageID, a Multiplier will still accept OpenMul
-// messages related to the task.MessageID. However, a Multiplier will not produce a
-// Result for a particular task.MessageID until the respective Mul message is
-// received.
+// multiplication shares with other Multipliers. Before receiving a Mul message
+// for a particular task.MessageID, a Multiplier will still accept
+// BroadcastMulShares messages related to the task.MessageID. However, a
+// Multiplier will not produce a Result for a particular task.MessageID until
+// the respective Mul message is received.
 type Mul struct {
 	task.MessageID
 
@@ -143,33 +143,33 @@ func NewMul(id task.MessageID, xs, ys, ρs, σs []shamir.Share) Mul {
 func (message Mul) IsMessage() {
 }
 
-// An OpenMul message is used by a Multiplier to accept and store intermediate
-// multiplication shares so that the respective multiplication can be completed.
-// An OpenMul message is related to other OpenMul messages, and to a Mul
-// message, by its task.MessageID.
-type OpenMul struct {
+// A BroadcastMulShares message is used by a Multiplier to accept and store
+// intermediate multiplication shares so that the respective multiplication can
+// be completed. A BroadcastMulShares message is related to other
+// BroadcastMulShares messages, and to a Mul message, by its task.MessageID.
+type BroadcastMulShares struct {
 	task.MessageID
 
 	From   uint64
 	Shares []shamir.Share
 }
 
-// NewOpenMul returns a new OpenMul message.
-func NewOpenMul(id task.MessageID, from uint64, shares []shamir.Share) OpenMul {
-	return OpenMul{
+// NewBroadcastMulShares returns a new BroadcastMulShares message.
+func NewBroadcastMulShares(id task.MessageID, from uint64, shares []shamir.Share) BroadcastMulShares {
+	return BroadcastMulShares{
 		id, from, shares,
 	}
 }
 
-// IsMessage implements the Message interface for OpenMul.
-func (message OpenMul) IsMessage() {
+// IsMessage implements the Message interface for BroadcastMulShares.
+func (message BroadcastMulShares) IsMessage() {
 }
 
-// A Result message is produced by a Multiplier after it has received (a) a
-// Mul message, and (b) a sufficient threshold of OpenMul messages with
-// the same task.MessageID. The order in which it receives the Mul message and the
-// OpenMul messages does not affect the production of a Result. A Result message
-// is related to a Mul message by its task.MessageID.
+// A Result message is produced by a Multiplier after it has received (a) a Mul
+// message, and (b) a sufficient threshold of BroadcastMulShares messages with
+// the same task.MessageID. The order in which it receives the Mul message and
+// the BroadcastMulShares messages does not affect the production of a Result. A
+// Result message is related to a Mul message by its task.MessageID.
 type Result struct {
 	task.MessageID
 
