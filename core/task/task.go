@@ -52,7 +52,10 @@ type Task interface {
 	IO() IO
 }
 
-// Children is a slice of Tasks.
+// Tasks is a slice.
+type Tasks []Task
+
+// Children is a slice used to store the children of a Task.
 type Children []Task
 
 type task struct {
