@@ -19,7 +19,7 @@ type rnger struct {
 	scheme pedersen.Pedersen
 	index  uint64
 
-	n, k, t uint64
+	n, k uint64
 
 	genRns      map[task.MessageID]GenerateRn
 	genRnTuples map[task.MessageID]GenerateRnTuple
@@ -28,16 +28,16 @@ type rnger struct {
 	results     map[task.MessageID]Result
 }
 
-func New(scheme pedersen.Pedersen, index, n, k, t uint64, cap int) task.Task {
-	return task.New(task.NewIO(cap), newRnger(scheme, index, n, k, t))
+func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
+	return task.New(task.NewIO(cap), newRnger(scheme, index, n, k))
 }
 
-func newRnger(scheme pedersen.Pedersen, index, n, k, t uint64) *rnger {
+func newRnger(scheme pedersen.Pedersen, index, n, k uint64) *rnger {
 	return &rnger{
 		scheme: scheme,
 		index:  index,
 
-		n: n, k: k, t: t,
+		n: n, k: k,
 
 		genRns:      map[task.MessageID]GenerateRn{},
 		genRnTuples: map[task.MessageID]GenerateRnTuple{},
@@ -84,7 +84,7 @@ func (rnger *rnger) generateRn(message GenerateRn) task.Message {
 
 		// Generate k/2 threshold shares for the random number
 		rn := rnger.scheme.SecretField().Random()
-		σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+		σShares := vss.Share(&rnger.scheme, rn, rnger.n, (rnger.k+1)/2)
 		for _, σShare := range σShares {
 			share := σShare.Share()
 			σSharesMaps[b][share.Index()] = σShare
@@ -108,7 +108,7 @@ func (rnger *rnger) generateRnZero(message GenerateRnZero) task.Message {
 		σSharesMaps[b] = make(map[uint64]vss.VShare, rnger.n)
 
 		// Generate k/2 threshold shares for the random number
-		σShares := vss.Share(&rnger.scheme, zero, rnger.n, rnger.k/2)
+		σShares := vss.Share(&rnger.scheme, zero, rnger.n, (rnger.k+1)/2)
 		for _, σShare := range σShares {
 			share := σShare.Share()
 			σSharesMaps[b][share.Index()] = σShare
@@ -144,7 +144,7 @@ func (rnger *rnger) generateRnTuple(message GenerateRnTuple) task.Message {
 			},
 			func() {
 				// Generate k/2 threshold shares for the same random number
-				σShares := vss.Share(&rnger.scheme, rn, rnger.n, rnger.k/2)
+				σShares := vss.Share(&rnger.scheme, rn, rnger.n, (rnger.k+1)/2)
 				for _, σShare := range σShares {
 					share := σShare.Share()
 					σSharesMaps[b][share.Index()] = σShare
@@ -168,7 +168,7 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 	rnger.rnShares[message.MessageID][message.From] = message
 
 	// Do not continue if there is an insufficient number of messages
-	if uint64(len(rnger.rnShares[message.MessageID])) < rnger.t {
+	if uint64(len(rnger.rnShares[message.MessageID])) < rnger.k/2 {
 		return nil
 	}
 	// Do not continue if we have not received a signal to generate a random
@@ -188,6 +188,9 @@ func (rnger *rnger) tryBuildRnShareProposals(message RnShares) task.Message {
 }
 
 func (rnger *rnger) acceptRnShare(message ProposeRnShare) task.Message {
+	if rnger.index != message.To {
+		return nil
+	}
 
 	result := NewResult(message.MessageID, message.Rhos, message.Sigmas)
 	rnger.results[message.MessageID] = result
@@ -209,7 +212,7 @@ func (rnger *rnger) buildRnShareProposals(message RnShares) []task.Message {
 	for i := 0; i < len(ρCommitments); i++ {
 		ρCommitments[i] = one
 	}
-	σCommitments := make(algebra.FpElements, rnger.k/2)
+	σCommitments := make(algebra.FpElements, (rnger.k+1)/2)
 	for i := 0; i < len(σCommitments); i++ {
 		σCommitments[i] = one
 	}
@@ -261,4 +264,96 @@ func (rnger *rnger) buildRnShareProposals(message RnShares) []task.Message {
 	}
 
 	return rnShareProposals
+}
+
+type GenerateRn struct {
+	task.MessageID
+	batch int
+}
+
+// NewGenerateRn creates a new GenerateRn message.
+func NewGenerateRn(id task.MessageID, batch int) GenerateRn {
+	return GenerateRn{id, batch}
+}
+
+// IsMessage implements the Message interface for GenerateRn.
+func (message GenerateRn) IsMessage() {
+}
+
+type GenerateRnZero struct {
+	task.MessageID
+	batch int
+}
+
+// NewGenerateRnZero creates a new GenerateRnZero message.
+func NewGenerateRnZero(id task.MessageID, batch int) GenerateRnZero {
+	return GenerateRnZero{id, batch}
+}
+
+// IsMessage implements the Message interface for GenerateRnZero.
+func (message GenerateRnZero) IsMessage() {
+}
+
+type GenerateRnTuple struct {
+	task.MessageID
+	batch int
+}
+
+// NewGenerateRnTuple creates a new GenerateRnTuple message.
+func NewGenerateRnTuple(id task.MessageID, batch int) GenerateRnTuple {
+	return GenerateRnTuple{id, batch}
+}
+
+// IsMessage implements the Message interface for GenerateRnTuple.
+func (message GenerateRnTuple) IsMessage() {
+}
+
+type RnShares struct {
+	task.MessageID
+
+	From   uint64
+	Rhos   []map[uint64]vss.VShare
+	Sigmas []map[uint64]vss.VShare
+}
+
+// NewRnShares returns a new RnShares message.
+func NewRnShares(id task.MessageID, from uint64, ρs, σs []map[uint64]vss.VShare) RnShares {
+	return RnShares{id, from, ρs, σs}
+}
+
+// IsMessage implements the Message interface for RnShares.
+func (message RnShares) IsMessage() {
+}
+
+type ProposeRnShare struct {
+	task.MessageID
+
+	To     uint64
+	Rhos   []vss.VShare
+	Sigmas []vss.VShare
+}
+
+// NewProposeRnShare returns a new ProposeRnShare message.
+func NewProposeRnShare(id task.MessageID, to uint64, ρs, σs []vss.VShare) ProposeRnShare {
+	return ProposeRnShare{id, to, ρs, σs}
+}
+
+// IsMessage implements the Message interface for ProposeRnShare.
+func (message ProposeRnShare) IsMessage() {
+}
+
+type Result struct {
+	task.MessageID
+
+	Rhos   []vss.VShare
+	Sigmas []vss.VShare
+}
+
+// NewResult returns a new Result message.
+func NewResult(id task.MessageID, ρs, σs []vss.VShare) Result {
+	return Result{id, ρs, σs}
+}
+
+// IsMessage implements the Message interface for Result.
+func (message Result) IsMessage() {
 }

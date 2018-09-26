@@ -1,17 +1,15 @@
 package rng_test
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
-	mathRand "math/rand"
+	"math/rand"
 	"time"
 
 	"github.com/republicprotocol/co-go"
-	"github.com/republicprotocol/oro-go/core/collection/buffer"
-	"github.com/republicprotocol/oro-go/core/vm/task"
+	"github.com/republicprotocol/oro-go/core/task"
+	"github.com/republicprotocol/oro-go/core/taskutils"
 	"github.com/republicprotocol/oro-go/core/vss/algebra"
 	"github.com/republicprotocol/oro-go/core/vss/pedersen"
 	"github.com/republicprotocol/oro-go/core/vss/shamir"
@@ -23,423 +21,380 @@ import (
 
 var _ = Describe("Random number generators", func() {
 
-	P := big.NewInt(8589934583)
-	Q := big.NewInt(4294967291)
-	G := algebra.NewFpElement(big.NewInt(592772542), P)
-	H := algebra.NewFpElement(big.NewInt(4799487786), P)
-	SecretField := algebra.NewField(Q)
-	PedersenScheme := pedersen.New(G, H, SecretField)
-	BufferLimit := 64
+	p := big.NewInt(8589934583)
+	q := big.NewInt(4294967291)
+	g := algebra.NewFpElement(big.NewInt(592772542), p)
+	h := algebra.NewFpElement(big.NewInt(4799487786), p)
+	fp := algebra.NewField(q)
+	scheme := pedersen.New(g, h, fp)
 
-	// initPlayers for a secure multi-party computation network. These players
-	// will communicate to run the secure random number generation algorithm.
-	initPlayers := func(n, k, t uint, bufferCap int) ([]task.Task, []buffer.ReaderWriter, []buffer.ReaderWriter) {
-		// Initialis the players
-		rngers := make([]task.Task, n)
-		inputs := make([]buffer.ReaderWriter, n)
-		outputs := make([]buffer.ReaderWriter, n)
-		for i := uint(0); i < n; i++ {
-			inputs[i] = buffer.NewReaderWriter(bufferCap)
-			outputs[i] = buffer.NewReaderWriter(bufferCap)
-			rngers[i] = New(inputs[i], outputs[i], Address(i), Address(0), PedersenScheme, n, k, t, bufferCap)
+	init := func(n, k uint64, cap int) task.Tasks {
+		ts := make(task.Tasks, n)
+		for i := range ts {
+			ts[i] = New(scheme, uint64(i)+1, n, k, cap)
 		}
-		return rngers, inputs, outputs
+		return ts
 	}
 
-	// runPlayers unless the done channel is closed. The number of players,
-	// input channels, and output channels must match. The Address of a player
-	// must match the position of their channels.
-	runPlayers := func(done <-chan struct{}, rngers []task.Task) {
-		co.ParForAll(rngers, func(i int) {
-			rngers[i].Run(done)
-		})
-	}
+	run := func(done <-chan struct{}, results chan<- Result, ts task.Tasks, simulatedFailureRate float64, simulatedFailureLimit int) {
 
-	// runTicker will send a CheckDeadline message, once per tick duration, to
-	// all input channels. The ticker will stop after the done channel is
-	// closed.
-	runTicker := func(done <-chan struct{}, inputs []buffer.ReaderWriter, duration time.Duration) {
-		ticker := time.NewTicker(duration)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				now := time.Now()
-				co.ParForAll(inputs, func(i int) {
-					select {
-					case <-done:
-						return
-					case inputs[i].Writer() <- CheckDeadline{Time: now}:
-					}
-				})
-			}
-		}
-	}
+		rnSharesFailures := 0
+		proposeRnSharesFailures := 0
 
-	// genLeader will send a Nominate message to all input channels for the
-	// given leader. This will initiate the generation of a secure random number
-	// for all players associated with one of the input channels.
-	genLeader := func(done <-chan struct{}, leader Address, inputs []buffer.ReaderWriter, nonce Nonce) {
-		co.ParForAll(inputs, func(i int) {
-			select {
-			case <-done:
-				return
-			case inputs[i].Writer() <- Nominate{Leader: leader}:
-				if leader == Address(i) {
-					// The leader starts the random number generation
-					inputs[i].Writer() <- GenerateRn{Nonce: nonce}
+		task.New(task.NewIO(1024), task.NewReducer(func(message task.Message) task.Message {
+
+			switch message := message.(type) {
+
+			case RnShares:
+				modifiedSimulatedFailureLimit := 1
+				if rnSharesFailures >= simulatedFailureLimit {
+					modifiedSimulatedFailureLimit = 0
 				}
+				rnSharesFailures += taskutils.RouteMessage(done, message, task.Tasks{ts[0]}, simulatedFailureRate, modifiedSimulatedFailureLimit)
+
+			case ProposeRnShare:
+				modifiedSimulatedFailureLimit := 1
+				if proposeRnSharesFailures >= simulatedFailureLimit {
+					modifiedSimulatedFailureLimit = 0
+				}
+				proposeRnSharesFailures += taskutils.RouteMessage(done, message, task.Tasks{ts[message.To-1]}, simulatedFailureRate, modifiedSimulatedFailureLimit)
+
+			case Result:
+				select {
+				case <-done:
+				case results <- message:
+				}
+
+			default:
 			}
+			return nil
+
+		}), ts...).Run(done)
+	}
+
+	verifyShares := func(shares shamir.Shares, k uint64) (algebra.FpElement, error) {
+		secret, err := shamir.Join(shares)
+		if err != nil {
+			return secret, err
+		}
+		for i := 0; i < len(shares); i++ {
+			rand.Shuffle(len(shares), func(i, j int) {
+				shares[i], shares[j] = shares[j], shares[i]
+			})
+			kSecret, err := shamir.Join(shares[:k])
+			if err != nil {
+				return secret, err
+			}
+			if !secret.Eq(kSecret) {
+				return secret, errors.New("malformed shares")
+			}
+		}
+		return secret, nil
+	}
+
+	sendGenerateRnMessage := func(msgid task.MessageID, tasks []task.Task) {
+		co.ParForAll(tasks, func(i int) {
+			tasks[i].IO().InputWriter() <- NewGenerateRn(msgid, 1)
 		})
 	}
 
-	// verifyShares reconstruct to a consistent global random number. Different
-	// k sized subsets of shares are used to reconstruct a secret and an error
-	// is returned if the secrets are not equal.
-	verifyShares := func(shares shamir.Shares, n, k int64) error {
-		secret := shamir.Join(&SecretField, shares)
-		for i := int64(0); i < n-k; i++ {
-			kSecret := shamir.Join(&SecretField, shares[i:i+k])
-			if secret.Cmp(kSecret) != 0 {
-				return errors.New("malformed secret sharing")
-			}
-		}
-		return nil
+	sendGenerateRnZeroMessage := func(msgid task.MessageID, tasks []task.Task) {
+		co.ParForAll(tasks, func(i int) {
+			tasks[i].IO().InputWriter() <- NewGenerateRnZero(msgid, 1)
+		})
 	}
 
-	routeMessage := func(done <-chan (struct{}), input buffer.ReaderWriter, message buffer.Message, failureRate int) {
-		if mathRand.Intn(100) < failureRate {
-			// Simluate an unstable network connection and randomly drop
-			// messages
-			return
-		}
-		// Route LocalRnShare messages to their respective player
-		select {
-		case <-done:
-			return
-		case input.Writer() <- message:
-		}
+	sendGenerateRnTupleMessage := func(msgid task.MessageID, tasks []task.Task) {
+		co.ParForAll(tasks, func(i int) {
+			tasks[i].IO().InputWriter() <- NewGenerateRnTuple(msgid, 1)
+		})
 	}
 
-	routeMessages := func(done <-chan struct{}, inputs []buffer.ReaderWriter, outputs []buffer.ReaderWriter, failureRate int) (<-chan GlobalRnShare, <-chan Err) {
-		results := make(chan GlobalRnShare, len(outputs))
-		errs := make(chan Err, len(outputs))
+	runGenerateRn := func(n, k uint64, cap int, failureRate float64, failureRateLimit int, isZero bool) (result algebra.FpElement, err error) {
 
-		go func() {
-			defer close(results)
-			defer close(errs)
+		rngers := init(n, k, cap)
+		done := make(chan struct{})
+		results := make(chan Result)
 
-			co.ParForAll(outputs, func(i int) {
-				var message buffer.Message
-				var ok bool
+		msgid := taskutils.RandomMessageID()
+		if isZero {
+			sendGenerateRnZeroMessage(msgid, rngers)
+		} else {
+			sendGenerateRnMessage(msgid, rngers)
+		}
+		sharesResult := map[uint64]shamir.Share{}
 
-				for {
-					select {
-					case <-done:
-						return
-					case message, ok = <-outputs[i].Reader():
-						if !ok {
-							return
-						}
-					}
-
-					modifiedFailureRate := failureRate
-					switch message := message.(type) {
-					case ProposeRn:
-						if message.To == message.From {
-							modifiedFailureRate = 0
-						}
-						routeMessage(done, inputs[message.To], message, modifiedFailureRate)
-
-					case LocalRnShares:
-						if message.To == message.From {
-							modifiedFailureRate = 0
-						}
-						routeMessage(done, inputs[message.To], message, modifiedFailureRate)
-
-					case ProposeGlobalRnShare:
-						if message.To == message.From {
-							modifiedFailureRate = 0
-						}
-						routeMessage(done, inputs[message.To], message, modifiedFailureRate)
-
-					case GlobalRnShare:
-						select {
-						case <-done:
-						case results <- message:
-						}
-
-					case Err:
-						select {
-						case <-done:
-						case errs <- message:
-						}
+		co.ParBegin(
+			func() {
+				run(done, results, rngers, failureRate, failureRateLimit)
+			},
+			func() {
+				defer close(done)
+				for result := range results {
+					share := result.Sigmas[0].Share()
+					sharesResult[share.Index()] = share
+					if len(sharesResult) == int(n)-failureRateLimit {
+						break
 					}
 				}
 			})
-		}()
 
-		return results, errs
+		shares := shamir.Shares{}
+		for _, share := range sharesResult {
+			shares = append(shares, share)
+		}
+
+		result, err = verifyShares(shares, (k+1)/2)
+		return
 	}
+
+	runGenerateRnTuple := func(n, k uint64, cap int, failureRate float64, failureRateLimit int) (ρResult, σResult algebra.FpElement, err error) {
+
+		rngers := init(n, k, cap)
+		done := make(chan struct{})
+		results := make(chan Result)
+
+		sendGenerateRnTupleMessage(taskutils.RandomMessageID(), rngers)
+		ρSharesResult := map[uint64]shamir.Share{}
+		σSharesResult := map[uint64]shamir.Share{}
+
+		co.ParBegin(
+			func() {
+				run(done, results, rngers, failureRate, failureRateLimit)
+			},
+			func() {
+				defer close(done)
+				for result := range results {
+					ρShare := result.Rhos[0].Share()
+					σShare := result.Sigmas[0].Share()
+					ρSharesResult[ρShare.Index()] = ρShare
+					σSharesResult[σShare.Index()] = σShare
+					if len(ρSharesResult) == int(n)-failureRateLimit {
+						break
+					}
+				}
+			})
+
+		ρShares := shamir.Shares{}
+		σShares := shamir.Shares{}
+		for i := range ρSharesResult {
+			ρShares = append(ρShares, ρSharesResult[i])
+			σShares = append(σShares, σSharesResult[i])
+		}
+		ρResult, err = verifyShares(ρShares, k)
+		if err != nil {
+			return
+		}
+		σResult, err = verifyShares(σShares, (k+1)/2)
+		return
+	}
+
+	BeforeEach(func() {
+		rand.Seed(time.Now().Unix())
+	})
 
 	Context("when closing the done channel", func() {
-		It("should clean up and shutdown", func(doneT Done) {
-			defer close(doneT)
 
-			input := buffer.NewReaderWriter(BufferLimit)
-			output := buffer.NewReaderWriter(BufferLimit)
-			rnger := New(input, output, 0, 0, PedersenScheme, 1, 1, 1, 1)
-
-			done := make(chan (struct{}))
-			co.ParBegin(
-				func() {
-					rnger.Run(done)
-				},
-				func() {
-					close(done)
-				})
-		})
-	})
-
-	Context("when closing the input channel", func() {
-		It("should clean up and shutdown", func(doneT Done) {
-			defer close(doneT)
-
-			input := buffer.NewReaderWriter(BufferLimit)
-			output := buffer.NewReaderWriter(BufferLimit)
-			rnger := New(input, output, 0, 0, PedersenScheme, 1, 1, 1, 1)
-
-			done := make(chan (struct{}))
-			co.ParBegin(
-				func() {
-					rnger.Run(done)
-				},
-				func() {
-					close(input)
-				})
-		})
-	})
-
-	Context("when running the secure random number generation algorithm in a fully connected network", func() {
-
-		table := []struct {
-			n, k      uint
-			bufferCap int
+		tableNK := []struct {
+			n, k uint64
 		}{
-			{3, 2, BufferLimit}, {3, 2, BufferLimit * 2}, {3, 2, BufferLimit * 3}, {3, 2, BufferLimit * 4},
-			{6, 4, BufferLimit}, {6, 4, BufferLimit * 2}, {6, 4, BufferLimit * 3}, {6, 4, BufferLimit * 4},
-			{12, 8, BufferLimit}, {12, 8, BufferLimit * 2}, {12, 8, BufferLimit * 3}, {12, 8, BufferLimit * 4},
-			{24, 16, BufferLimit}, {24, 16, BufferLimit * 2}, {24, 16, BufferLimit * 3}, {24, 16, BufferLimit * 4},
+			{1, 1},
+			{3, 2},
+			{6, 4},
+			{12, 8},
+			{24, 16},
 		}
-
-		for _, entry := range table {
-			entry := entry
-
-			Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entry.n, entry.k, entry.bufferCap), func() {
-				It("should produce consistent global random number shares", func(doneT Done) {
-					defer close(doneT)
-
-					mathRand.Seed(time.Now().UnixNano())
-					rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.k/2, entry.bufferCap)
-
-					// Nonce that will be used to identify the secure random
-					// number
-					nonce := Nonce{}
-					n, err := rand.Read(nonce[:])
-					Expect(n).To(Equal(len(nonce)))
-					Expect(err).To(BeNil())
-
-					done := make(chan (struct{}))
-
-					co.ParBegin(
-						func() {
-							// Run the players until the done channel is closed
-							runPlayers(done, rngers)
-						},
-						func() {
-							// Run a globally timer for all players
-							runTicker(done, inputs, 10*time.Millisecond)
-						},
-						func() {
-							defer GinkgoRecover()
-
-							// Nominate a random leader and instruct the leader
-							// to generate a random number
-							leader := Address(mathRand.Uint64() % uint64(entry.n))
-							genLeader(done, leader, inputs, nonce)
-
-							failureRate := 0
-							results, errs := routeMessages(done, inputs, outputs, failureRate)
-
-							globalRnShares := map[Address]GlobalRnShare{}
-							co.ParBegin(
-								func() {
-									// Close the done channel when we are
-									// finished collecting results
-									defer close(done)
-
-									// Expect to collect a result from each Rnger
-									for result := range results {
-										globalRnShares[result.From] = result
-										if len(globalRnShares) == int(entry.n) {
-											return
-										}
-									}
-								},
-								func() {
-									for err := range errs {
-										Expect(err).To(BeNil())
-									}
-								})
-
-							// Extract the Shamir's secret shares from the results
-							shares := shamir.Shares{}
-							for _, globalRnShare := range globalRnShares {
-								shares = append(shares, globalRnShare.Share)
-							}
-
-							// Reconstruct the secret using different subsets
-							// of shares and expect that all reconstructed
-							// secrets are equal
-							err := verifyShares(shares, int64(entry.n), int64(entry.k))
-							Expect(err).To(BeNil())
-						})
-				})
-			})
-		}
-	})
-
-	Context("when running the secure random number generation algorithm in a partially connected network", func() {
-
-		table := []struct {
-			n, k, t                uint
-			bufferCap, failureRate int
+		tableCap := []struct {
+			cap int
 		}{
-			// Failure rate = 1%
-			{12, 8, 4, BufferLimit, 1}, {12, 8, 4, BufferLimit * 2, 1}, {12, 8, 4, BufferLimit * 3, 1}, {12, 8, 4, BufferLimit * 4, 1},
-			{24, 16, 8, BufferLimit, 1}, {24, 16, 8, BufferLimit * 2, 1}, {24, 16, 8, BufferLimit * 3, 1}, {24, 16, 8, BufferLimit * 4, 1},
-			{48, 32, 16, BufferLimit, 1}, {48, 32, 16, BufferLimit * 2, 1}, {48, 32, 16, BufferLimit * 3, 1}, {48, 32, 16, BufferLimit * 4, 1},
-
-			// Failure rate = 5%
-			{12, 8, 4, BufferLimit, 5}, {12, 8, 4, BufferLimit * 2, 5}, {12, 8, 4, BufferLimit * 3, 5}, {12, 8, 4, BufferLimit * 4, 5},
-			{24, 16, 8, BufferLimit, 5}, {24, 16, 8, BufferLimit * 2, 5}, {24, 16, 8, BufferLimit * 3, 5}, {24, 16, 8, BufferLimit * 4, 5},
-			{48, 32, 16, BufferLimit, 5}, {48, 32, 16, BufferLimit * 2, 5}, {48, 32, 16, BufferLimit * 3, 5}, {48, 32, 16, BufferLimit * 4, 5},
-
-			// Failure rate = 10%
-			{12, 8, 4, BufferLimit, 10}, {12, 8, 4, BufferLimit * 2, 10}, {12, 8, 4, BufferLimit * 3, 10}, {12, 8, 4, BufferLimit * 4, 10},
-			{24, 16, 8, BufferLimit, 10}, {24, 16, 8, BufferLimit * 2, 10}, {24, 16, 8, BufferLimit * 3, 10}, {24, 16, 8, BufferLimit * 4, 10},
-			{48, 32, 16, BufferLimit, 10}, {48, 32, 16, BufferLimit * 2, 10}, {48, 32, 16, BufferLimit * 3, 10}, {48, 32, 16, BufferLimit * 4, 10},
-
-			// Failure rate = 15%
-			{12, 8, 4, BufferLimit, 15}, {12, 8, 4, BufferLimit * 2, 15}, {12, 8, 4, BufferLimit * 3, 15}, {12, 8, 4, BufferLimit * 4, 15},
-			{24, 16, 8, BufferLimit, 15}, {24, 16, 8, BufferLimit * 2, 15}, {24, 16, 8, BufferLimit * 3, 15}, {24, 16, 8, BufferLimit * 4, 15},
-			{48, 32, 16, BufferLimit, 15}, {48, 32, 16, BufferLimit * 2, 15}, {48, 32, 16, BufferLimit * 3, 15}, {48, 32, 16, BufferLimit * 4, 15},
-
-			// Failure rate = 20%
-			{12, 8, 4, BufferLimit, 20}, {12, 8, 4, BufferLimit * 2, 20}, {12, 8, 4, BufferLimit * 3, 20}, {12, 8, 4, BufferLimit * 4, 20},
-			{24, 16, 8, BufferLimit, 20}, {24, 16, 8, BufferLimit * 2, 20}, {24, 16, 8, BufferLimit * 3, 20}, {24, 16, 8, BufferLimit * 4, 20},
-			{48, 32, 16, BufferLimit, 20}, {48, 32, 16, BufferLimit * 2, 20}, {48, 32, 16, BufferLimit * 3, 20}, {48, 32, 16, BufferLimit * 4, 20},
+			{1},
+			{2},
+			{4},
+			{8},
+			{16},
 		}
 
-		for _, entry := range table {
-			entry := entry
+		for _, entryNK := range tableNK {
+			entryNK := entryNK
 
-			Context(fmt.Sprintf("when messages fail to send %v%% of the time", entry.failureRate), func() {
-				Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entry.n, entry.k, entry.bufferCap), func() {
-					It("should produce consistent global random number shares", func(doneT Done) {
+			for _, entryCap := range tableCap {
+				entryCap := entryCap
+
+				Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
+					It("should shutdown and clean up", func(doneT Done) {
 						defer close(doneT)
 
-						mathRand.Seed(time.Now().UnixNano())
-						rngers, inputs, outputs := initPlayers(entry.n, entry.k, entry.k/2, entry.bufferCap)
-
-						// Nonce that will be used to identify the secure random
-						// number
-						nonce := Nonce{}
-						n, err := rand.Read(nonce[:])
-						Expect(n).To(Equal(len(nonce)))
-						Expect(err).To(BeNil())
-
-						done := make(chan (struct{}))
+						rngers := init(entryNK.n, entryNK.k, entryCap.cap)
+						done := make(chan struct{})
+						results := make(chan Result)
 
 						co.ParBegin(
 							func() {
-								// Run the players until the done channel is closed
-								runPlayers(done, rngers)
+								run(done, results, rngers, 0.0, 0)
 							},
 							func() {
-								// Run a globally timer for all players
-								runTicker(done, inputs, 10*time.Millisecond)
-							},
-							func() {
-								defer GinkgoRecover()
-
-								// Nominate a random leader and instruct the leader
-								// to generate a random number
-								leader := Address(mathRand.Uint64() % uint64(entry.n))
-								genLeader(done, leader, inputs, nonce)
-
-								failureRate := entry.failureRate
-								results, errs := routeMessages(done, inputs, outputs, failureRate)
-
-								successRate := 1.0 - float64(failureRate)*0.01
-								successRate = successRate * successRate * successRate // 3 rounds of messaging can fail
-								successRate = successRate * float64(entry.n)
-								if uint(successRate) < entry.k {
-									successRate = float64(entry.k)
-								}
-
-								errMessages := []Err{}
-								globalRnSharesMessages := map[Address]GlobalRnShare{}
-								co.ParBegin(
-									func() {
-										// Close the done channel when we are
-										// finished collecting results
-										defer close(done)
-
-										// Expect to collect a result from each Rnger
-										timeout := time.After(500 * time.Millisecond)
-
-									EarlyExit:
-										for {
-											select {
-											case <-timeout:
-												break EarlyExit
-											case result := <-results:
-												globalRnSharesMessages[result.From] = result
-												if len(globalRnSharesMessages) >= int(successRate) {
-													return
-												}
-											}
-										}
-									},
-									func() {
-										for err := range errs {
-											log.Printf("[error] %v", err.Error())
-											errMessages = append(errMessages, err)
-										}
-									})
-
-								// Expect the super majority to hold shares
-								Expect(len(errMessages)).To(BeNumerically("<=", 0))
-								Expect(len(globalRnSharesMessages)).To(BeNumerically(">=", int(entry.k)))
-
-								// Extract the Shamir's secret shares from the results
-								shares := shamir.Shares{}
-								for _, globalRnShare := range globalRnSharesMessages {
-									shares = append(shares, globalRnShare.Share)
-								}
-
-								// Reconstruct the secret using different subsets
-								// of shares and expect that all reconstructed
-								// secrets are equal
-								err := verifyShares(shares, int64(len(shares)), int64(entry.k))
-								Expect(err).To(BeNil())
+								close(done)
 							})
 					})
 				})
-			})
+			}
+		}
+	})
+
+	Context("when generating a random number in a fully connected network", func() {
+
+		tableNK := []struct {
+			n, k uint64
+		}{
+			{1, 1},
+			{3, 2},
+			{6, 4},
+			{12, 8},
+			{24, 16},
+		}
+		tableCap := []struct {
+			cap int
+		}{
+			{64},
+			{128},
+			{256},
+			{512},
+			{1024},
+		}
+
+		for _, entryNK := range tableNK {
+			entryNK := entryNK
+
+			for _, entryCap := range tableCap {
+				entryCap := entryCap
+
+				Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
+					Context("when generation a random number", func() {
+						It("should use secure multiparty computations to generate a random number", func(doneT Done) {
+							defer close(doneT)
+
+							_, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, 0.0, 0, false)
+							Expect(err).To(BeNil())
+						})
+					})
+
+					Context("when generation a random zero", func() {
+						It("should use secure multiparty computations to generate a random zero", func(doneT Done) {
+							defer close(doneT)
+
+							zero, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, 0.0, 0, true)
+							Expect(err).To(BeNil())
+							Expect(zero.IsZero()).To(BeTrue())
+						})
+					})
+
+					Context("when generation a random tuple", func() {
+						It("should use secure multiparty computations to generate a random tuple", func(doneT Done) {
+							defer close(doneT)
+
+							ρResult, σResult, err := runGenerateRnTuple(entryNK.n, entryNK.k, entryCap.cap, 0.0, 0)
+							Expect(err).To(BeNil())
+							Expect(ρResult.Eq(σResult)).To(BeTrue())
+						})
+					})
+				})
+			}
+		}
+	})
+
+	Context("when generating a random number in a partially connected network", func() {
+
+		tableNK := []struct {
+			n, k uint64
+		}{
+			{3, 2},
+			{6, 4},
+			{12, 8},
+			{24, 16},
+		}
+		tableCap := []struct {
+			cap int
+		}{
+			{64},
+			{128},
+			{256},
+			{512},
+			{1024},
+		}
+		tableFailureRate := []struct {
+			failureRate float64
+		}{
+			{0.01}, {0.05}, {0.10}, {0.15}, {0.20}, {0.25}, {0.30}, {0.35}, {0.40}, {0.45}, {0.50},
+		}
+
+		for _, entryNK := range tableNK {
+			entryNK := entryNK
+
+			for _, entryCap := range tableCap {
+				entryCap := entryCap
+
+				for _, entryFailureRate := range tableFailureRate {
+					entryFailureRate := entryFailureRate
+
+					Context(fmt.Sprintf("when the failure rate of the network is %v%%", entryFailureRate.failureRate), func() {
+						Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entryNK.n, entryNK.k, entryCap.cap), func() {
+
+							Context("when generation a random number", func() {
+								It("should use secure multiparty computations to generate a random number", func(doneT Done) {
+									defer close(doneT)
+
+									_, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k), false)
+									Expect(err).To(BeNil())
+								})
+
+								It("should result in consistent shares", func(doneT Done) {
+									defer close(doneT)
+
+									_, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k)/2, false)
+									Expect(err).To(BeNil())
+								})
+							})
+
+							Context("when generation a random zero", func() {
+								It("should use secure multiparty computations to generate a random zero", func(doneT Done) {
+									defer close(doneT)
+
+									zero, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k), true)
+									Expect(err).To(BeNil())
+									Expect(zero.IsZero()).To(BeTrue())
+								})
+
+								It("should result in consistent shares", func(doneT Done) {
+									defer close(doneT)
+
+									zero, err := runGenerateRn(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k)/2, true)
+									Expect(err).To(BeNil())
+									Expect(zero.IsZero()).To(BeTrue())
+								})
+							})
+
+							Context("when generation a random tuple", func() {
+								It("should use secure multiparty computations to generate a random tuple", func(doneT Done) {
+									defer close(doneT)
+									defer GinkgoRecover()
+
+									ρResult, σResult, err := runGenerateRnTuple(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k))
+									Expect(err).To(BeNil())
+									Expect(ρResult.Eq(σResult)).To(BeTrue())
+								})
+
+								It("should result in consistent shares", func(doneT Done) {
+									defer close(doneT)
+
+									ρResult, σResult, err := runGenerateRnTuple(entryNK.n, entryNK.k, entryCap.cap, entryFailureRate.failureRate, int(entryNK.n-entryNK.k)/4)
+									Expect(err).To(BeNil())
+									Expect(ρResult.Eq(σResult)).To(BeTrue())
+								})
+							})
+						})
+					})
+				}
+			}
 		}
 	})
 })
