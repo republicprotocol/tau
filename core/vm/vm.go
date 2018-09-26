@@ -23,7 +23,7 @@ type VM struct {
 }
 
 func New(scheme pedersen.Pedersen, index, n, k uint64, cap int) task.Task {
-	rng := rng.New(scheme, index, n, k, n-k, cap)
+	rng := rng.New(scheme, index, n, k, cap)
 	mul := mul.New(index, n, k, cap)
 	open := open.New(index, n, k, cap)
 	vm := newVM(scheme, index, rng, mul, open)
@@ -60,14 +60,14 @@ func (vm *VM) Reduce(message task.Message) task.Message {
 	case rng.Result:
 		return vm.recvInternalRngResult(message)
 
-	case mul.OpenMul:
-		return vm.recvInternalOpenMul(message)
+	case mul.BroadcastMulShares:
+		return vm.recvInternalOpenBroadcastMulShares(message)
 
 	case mul.Result:
 		return vm.recvInternalMulResult(message)
 
-	case open.Open:
-		return vm.recvInternalOpen(message)
+	case open.BroadcastShares:
+		return vm.recvInternalOpenBroadcastShares(message)
 
 	case open.Result:
 		return vm.recvInternalOpenResult(message)
@@ -111,7 +111,7 @@ func (vm *VM) execIntent(process proc.Proc, intent proc.Intent) task.Message {
 
 	case *asm.InstOpenState:
 		vm.intents[intent.IID()] = intent
-		vm.open.Send(open.NewSignal(iidToMsgid(intent.IID()), state.Shares))
+		vm.open.Send(open.NewOpen(iidToMsgid(intent.IID()), state.Shares))
 
 	case *asm.InstExitState:
 		return NewResult(state.Values)
@@ -128,10 +128,10 @@ func (vm *VM) invoke(message RemoteProcedureCall) task.Message {
 	case rng.RnShares, rng.ProposeRnShare:
 		vm.rng.Send(message)
 
-	case mul.OpenMul:
+	case mul.BroadcastMulShares:
 		vm.mul.Send(message)
 
-	case open.Open:
+	case open.BroadcastShares:
 		vm.open.Send(message)
 
 	default:
@@ -174,7 +174,7 @@ func (vm *VM) recvInternalRngResult(message rng.Result) task.Message {
 	return vm.exec(NewExec(vm.procs[msgidToPid(message.MessageID)]))
 }
 
-func (vm *VM) recvInternalOpenMul(message mul.OpenMul) task.Message {
+func (vm *VM) recvInternalOpenBroadcastMulShares(message mul.BroadcastMulShares) task.Message {
 	return NewRemoteProcedureCall(message)
 }
 
@@ -196,7 +196,7 @@ func (vm *VM) recvInternalMulResult(message mul.Result) task.Message {
 	return vm.exec(NewExec(vm.procs[msgidToPid(message.MessageID)]))
 }
 
-func (vm *VM) recvInternalOpen(message open.Open) task.Message {
+func (vm *VM) recvInternalOpenBroadcastShares(message open.BroadcastShares) task.Message {
 	return NewRemoteProcedureCall(message)
 }
 
@@ -234,4 +234,41 @@ func msgidToPid(msgid task.MessageID) proc.ID {
 	pid := proc.ID{}
 	copy(pid[:32], msgid[:32])
 	return pid
+}
+
+type Exec struct {
+	process proc.Proc
+}
+
+func NewExec(process proc.Proc) Exec {
+	return Exec{
+		process,
+	}
+}
+
+func (message Exec) IsMessage() {
+}
+
+type Result struct {
+	Values []asm.Value
+}
+
+func NewResult(values []asm.Value) Result {
+	return Result{values}
+}
+
+func (message Result) IsMessage() {
+}
+
+type RemoteProcedureCall struct {
+	Message task.Message
+}
+
+func NewRemoteProcedureCall(message task.Message) RemoteProcedureCall {
+	return RemoteProcedureCall{
+		message,
+	}
+}
+
+func (message RemoteProcedureCall) IsMessage() {
 }

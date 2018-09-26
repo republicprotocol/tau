@@ -293,6 +293,40 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 60)
 
+				It("should generate private random zeros", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					id := [32]byte{0x69}
+
+					for i := range vms {
+						mem := asm.MemoryMapper(asm.Alloc(1), 1)
+						code := []asm.Inst{
+							asm.InstGenerateRnZero(mem.Offset(0), 1),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
+						}
+						proc := proc.New(id, code)
+
+						vms[i].IO().InputWriter() <- NewExec(proc)
+					}
+
+					for range vms {
+						var actual TestResult
+						Eventually(results, 60).Should(Receive(&actual))
+
+						zero, ok := actual.result.Values[0].(asm.ValuePublic)
+						Expect(ok).To(BeTrue())
+						Expect(zero.Value.IsZero()).To(BeTrue())
+					}
+				}, 60)
+
 				It("should multiply private numbers", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
