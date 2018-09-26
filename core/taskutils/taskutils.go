@@ -11,8 +11,7 @@ import (
 // 1.0] defines the probability that a message will be dropped for any one task.
 // A simulated failure limit is an absolute limit on the number of simulated
 // failures that can happen.
-func RouteMessage(done <-chan struct{}, msg task.Message, ts task.Tasks, simulatedFailureRate float64, simulatedFailureLimit int) {
-	var simulatedFailures int
+func RouteMessage(done <-chan struct{}, msg task.Message, ts task.Tasks, simulatedFailureRate float64, simulatedFailureLimit int) (simulatedFailures int) {
 	for _, t := range ts {
 		if simulatedFailures < simulatedFailureLimit && rand.Float64() < simulatedFailureRate {
 			simulatedFailures++
@@ -20,6 +19,7 @@ func RouteMessage(done <-chan struct{}, msg task.Message, ts task.Tasks, simulat
 		}
 		t.IO().InputWriter() <- msg
 	}
+	return
 }
 
 // RandomMessageID returns a random message ID. This function panics if an error
