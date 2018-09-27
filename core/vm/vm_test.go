@@ -341,7 +341,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should add public numbers with private numbers", func(doneT Done) {
 								defer close(doneT)
@@ -372,7 +372,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should generate private random numbers", func(doneT Done) {
 								defer close(doneT)
@@ -402,7 +402,7 @@ var _ = Describe("Virtual Machine", func() {
 										}
 										Expect(res.Value.Eq(expected.Value)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should generate private random zeros", func(doneT Done) {
 								defer close(doneT)
@@ -428,7 +428,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.IsZero()).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should multiply private numbers", func(doneT Done) {
 								defer close(doneT)
@@ -460,7 +460,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							tableNotGate := []struct {
 								a, out algebra.FpElement
@@ -677,7 +677,7 @@ var _ = Describe("Virtual Machine", func() {
 												Expect(res.Value.Eq(entryPropGenGate.g)).To(BeTrue())
 											}
 										})
-								}, 5)
+								})
 							}
 
 							tableCLA := []struct {
@@ -740,7 +740,7 @@ var _ = Describe("Virtual Machine", func() {
 												Expect(res.Value.Eq(entryCLAGate.gg)).To(BeTrue())
 											}
 										})
-								}, 5)
+								})
 							}
 
 							tableBits := []struct {
@@ -790,7 +790,7 @@ var _ = Describe("Virtual Machine", func() {
 												Expect(res.Value.Eq(zero)).To(BeTrue())
 											}
 										})
-								}, 10)
+								}, 30)
 							}
 
 							It("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
@@ -863,7 +863,7 @@ var _ = Describe("Virtual Machine", func() {
 											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
 										}
 									})
-							}, 5)
+							}, 30)
 
 							It("should compute integers modulo powers of two", func(doneT Done) {
 								defer close(doneT)
@@ -909,7 +909,7 @@ var _ = Describe("Virtual Machine", func() {
 
 										Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
 									})
-							}, 5)
+							}, 30)
 
 							It("should generate random bits", func(doneT Done) {
 								defer close(doneT)
@@ -1006,7 +1006,7 @@ var _ = Describe("Virtual Machine", func() {
 											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
 										}
 									})
-							}, 10)
+							}, 30)
 						})
 					})
 				}
