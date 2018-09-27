@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"time"
 
 	"github.com/republicprotocol/oro-go/core/task"
 	"github.com/republicprotocol/oro-go/core/vm/asm"
@@ -116,6 +117,7 @@ var _ = Describe("Virtual Machine", func() {
 
 		for _, entry := range table {
 			entry := entry
+			rand.Seed(time.Now().Unix())
 
 			Context(fmt.Sprintf("when n = %v, k = %v and buffer capacity = %v", entry.n, entry.k, entry.bufferCap), func() {
 				It("should add public numbers", func(doneT Done) {
@@ -732,7 +734,7 @@ var _ = Describe("Virtual Machine", func() {
 					}
 				}, 10)
 
-				It("should correctly compute the carry out operation on a 63 bit number", func(doneT Done) {
+				It("should correctly compute the carry out operation on a k bit number", func(doneT Done) {
 					defer close(doneT)
 					defer GinkgoRecover()
 
@@ -744,16 +746,14 @@ var _ = Describe("Virtual Machine", func() {
 
 					id := [32]byte{0x69}
 
-					a := big.NewInt(rand.Int63())
-					b := big.NewInt(rand.Int63()) // Set(a)
-					notB := ^b.Uint64()
-					notB += 1
-
+					k := uint64(1)
+					a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+					b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
 					aTemp := big.NewInt(0).Set(a)
-					bTemp := big.NewInt(0).SetUint64(notB)
+					bTemp := big.NewInt(0).Set(b)
 
-					aBits := make([]algebra.FpElement, 63)
-					bBits := make([]algebra.FpElement, 63)
+					aBits := make([]algebra.FpElement, k)
+					bBits := make([]algebra.FpElement, k)
 					for i := range aBits {
 						ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
 						br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
@@ -766,11 +766,11 @@ var _ = Describe("Virtual Machine", func() {
 					aVals := make([][]asm.ValuePrivate, entry.n)
 					bVals := make([][]asm.ValuePrivate, entry.n)
 					for i := range aVals {
-						aVals[i] = make([]asm.ValuePrivate, 63)
-						bVals[i] = make([]asm.ValuePrivate, 63)
+						aVals[i] = make([]asm.ValuePrivate, k)
+						bVals[i] = make([]asm.ValuePrivate, k)
 					}
 
-					for i := 0; i < 63; i++ {
+					for i := uint64(0); i < k; i++ {
 						polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), aBits[i])
 						polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), bBits[i])
 						sharesA := shamir.Split(polyA, uint64(entry.n))
@@ -786,14 +786,14 @@ var _ = Describe("Virtual Machine", func() {
 
 					for i := range vms {
 						mem := asm.Alloc(1)
-						memA := asm.Alloc(63)
-						memB := asm.Alloc(63)
-						for j := 0; j < 63; j++ {
+						memA := asm.Alloc(int(k))
+						memB := asm.Alloc(int(k))
+						for j := 0; j < int(k); j++ {
 							memA.Store(j, aVals[i][j])
 							memB.Store(j, bVals[i][j])
 						}
 						code := []asm.Inst{
-							macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), true, 63, SecretField),
+							macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(k), SecretField),
 							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 							asm.InstExit(mem.Offset(0), 1),
 						}
@@ -807,10 +807,91 @@ var _ = Describe("Virtual Machine", func() {
 						Eventually(results, 10).Should(Receive(&actual))
 						res, ok := actual.result.Values[0].(asm.ValuePublic)
 						Expect(ok).To(BeTrue())
-						if a.Cmp(b) == -1 {
-							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
-						} else {
+						if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(uint64(1)<<k)) >= 0 {
 							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
+						} else {
+							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
+						}
+					}
+				}, 10)
+
+				FIt("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
+					defer close(doneT)
+					defer GinkgoRecover()
+
+					done := make(chan (struct{}))
+					vms := initVMs(entry.n, entry.k, entry.bufferCap)
+					results := runVMs(done, vms)
+
+					defer close(done)
+
+					id := [32]byte{0x69}
+
+					k := uint64(1)
+					a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+					b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+					aTemp := big.NewInt(0).Set(a)
+					bTemp := big.NewInt(0).Set(b)
+
+					aBits := make([]algebra.FpElement, k)
+					bBits := make([]algebra.FpElement, k)
+					for i := range aBits {
+						ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
+						br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
+						aBits[i] = SecretField.NewInField(ar)
+						bBits[i] = SecretField.NewInField(br)
+						aTemp.Div(aTemp, big.NewInt(2))
+						bTemp.Div(bTemp, big.NewInt(2))
+					}
+
+					aVals := make([][]asm.ValuePrivate, entry.n)
+					bVals := make([][]asm.ValuePrivate, entry.n)
+					for i := range aVals {
+						aVals[i] = make([]asm.ValuePrivate, k)
+						bVals[i] = make([]asm.ValuePrivate, k)
+					}
+
+					for i := uint64(0); i < k; i++ {
+						polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), aBits[i])
+						polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), bBits[i])
+						sharesA := shamir.Split(polyA, uint64(entry.n))
+						sharesB := shamir.Split(polyB, uint64(entry.n))
+
+						for j, share := range sharesA {
+							aVals[j][i] = asm.NewValuePrivate(share)
+						}
+						for j, share := range sharesB {
+							bVals[j][i] = asm.NewValuePrivate(share)
+						}
+					}
+
+					for i := range vms {
+						mem := asm.Alloc(1)
+						memA := asm.Alloc(int(k))
+						memB := asm.Alloc(int(k))
+						for j := 0; j < int(k); j++ {
+							memA.Store(j, aVals[i][j])
+							memB.Store(j, bVals[i][j])
+						}
+						code := []asm.Inst{
+							macro.BitwiseLT(mem.Offset(0), memA.Offset(0), memB.Offset(0), int(k), SecretField),
+							asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+							asm.InstExit(mem.Offset(0), 1),
+						}
+						proc := proc.New(id, code)
+
+						vms[i].IO().InputWriter() <- NewExec(proc)
+					}
+
+					for _ = range vms {
+						var actual TestResult
+						Eventually(results, 10).Should(Receive(&actual))
+						res, ok := actual.result.Values[0].(asm.ValuePublic)
+						Expect(ok).To(BeTrue())
+						if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(uint64(1)<<k)) >= 0 {
+							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
+						} else {
+							Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
 						}
 					}
 				}, 10)
@@ -919,7 +1000,7 @@ var _ = Describe("Virtual Machine", func() {
 					shares := shamir.Split(poly, uint64(entry.n))
 
 					negCase := randomBool()
-					negCase = false // FIXME: Get tests passing for negative
+					negCase = true // FIXME: Get tests passing for negative
 					if negCase {
 						a = a.Neg()
 					}
