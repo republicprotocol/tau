@@ -249,17 +249,6 @@ func NewExec(process proc.Proc) Exec {
 func (message Exec) IsMessage() {
 }
 
-type Result struct {
-	Values []asm.Value
-}
-
-func NewResult(values []asm.Value) Result {
-	return Result{values}
-}
-
-func (message Result) IsMessage() {
-}
-
 type RemoteProcedureCall struct {
 	Message task.Message
 }
@@ -271,4 +260,15 @@ func NewRemoteProcedureCall(message task.Message) RemoteProcedureCall {
 }
 
 func (message RemoteProcedureCall) IsMessage() {
+}
+
+type Result struct {
+	Values []asm.Value
+}
+
+func NewResult(values []asm.Value) Result {
+	return Result{values}
+}
+
+func (message Result) IsMessage() {
 }

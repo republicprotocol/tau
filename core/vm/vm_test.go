@@ -212,18 +212,14 @@ var _ = Describe("Virtual Machine", func() {
 		}{
 			{1, 1},
 			{3, 2},
-			{6, 4},
 			{12, 8},
-			{24, 16},
 		}
 		tableCap := []struct {
 			cap int
 		}{
-			{1},
-			{2},
-			{4},
-			{8},
-			{16},
+			{32},
+			{256},
+			{1024},
 		}
 
 		for _, entryNK := range tableNK {
@@ -260,23 +256,19 @@ var _ = Describe("Virtual Machine", func() {
 		}{
 			{1, 1},
 			{3, 2},
-			{6, 4},
 			{12, 8},
-			{24, 16},
 		}
 		tableCap := []struct {
 			cap int
 		}{
-			{64},
-			{128},
+			{32},
 			{256},
-			{512},
 			{1024},
 		}
 		tableFailureRate := []struct {
 			failureRate float64
 		}{
-			{0.0}, {0.01}, {0.05}, {0.10}, {0.15}, {0.20}, {0.25}, {0.30}, {0.35}, {0.40}, {0.45}, {0.50},
+			{0.0}, {0.05}, {0.10}, {0.20}, {0.40},
 		}
 
 		for _, entryNK := range tableNK {
@@ -349,7 +341,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should add public numbers with private numbers", func(doneT Done) {
 								defer close(doneT)
@@ -380,7 +372,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should generate private random numbers", func(doneT Done) {
 								defer close(doneT)
@@ -410,7 +402,7 @@ var _ = Describe("Virtual Machine", func() {
 										}
 										Expect(res.Value.Eq(expected.Value)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should generate private random zeros", func(doneT Done) {
 								defer close(doneT)
@@ -436,7 +428,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.IsZero()).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							It("should multiply private numbers", func(doneT Done) {
 								defer close(doneT)
@@ -468,7 +460,7 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(ok).To(BeTrue())
 										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
-							}, 5)
+							})
 
 							tableNotGate := []struct {
 								a, out algebra.FpElement
@@ -685,7 +677,7 @@ var _ = Describe("Virtual Machine", func() {
 												Expect(res.Value.Eq(entryPropGenGate.g)).To(BeTrue())
 											}
 										})
-								}, 5)
+								})
 							}
 
 							tableCLA := []struct {
@@ -748,34 +740,40 @@ var _ = Describe("Virtual Machine", func() {
 												Expect(res.Value.Eq(entryCLAGate.gg)).To(BeTrue())
 											}
 										})
-								}, 5)
+								})
 							}
 
-							for bits := 1; bits <= 63; bits++ {
-								bits := bits
-								It(fmt.Sprintf("should correctly compute the carry out operation on a %v-bit number", bits), func(doneT Done) {
+							tableBits := []struct {
+								bits int
+							}{
+								{1}, {2}, {3}, {6}, {7}, {14}, {15}, {30}, {31},
+							}
+							for _, entryBits := range tableBits {
+								entryBits := entryBits
+
+								It(fmt.Sprintf("should correctly compute the carry out operation on a %v-bit number", entryBits.bits), func(doneT Done) {
 									defer close(doneT)
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
-									b := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
-									as := splitToBits(a, bits, entryNK.n, (entryNK.k+1)/2)
-									bs := splitToBits(b, bits, entryNK.n, (entryNK.k+1)/2)
+									a := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(entryBits.bits)))
+									b := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(entryBits.bits)))
+									as := splitToBits(a, entryBits.bits, entryNK.n, (entryNK.k+1)/2)
+									bs := splitToBits(b, entryBits.bits, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
 										entryNK.n, entryNK.k, entryCap.cap,
 										entryFailureRate.failureRate,
 										func(i int) proc.Proc {
 											mem := asm.Alloc(1)
-											memA := asm.Alloc(bits)
-											memB := asm.Alloc(bits)
-											for j := 0; j < bits; j++ {
+											memA := asm.Alloc(entryBits.bits)
+											memB := asm.Alloc(entryBits.bits)
+											for j := 0; j < entryBits.bits; j++ {
 												memA.Store(j, as[i][j])
 												memB.Store(j, bs[i][j])
 											}
 											return proc.New(pid, []asm.Inst{
-												macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(bits), fp),
+												macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(entryBits.bits), fp),
 												asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 												asm.InstExit(mem.Offset(0), 1),
 											})
@@ -786,13 +784,13 @@ var _ = Describe("Virtual Machine", func() {
 											res, ok := value.(asm.ValuePublic)
 											Expect(ok).To(BeTrue())
 
-											if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(1<<uint64(bits))) >= 0 {
+											if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(1<<uint64(entryBits.bits))) >= 0 {
 												Expect(res.Value.Eq(one)).To(BeTrue())
 											} else {
 												Expect(res.Value.Eq(zero)).To(BeTrue())
 											}
 										})
-								}, 10)
+								}, 30)
 							}
 
 							It("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
@@ -865,17 +863,17 @@ var _ = Describe("Virtual Machine", func() {
 											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
 										}
 									})
-							}, 10)
+							}, 30)
 
 							It("should compute integers modulo powers of two", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								k := uint64(25)
+								bits := uint64(25)
 								m := uint64(16)
 								kappa := 5
-								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (bits - 1))))
 
 								negCase := randomBool()
 								if negCase {
@@ -890,7 +888,7 @@ var _ = Describe("Virtual Machine", func() {
 										mem := asm.Alloc(1)
 										return proc.New(pid, []asm.Inst{
 											asm.InstMove(mem, shares[i]),
-											macro.Mod2M(mem, mem, int(k), int(m), kappa, fp),
+											macro.Mod2M(mem, mem, int(bits), int(m), kappa, fp),
 											asm.InstOpen(mem, mem, 1),
 											asm.InstExit(mem, 1),
 										})
@@ -911,7 +909,7 @@ var _ = Describe("Virtual Machine", func() {
 
 										Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
 									})
-							}, 5)
+							}, 30)
 
 							It("should generate random bits", func(doneT Done) {
 								defer close(doneT)
@@ -976,10 +974,10 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								k := uint64(30)
+								bits := uint64(30)
 								kappa := 1
-								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-								b := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (bits - 1))))
+								b := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (bits - 1))))
 								sharesA := split(a, uint64(entryNK.n), (entryNK.k+1)/2)
 								sharesB := split(b, uint64(entryNK.n), (entryNK.k+1)/2)
 
@@ -991,7 +989,7 @@ var _ = Describe("Virtual Machine", func() {
 										return proc.New(pid, []asm.Inst{
 											asm.InstMove(mem.Offset(0), sharesA[i]),
 											asm.InstMove(mem.Offset(1), sharesB[i]),
-											macro.LT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(k), kappa, fp),
+											macro.LT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(bits), kappa, fp),
 											asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 											asm.InstExit(mem.Offset(0), 1),
 										})
@@ -1008,11 +1006,19 @@ var _ = Describe("Virtual Machine", func() {
 											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
 										}
 									})
-							}, 10)
+							}, 30)
 						})
 					})
 				}
 			}
 		}
+	})
+
+	Context("when creating messages", func() {
+		It("should implement the message interface for all messages", func() {
+			Exec{}.IsMessage()
+			RemoteProcedureCall{}.IsMessage()
+			Result{}.IsMessage()
+		})
 	})
 })
