@@ -730,7 +730,7 @@ var _ = Describe("Virtual Machine", func() {
 								}, 5)
 							}
 
-							FIt("should correctly compute the carry out operation on a k bit number", func(doneT Done) {
+							It("should correctly compute the carry out operation on a k bit number", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
@@ -802,86 +802,77 @@ var _ = Describe("Virtual Machine", func() {
 									})
 							}, 10)
 
-							// FIt("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
-							// 	defer close(doneT)
-							// 	defer GinkgoRecover()
+							It("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
+								defer close(doneT)
+								defer GinkgoRecover()
 
-							// 	done := make(chan (struct{}))
-							// 	vms := initVMs(entryNK.n, entryNK.k, entryCap.cap)
-							// 	results := runVMs(done, vms)
+								pid := randomProcID()
+								k := uint64(63)
+								a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+								b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
+								aTemp := big.NewInt(0).Set(a)
+								bTemp := big.NewInt(0).Set(b)
 
-							// 	defer close(done)
+								aBits := make([]algebra.FpElement, k)
+								bBits := make([]algebra.FpElement, k)
+								for i := range aBits {
+									ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
+									br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
+									aBits[i] = fp.NewInField(ar)
+									bBits[i] = fp.NewInField(br)
+									aTemp.Div(aTemp, big.NewInt(2))
+									bTemp.Div(bTemp, big.NewInt(2))
+								}
 
-							// 	id := [32]byte{0x69}
+								aVals := make([][]asm.ValuePrivate, entryNK.n)
+								bVals := make([][]asm.ValuePrivate, entryNK.n)
+								for i := range aVals {
+									aVals[i] = make([]asm.ValuePrivate, k)
+									bVals[i] = make([]asm.ValuePrivate, k)
+								}
 
-							// 	k := uint64(1)
-							// 	a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-							// 	b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-							// 	aTemp := big.NewInt(0).Set(a)
-							// 	bTemp := big.NewInt(0).Set(b)
+								for i := uint64(0); i < k; i++ {
+									sharesA := split(asm.NewValuePublic(aBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
+									sharesB := split(asm.NewValuePublic(bBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
 
-							// 	aBits := make([]algebra.FpElement, k)
-							// 	bBits := make([]algebra.FpElement, k)
-							// 	for i := range aBits {
-							// 		ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
-							// 		br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
-							// 		aBits[i] = SecretField.NewInField(ar)
-							// 		bBits[i] = SecretField.NewInField(br)
-							// 		aTemp.Div(aTemp, big.NewInt(2))
-							// 		bTemp.Div(bTemp, big.NewInt(2))
-							// 	}
+									for j, share := range sharesA {
+										aVals[j][i] = share
+									}
+									for j, share := range sharesB {
+										bVals[j][i] = share
+									}
+								}
 
-							// 	aVals := make([][]asm.ValuePrivate, entryNK.n)
-							// 	bVals := make([][]asm.ValuePrivate, entryNK.n)
-							// 	for i := range aVals {
-							// 		aVals[i] = make([]asm.ValuePrivate, k)
-							// 		bVals[i] = make([]asm.ValuePrivate, k)
-							// 	}
+								runProcess(
+									entryNK.n, entryNK.k, entryCap.cap,
+									entryFailureRate.failureRate,
+									func(i int) proc.Proc {
+										mem := asm.Alloc(1)
+										memA := asm.Alloc(int(k))
+										memB := asm.Alloc(int(k))
+										for j := 0; j < int(k); j++ {
+											memA.Store(j, aVals[i][j])
+											memB.Store(j, bVals[i][j])
+										}
+										return proc.New(pid, []asm.Inst{
+											macro.BitwiseLT(mem.Offset(0), memA.Offset(0), memB.Offset(0), int(k), fp),
+											asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+											asm.InstExit(mem.Offset(0), 1),
+										})
+									},
+									func(i int, value asm.Value) {
+										defer GinkgoRecover()
 
-							// 	for i := uint64(0); i < k; i++ {
-							// 		polyA := algebra.NewRandomPolynomial(SecretField, uint(entryNK.k/2-1), aBits[i])
-							// 		polyB := algebra.NewRandomPolynomial(SecretField, uint(entryNK.k/2-1), bBits[i])
-							// 		sharesA := shamir.Split(polyA, uint64(entryNK.n))
-							// 		sharesB := shamir.Split(polyB, uint64(entryNK.n))
+										res, ok := value.(asm.ValuePublic)
+										Expect(ok).To(BeTrue())
 
-							// 		for j, share := range sharesA {
-							// 			aVals[j][i] = asm.NewValuePrivate(share)
-							// 		}
-							// 		for j, share := range sharesB {
-							// 			bVals[j][i] = asm.NewValuePrivate(share)
-							// 		}
-							// 	}
-
-							// 	for i := range vms {
-							// 		mem := asm.Alloc(1)
-							// 		memA := asm.Alloc(int(k))
-							// 		memB := asm.Alloc(int(k))
-							// 		for j := 0; j < int(k); j++ {
-							// 			memA.Store(j, aVals[i][j])
-							// 			memB.Store(j, bVals[i][j])
-							// 		}
-							// 		code := []asm.Inst{
-							// 			macro.BitwiseLT(mem.Offset(0), memA.Offset(0), memB.Offset(0), int(k), SecretField),
-							// 			asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
-							// 			asm.InstExit(mem.Offset(0), 1),
-							// 		}
-							// 		proc := proc.New(id, code)
-
-							// 		vms[i].IO().InputWriter() <- NewExec(proc)
-							// 	}
-
-							// 	for _ = range vms {
-							// 		var actual TestResult
-							// 		Eventually(results, 10).Should(Receive(&actual))
-							// 		res, ok := actual.result.Values[0].(asm.ValuePublic)
-							// 		Expect(ok).To(BeTrue())
-							// 		if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(uint64(1)<<k)) >= 0 {
-							// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
-							// 		} else {
-							// 			Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
-							// 		}
-							// 	}
-							// }, 10)
+										if a.Cmp(b) == -1 {
+											Expect(res.Value.Eq(fp.NewInField(big.NewInt(1)))).To(BeTrue())
+										} else {
+											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
+										}
+									})
+							}, 10)
 						})
 					})
 				}
