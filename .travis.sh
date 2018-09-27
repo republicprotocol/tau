@@ -12,11 +12,19 @@ GOMAXPROCS=1 CI=true ginkgo --cover core/collection/buffer \
                                     core/vm/mul            \
                                     core/vm/open           \
                                     core/vm/rng            \
-                                    core/vm
+                                    core/vm                \
+                                    core/vss/algebra       \
+                                    core/vss/pedersen      \
+                                    core/vss/shamir        \
+                                    core/vss
 covermerge core/collection/buffer/buffer.coverprofile \
            core/collection/stack/stack.coverprofile   \
            core/vm/mul/mul.coverprofile               \
            core/vm/open/open.coverprofile             \
            core/vm/rng/rng.coverprofile               \
            core/vm/vm.coverprofile                    \
+           core/vss/algebra.coverprofile              \
+           core/vss/pedersen.coverprofile             \
+           core/vss/shamir.coverprofile               \
+           core/vss
            > oro.coverprofile
