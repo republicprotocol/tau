@@ -301,7 +301,7 @@ var _ = Describe("Finite field Elements", func() {
 					expected := big.NewInt(0).Add(lhs, rhs)
 					expected.Mod(expected, prime)
 
-					Expect(field.NewInField(lhs).Add(field.NewInField(rhs)).Eq(field.NewInField(expected))).To(BeTrue())
+					Expect(field.NewInField(lhs).Add(field.NewInField(rhs)).Value().Cmp(expected)).To(Equal(0))
 				}
 			},
 				PrimeEntries...,
