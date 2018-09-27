@@ -735,7 +735,7 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								k := uint64(1)
+								k := uint64(32)
 								a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
 								b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
 								aTemp := big.NewInt(0).Set(a)
@@ -807,7 +807,7 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								k := uint64(63)
+								k := uint64(32)
 								a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
 								b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
 								aTemp := big.NewInt(0).Set(a)
@@ -883,12 +883,12 @@ var _ = Describe("Virtual Machine", func() {
 								m := uint64(16)
 								kappa := 5
 								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
 
 								negCase := randomBool()
 								if negCase {
 									a = a.Neg()
 								}
-								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
@@ -920,7 +920,7 @@ var _ = Describe("Virtual Machine", func() {
 									})
 							}, 5)
 
-							FIt("should generate random bits", func(doneT Done) {
+							It("should generate random bits", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
