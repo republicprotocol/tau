@@ -920,7 +920,36 @@ var _ = Describe("Virtual Machine", func() {
 									})
 							}, 5)
 
-							FIt("should compute the binary representation of a number", func(doneT Done) {
+							FIt("should generate random bits", func(doneT Done) {
+								defer close(doneT)
+								defer GinkgoRecover()
+
+								pid := randomProcID()
+
+								runProcess(
+									entryNK.n, entryNK.k, entryCap.cap,
+									entryFailureRate.failureRate,
+									func(i int) proc.Proc {
+										mem := asm.Alloc(10)
+										return proc.New(pid, []asm.Inst{
+											macro.GenerateRandomBit(mem, 10, fp),
+											asm.InstOpen(mem, mem, 10),
+											asm.InstExit(mem, 10),
+										})
+									},
+									func(i int, value asm.Value) {
+										defer GinkgoRecover()
+
+										res, ok := value.(asm.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if !res.Value.IsZero() {
+											Expect(res.Value.IsOne()).To(BeTrue())
+										}
+									})
+							})
+
+							It("should compute the binary representation of a number", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
@@ -992,45 +1021,5 @@ var _ = Describe("Virtual Machine", func() {
 				}
 			}
 		}
-
-		// 			It("should generate random bits", func(doneT Done) {
-		// 				defer close(doneT)
-		// 				defer GinkgoRecover()
-
-		// 				done := make(chan (struct{}))
-		// 				vms := initVMs(entry.n, entry.k, entry.bufferCap)
-		// 				results := runVMs(done, vms)
-
-		// 				defer close(done)
-
-		// 				id := [32]byte{0x69}
-		// 				for i := range vms {
-		// 					// Generate 10 random bits
-		// 					mem := asm.Alloc(10)
-		// 					code := []asm.Inst{
-		// 						macro.GenerateRandomBit(mem, 10, SecretField),
-		// 						asm.InstOpen(mem, mem, 10),
-		// 						asm.InstExit(mem, 10),
-		// 					}
-		// 					proc := proc.New(id, code)
-
-		// 					vms[i].IO().InputWriter() <- NewExec(proc)
-		// 				}
-
-		// 				for _ = range vms {
-		// 					var actual TestResult
-		// 					Eventually(results, 10).Should(Receive(&actual))
-		// 					for _, value := range actual.result.Values {
-		// 						res, ok := value.(asm.ValuePublic)
-		// 						Expect(ok).To(BeTrue())
-
-		// 						// Expect the result to be zero or one
-		// 						if !res.Value.IsZero() {
-		// 							Expect(res.Value.IsOne()).To(BeTrue())
-		// 						}
-		// 					}
-		// 				}
-		// 			})
-
 	})
 })
