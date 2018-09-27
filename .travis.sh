@@ -26,5 +26,5 @@ covermerge core/collection/buffer/buffer.coverprofile \
            core/vss/algebra/algebra.coverprofile      \
            core/vss/pedersen/pedersen.coverprofile    \
            core/vss/shamir/shamir.coverprofile        \
-           core/vss
+           core/vss/vss.coverprofile                  \
            > oro.coverprofile
