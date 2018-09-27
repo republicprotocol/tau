@@ -260,23 +260,19 @@ var _ = Describe("Virtual Machine", func() {
 		}{
 			{1, 1},
 			{3, 2},
-			{6, 4},
 			{12, 8},
-			{24, 16},
 		}
 		tableCap := []struct {
 			cap int
 		}{
-			{64},
-			{128},
+			{32},
 			{256},
-			{512},
 			{1024},
 		}
 		tableFailureRate := []struct {
 			failureRate float64
 		}{
-			{0.0}, {0.01}, {0.05}, {0.10}, {0.15}, {0.20}, {0.25}, {0.30}, {0.35}, {0.40}, {0.45}, {0.50},
+			{0.0}, {0.05}, {0.10}, {0.20}, {0.40},
 		}
 
 		for _, entryNK := range tableNK {
@@ -751,31 +747,36 @@ var _ = Describe("Virtual Machine", func() {
 								}, 5)
 							}
 
-							for bits := 1; bits <= 63; bits++ {
-								bits := bits
-								FIt(fmt.Sprintf("should correctly compute the carry out operation on a %v-bit number", bits), func(doneT Done) {
+							tableBits := []struct {
+								bits int
+							}{
+								{1}, {2}, {3}, {6}, {7}, {14}, {15}, {30}, {31}, {62}, {63},
+							}
+							for _, entryBits := range tableBits {
+								entryBits := entryBits
+								FIt(fmt.Sprintf("should correctly compute the carry out operation on a %v-bit number", entryBits.bits), func(doneT Done) {
 									defer close(doneT)
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
-									b := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
-									as := splitToBits(a, bits, entryNK.n, (entryNK.k+1)/2)
-									bs := splitToBits(b, bits, entryNK.n, (entryNK.k+1)/2)
+									a := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(entryBits.bits)))
+									b := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(entryBits.bits)))
+									as := splitToBits(a, entryBits.bits, entryNK.n, (entryNK.k+1)/2)
+									bs := splitToBits(b, entryBits.bits, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
 										entryNK.n, entryNK.k, entryCap.cap,
 										entryFailureRate.failureRate,
 										func(i int) proc.Proc {
 											mem := asm.Alloc(1)
-											memA := asm.Alloc(bits)
-											memB := asm.Alloc(bits)
-											for j := 0; j < bits; j++ {
+											memA := asm.Alloc(entryBits.bits)
+											memB := asm.Alloc(entryBits.bits)
+											for j := 0; j < entryBits.bits; j++ {
 												memA.Store(j, as[i][j])
 												memB.Store(j, bs[i][j])
 											}
 											return proc.New(pid, []asm.Inst{
-												macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(bits), fp),
+												macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(entryBits.bits), fp),
 												asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
 												asm.InstExit(mem.Offset(0), 1),
 											})
@@ -786,7 +787,7 @@ var _ = Describe("Virtual Machine", func() {
 											res, ok := value.(asm.ValuePublic)
 											Expect(ok).To(BeTrue())
 
-											if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(1<<uint64(bits))) >= 0 {
+											if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(1<<uint64(entryBits.bits))) >= 0 {
 												Expect(res.Value.Eq(one)).To(BeTrue())
 											} else {
 												Expect(res.Value.Eq(zero)).To(BeTrue())
