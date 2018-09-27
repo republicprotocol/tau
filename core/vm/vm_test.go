@@ -920,7 +920,36 @@ var _ = Describe("Virtual Machine", func() {
 									})
 							}, 5)
 
-							FIt("should compare integers", func(doneT Done) {
+							FIt("should compute the binary representation of a number", func(doneT Done) {
+								defer close(doneT)
+								defer GinkgoRecover()
+
+								pid := randomProcID()
+								a := fp.NewInField(big.NewInt(0).SetUint64(uint64(rand.Uint32())))
+
+								runProcess(
+									entryNK.n, entryNK.k, entryCap.cap,
+									entryFailureRate.failureRate,
+									func(i int) proc.Proc {
+										mem := asm.Alloc(32)
+										return proc.New(pid, []asm.Inst{
+											asm.InstMove(mem.Offset(0), asm.NewValuePublic(a)),
+											macro.Bits(mem.Offset(0), mem.Offset(0), 32, fp),
+											asm.InstExit(mem.Offset(0), 32),
+										})
+									},
+									func(i int, value asm.Value) {
+										defer GinkgoRecover()
+
+										res, ok := value.(asm.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										expectedBit := (a.Value().Uint64() % (1 << (uint64(i) + 1))) >> uint64(i)
+										Expect(res.Value.Value().Uint64()).To(Equal(expectedBit))
+									})
+							})
+
+							It("should compare integers", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
@@ -1002,56 +1031,6 @@ var _ = Describe("Virtual Machine", func() {
 		// 					}
 		// 				}
 		// 			})
-
-		// 			It("should compute the binary representation of a number", func(doneT Done) {
-		// 				defer close(doneT)
-		// 				defer GinkgoRecover()
-
-		// 				done := make(chan (struct{}))
-		// 				vms := initVMs(entry.n, entry.k, entry.bufferCap)
-		// 				results := runVMs(done, vms)
-
-		// 				defer close(done)
-
-		// 				a := SecretField.NewInField(big.NewInt(0).SetUint64(uint64(rand.Uint32())))
-
-		// 				id := [32]byte{0x69}
-		// 				for i := range vms {
-		// 					mem := asm.Alloc(33)
-		// 					code := []asm.Inst{
-		// 						asm.InstMove(mem, asm.NewValuePublic(a)),
-		// 						macro.Bits(mem.Offset(1), mem.Offset(0), 32, SecretField),
-		// 						asm.InstExit(mem.Offset(1), 32),
-		// 					}
-		// 					proc := proc.New(id, code)
-
-		// 					vms[i].IO().InputWriter() <- NewExec(proc)
-		// 				}
-
-		// 				for _ = range vms {
-		// 					var actual TestResult
-		// 					Eventually(results, 10).Should(Receive(&actual))
-
-		// 					acc := SecretField.NewInField(big.NewInt(0))
-		// 					two := SecretField.NewInField(big.NewInt(2))
-
-		// 					for i := len(actual.result.Values) - 1; i >= 0; i-- {
-		// 						res, ok := actual.result.Values[i].(asm.ValuePublic)
-		// 						Expect(ok).To(BeTrue())
-		// 						acc = acc.Mul(two)
-		// 						acc = acc.Add(res.Value)
-
-		// 						// Expect the result to be zero or one
-		// 						if !res.Value.IsZero() {
-		// 							Expect(res.Value.IsOne()).To(BeTrue())
-		// 						}
-		// 					}
-
-		// 					Expect(acc.Eq(a)).To(BeTrue())
-		// 				}
-		// 			})
-		// 		})
-		// 	}
 
 	})
 })
