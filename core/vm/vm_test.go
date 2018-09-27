@@ -151,14 +151,35 @@ var _ = Describe("Virtual Machine", func() {
 			})
 	}
 
-	split := func(value asm.ValuePublic, n, k uint64) []asm.ValuePrivate {
-		poly := algebra.NewRandomPolynomial(fp, uint(k-1), value.Value)
+	split := func(value algebra.FpElement, n, k uint64) []asm.ValuePrivate {
+		poly := algebra.NewRandomPolynomial(fp, uint(k-1), value)
 		shares := shamir.Split(poly, n)
 		values := make([]asm.ValuePrivate, n)
 		for i := range values {
 			values[i] = asm.NewValuePrivate(shares[i])
 		}
 		return values
+	}
+
+	splitToBits := func(value *big.Int, bits int, n, k uint64) [][]asm.ValuePrivate {
+		tmp := big.NewInt(0).Set(value)
+		tmpBits := make(algebra.FpElements, bits)
+		for i := range tmpBits {
+			r := big.NewInt(0).Mod(tmp, big.NewInt(2))
+			tmpBits[i] = fp.NewInField(r)
+			tmp.Div(tmp, big.NewInt(2))
+		}
+		valuesBits := make([][]asm.ValuePrivate, n)
+		for i := range valuesBits {
+			valuesBits[i] = make([]asm.ValuePrivate, bits)
+		}
+		for i := 0; i < bits; i++ {
+			values := split(tmpBits[i], n, k)
+			for j, value := range values {
+				valuesBits[j][i] = value
+			}
+		}
+		return valuesBits
 	}
 
 	randomProcID := func() proc.ID {
@@ -304,9 +325,9 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								a, b := asm.NewValuePublic(fp.Random()), asm.NewValuePublic(fp.Random())
+								a, b := fp.Random(), fp.Random()
 								as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
-								expected := a.Add(b).(asm.ValuePublic)
+								expected := a.Add(b)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
@@ -326,7 +347,7 @@ var _ = Describe("Virtual Machine", func() {
 
 										res, ok := value.(asm.ValuePublic)
 										Expect(ok).To(BeTrue())
-										Expect(res.Value.Eq(expected.Value)).To(BeTrue())
+										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
 							}, 5)
 
@@ -335,9 +356,9 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								a, b := asm.NewValuePublic(fp.Random()), asm.NewValuePublic(fp.Random())
+								a, b := fp.Random(), fp.Random()
 								bs := split(b, entryNK.n, (entryNK.k+1)/2)
-								expected := a.Add(b).(asm.ValuePublic)
+								expected := a.Add(b)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
@@ -345,7 +366,7 @@ var _ = Describe("Virtual Machine", func() {
 									func(i int) proc.Proc {
 										mem := asm.Alloc(2)
 										return proc.New(pid, []asm.Inst{
-											asm.InstMove(mem.Offset(0), a),
+											asm.InstMove(mem.Offset(0), asm.NewValuePublic(a)),
 											asm.InstMove(mem.Offset(1), bs[i]),
 											asm.InstAdd(mem.Offset(0), mem.Offset(0), mem.Offset(1), 1),
 											asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
@@ -357,7 +378,7 @@ var _ = Describe("Virtual Machine", func() {
 
 										res, ok := value.(asm.ValuePublic)
 										Expect(ok).To(BeTrue())
-										Expect(res.Value.Eq(expected.Value)).To(BeTrue())
+										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
 							}, 5)
 
@@ -422,9 +443,9 @@ var _ = Describe("Virtual Machine", func() {
 								defer GinkgoRecover()
 
 								pid := randomProcID()
-								a, b := asm.NewValuePublic(fp.Random()), asm.NewValuePublic(fp.Random())
+								a, b := fp.Random(), fp.Random()
 								as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
-								expected := a.Mul(b).(asm.ValuePublic)
+								expected := a.Mul(b)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
@@ -445,7 +466,7 @@ var _ = Describe("Virtual Machine", func() {
 
 										res, ok := value.(asm.ValuePublic)
 										Expect(ok).To(BeTrue())
-										Expect(res.Value.Eq(expected.Value)).To(BeTrue())
+										Expect(res.Value.Eq(expected)).To(BeTrue())
 									})
 							}, 5)
 
@@ -463,7 +484,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a := asm.NewValuePublic(entryNotGate.a)
+									a := entryNotGate.a
 									as := split(a, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -504,7 +525,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a, b := asm.NewValuePublic(entryOrGate.a), asm.NewValuePublic(entryOrGate.b)
+									a, b := entryOrGate.a, entryOrGate.b
 									as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -547,7 +568,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a, b := asm.NewValuePublic(entryXorGate.a), asm.NewValuePublic(entryXorGate.b)
+									a, b := entryXorGate.a, entryXorGate.b
 									as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -590,7 +611,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a, b := asm.NewValuePublic(entryAndGate.a), asm.NewValuePublic(entryAndGate.b)
+									a, b := entryAndGate.a, entryAndGate.b
 									as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -633,7 +654,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									a, b := asm.NewValuePublic(entryPropGenGate.a), asm.NewValuePublic(entryPropGenGate.b)
+									a, b := entryPropGenGate.a, entryPropGenGate.b
 									as, bs := split(a, entryNK.n, (entryNK.k+1)/2), split(b, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -695,7 +716,7 @@ var _ = Describe("Virtual Machine", func() {
 									defer GinkgoRecover()
 
 									pid := randomProcID()
-									p1, g1, p2, g2 := asm.NewValuePublic(entryCLAGate.p1), asm.NewValuePublic(entryCLAGate.g1), asm.NewValuePublic(entryCLAGate.p2), asm.NewValuePublic(entryCLAGate.g2)
+									p1, g1, p2, g2 := entryCLAGate.p1, entryCLAGate.g1, entryCLAGate.p2, entryCLAGate.g2
 									p1s, g1s, p2s, g2s := split(p1, entryNK.n, (entryNK.k+1)/2), split(g1, entryNK.n, (entryNK.k+1)/2), split(p2, entryNK.n, (entryNK.k+1)/2), split(g2, entryNK.n, (entryNK.k+1)/2)
 
 									runProcess(
@@ -730,77 +751,49 @@ var _ = Describe("Virtual Machine", func() {
 								}, 5)
 							}
 
-							It("should correctly compute the carry out operation on a k bit number", func(doneT Done) {
-								defer close(doneT)
-								defer GinkgoRecover()
+							for bits := 1; bits <= 63; bits++ {
+								bits := bits
+								It(fmt.Sprintf("should correctly compute the carry out operation on a %v-bit number", bits), func(doneT Done) {
+									defer close(doneT)
+									defer GinkgoRecover()
 
-								pid := randomProcID()
-								k := uint64(32)
-								a := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-								b := big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << k))
-								aTemp := big.NewInt(0).Set(a)
-								bTemp := big.NewInt(0).Set(b)
+									pid := randomProcID()
+									a := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
+									b := big.NewInt(0).SetUint64(rand.Uint64() % (1 << uint64(bits)))
+									as := splitToBits(a, bits, entryNK.n, (entryNK.k+1)/2)
+									bs := splitToBits(b, bits, entryNK.n, (entryNK.k+1)/2)
 
-								aBits := make([]algebra.FpElement, k)
-								bBits := make([]algebra.FpElement, k)
-								for i := range aBits {
-									ar := big.NewInt(0).Mod(aTemp, big.NewInt(2))
-									br := big.NewInt(0).Mod(bTemp, big.NewInt(2))
-									aBits[i] = fp.NewInField(ar)
-									bBits[i] = fp.NewInField(br)
-									aTemp.Div(aTemp, big.NewInt(2))
-									bTemp.Div(bTemp, big.NewInt(2))
-								}
+									runProcess(
+										entryNK.n, entryNK.k, entryCap.cap,
+										entryFailureRate.failureRate,
+										func(i int) proc.Proc {
+											mem := asm.Alloc(1)
+											memA := asm.Alloc(bits)
+											memB := asm.Alloc(bits)
+											for j := 0; j < bits; j++ {
+												memA.Store(j, as[i][j])
+												memB.Store(j, bs[i][j])
+											}
+											return proc.New(pid, []asm.Inst{
+												macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(bits), fp),
+												asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+												asm.InstExit(mem.Offset(0), 1),
+											})
+										},
+										func(i int, value asm.Value) {
+											defer GinkgoRecover()
 
-								aVals := make([][]asm.ValuePrivate, entryNK.n)
-								bVals := make([][]asm.ValuePrivate, entryNK.n)
-								for i := range aVals {
-									aVals[i] = make([]asm.ValuePrivate, k)
-									bVals[i] = make([]asm.ValuePrivate, k)
-								}
+											res, ok := value.(asm.ValuePublic)
+											Expect(ok).To(BeTrue())
 
-								for i := uint64(0); i < k; i++ {
-									sharesA := split(asm.NewValuePublic(aBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
-									sharesB := split(asm.NewValuePublic(bBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
-
-									for j, share := range sharesA {
-										aVals[j][i] = share
-									}
-									for j, share := range sharesB {
-										bVals[j][i] = share
-									}
-								}
-
-								runProcess(
-									entryNK.n, entryNK.k, entryCap.cap,
-									entryFailureRate.failureRate,
-									func(i int) proc.Proc {
-										mem := asm.Alloc(1)
-										memA := asm.Alloc(int(k))
-										memB := asm.Alloc(int(k))
-										for j := 0; j < int(k); j++ {
-											memA.Store(j, aVals[i][j])
-											memB.Store(j, bVals[i][j])
-										}
-										return proc.New(pid, []asm.Inst{
-											macro.BitwiseCarryOut(mem.Offset(0), memA.Offset(0), memB.Offset(0), false, int(k), fp),
-											asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
-											asm.InstExit(mem.Offset(0), 1),
+											if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(1<<uint64(bits))) >= 0 {
+												Expect(res.Value.Eq(one)).To(BeTrue())
+											} else {
+												Expect(res.Value.Eq(zero)).To(BeTrue())
+											}
 										})
-									},
-									func(i int, value asm.Value) {
-										defer GinkgoRecover()
-
-										res, ok := value.(asm.ValuePublic)
-										Expect(ok).To(BeTrue())
-
-										if big.NewInt(0).Add(a, b).Cmp(big.NewInt(0).SetUint64(uint64(1)<<k)) >= 0 {
-											Expect(res.Value.Eq(fp.NewInField(big.NewInt(1)))).To(BeTrue())
-										} else {
-											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
-										}
-									})
-							}, 10)
+								}, 10)
+							}
 
 							It("should correctly compute bitwise LT on k bit numbers", func(doneT Done) {
 								defer close(doneT)
@@ -832,8 +825,8 @@ var _ = Describe("Virtual Machine", func() {
 								}
 
 								for i := uint64(0); i < k; i++ {
-									sharesA := split(asm.NewValuePublic(aBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
-									sharesB := split(asm.NewValuePublic(bBits[i]), uint64(entryNK.n), (entryNK.k+1)/2)
+									sharesA := split(aBits[i], uint64(entryNK.n), (entryNK.k+1)/2)
+									sharesB := split(bBits[i], uint64(entryNK.n), (entryNK.k+1)/2)
 
 									for j, share := range sharesA {
 										aVals[j][i] = share
@@ -888,7 +881,7 @@ var _ = Describe("Virtual Machine", func() {
 								if negCase {
 									a = a.Neg()
 								}
-								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
+								shares := split(a, uint64(entryNK.n), (entryNK.k+1)/2)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
@@ -987,8 +980,8 @@ var _ = Describe("Virtual Machine", func() {
 								kappa := 1
 								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
 								b := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-								sharesA := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
-								sharesB := split(asm.NewValuePublic(b), uint64(entryNK.n), (entryNK.k+1)/2)
+								sharesA := split(a, uint64(entryNK.n), (entryNK.k+1)/2)
+								sharesB := split(b, uint64(entryNK.n), (entryNK.k+1)/2)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
