@@ -883,12 +883,12 @@ var _ = Describe("Virtual Machine", func() {
 								m := uint64(16)
 								kappa := 5
 								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
 
 								negCase := randomBool()
 								if negCase {
 									a = a.Neg()
 								}
+								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
 
 								runProcess(
 									entryNK.n, entryNK.k, entryCap.cap,
