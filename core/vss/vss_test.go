@@ -75,9 +75,10 @@ var _ = Describe("Verifiable secret sharing", func() {
 		entry := entry
 
 		Context("when creating verifiable shares", func() {
+			fp := algebra.NewField(entry.p)
 			g := algebra.NewFpElement(entry.g, entry.p)
 			h := algebra.NewFpElement(entry.h, entry.p)
-			ped := pedersen.New(g, h)
+			ped := pedersen.New(g, h, fp)
 
 			It("should panic when there are no commitments", func() {
 				field := algebra.NewField(entry.q)
