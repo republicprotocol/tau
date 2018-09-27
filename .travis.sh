@@ -23,8 +23,8 @@ covermerge core/collection/buffer/buffer.coverprofile \
            core/vm/open/open.coverprofile             \
            core/vm/rng/rng.coverprofile               \
            core/vm/vm.coverprofile                    \
-           core/vss/algebra.coverprofile              \
-           core/vss/pedersen.coverprofile             \
-           core/vss/shamir.coverprofile               \
+           core/vss/algebra/algebra.coverprofile      \
+           core/vss/pedersen/pedersen.coverprofile    \
+           core/vss/shamir/shamir.coverprofile        \
            core/vss
            > oro.coverprofile
