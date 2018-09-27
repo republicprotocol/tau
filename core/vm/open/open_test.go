@@ -242,4 +242,12 @@ var _ = Describe("Openers", func() {
 			}
 		}
 	})
+
+	Context("when creating messages", func() {
+		It("should implement the message interface for all messages", func() {
+			Open{}.IsMessage()
+			BroadcastShares{}.IsMessage()
+			Result{}.IsMessage()
+		})
+	})
 })

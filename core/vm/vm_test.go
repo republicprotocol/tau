@@ -1072,4 +1072,12 @@ var _ = Describe("Virtual Machine", func() {
 		// 	}
 
 	})
+
+	Context("when creating messages", func() {
+		It("should implement the message interface for all messages", func() {
+			Exec{}.IsMessage()
+			RemoteProcedureCall{}.IsMessage()
+			Result{}.IsMessage()
+		})
+	})
 })

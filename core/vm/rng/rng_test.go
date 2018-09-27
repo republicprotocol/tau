@@ -397,4 +397,15 @@ var _ = Describe("Random number generators", func() {
 			}
 		}
 	})
+
+	Context("when creating messages", func() {
+		It("should implement the message interface for all messages", func() {
+			GenerateRn{}.IsMessage()
+			GenerateRnZero{}.IsMessage()
+			GenerateRnTuple{}.IsMessage()
+			RnShares{}.IsMessage()
+			ProposeRnShare{}.IsMessage()
+			Result{}.IsMessage()
+		})
+	})
 })
