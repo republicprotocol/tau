@@ -212,18 +212,14 @@ var _ = Describe("Virtual Machine", func() {
 		}{
 			{1, 1},
 			{3, 2},
-			{6, 4},
 			{12, 8},
-			{24, 16},
 		}
 		tableCap := []struct {
 			cap int
 		}{
-			{1},
-			{2},
-			{4},
-			{8},
-			{16},
+			{32},
+			{256},
+			{1024},
 		}
 
 		for _, entryNK := range tableNK {
@@ -750,7 +746,7 @@ var _ = Describe("Virtual Machine", func() {
 							tableBits := []struct {
 								bits int
 							}{
-								{1}, {2}, {3}, {6}, {7}, {14}, {15}, {30}, {31}, {62}, {63},
+								{1}, {2}, {3}, {6}, {7}, {14}, {15}, {30}, {31},
 							}
 							for _, entryBits := range tableBits {
 								entryBits := entryBits
