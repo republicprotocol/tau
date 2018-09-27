@@ -176,9 +176,9 @@ var _ = Describe("Virtual Machine", func() {
 		return pid
 	}
 
-	// randomBool := func() bool {
-	// 	return rand.Float32() < 0.5
-	// }
+	randomBool := func() bool {
+		return rand.Float32() < 0.5
+	}
 
 	BeforeEach(func() {
 		rand.Seed(time.Now().Unix())
@@ -873,6 +873,52 @@ var _ = Describe("Virtual Machine", func() {
 										}
 									})
 							}, 10)
+
+							FIt("should compute integers modulo powers of two", func(doneT Done) {
+								defer close(doneT)
+								defer GinkgoRecover()
+
+								pid := randomProcID()
+								k := uint64(25)
+								m := uint64(16)
+								kappa := 5
+								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+
+								negCase := randomBool()
+								if negCase {
+									a = a.Neg()
+								}
+								shares := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
+
+								runProcess(
+									entryNK.n, entryNK.k, entryCap.cap,
+									entryFailureRate.failureRate,
+									func(i int) proc.Proc {
+										mem := asm.Alloc(1)
+										return proc.New(pid, []asm.Inst{
+											asm.InstMove(mem, shares[i]),
+											macro.Mod2M(mem, mem, int(k), int(m), kappa, fp),
+											asm.InstOpen(mem, mem, 1),
+											asm.InstExit(mem, 1),
+										})
+									},
+									func(i int, value asm.Value) {
+										defer GinkgoRecover()
+
+										res, ok := value.(asm.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										twoPow := big.NewInt(0).SetUint64(uint64(1) << m)
+										var mod *big.Int
+										if negCase {
+											mod = big.NewInt(0).Mod(big.NewInt(0).Neg(a.Neg().Value()), twoPow)
+										} else {
+											mod = big.NewInt(0).Mod(a.Value(), twoPow)
+										}
+
+										Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
+									})
+							}, 5)
 						})
 					})
 				}
@@ -965,61 +1011,6 @@ var _ = Describe("Virtual Machine", func() {
 		// 					Expect(acc.Eq(a)).To(BeTrue())
 		// 				}
 		// 			})
-
-		// 			It("should compute integers modulo powers of two", func(doneT Done) {
-		// 				defer close(doneT)
-		// 				defer GinkgoRecover()
-
-		// 				done := make(chan (struct{}))
-		// 				vms := initVMs(entry.n, entry.k, entry.bufferCap)
-		// 				results := runVMs(done, vms)
-
-		// 				defer close(done)
-
-		// 				k := uint64(16)
-		// 				m := uint64(15)
-		// 				a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-		// 				poly := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
-		// 				shares := shamir.Split(poly, uint64(entry.n))
-
-		// 				negCase := randomBool()
-		// 				negCase = false // FIXME: Get tests passing for negative
-		// 				if negCase {
-		// 					a = a.Neg()
-		// 				}
-
-		// 				id := [32]byte{0x69}
-		// 				for i := range vms {
-		// 					mem := asm.Alloc(1)
-
-		// 					code := []asm.Inst{
-		// 						asm.InstMove(mem, asm.NewValuePrivate(shares[i])),
-		// 						macro.Mod2M(mem, mem, int(k), int(m), 10, SecretField),
-		// 						asm.InstOpen(mem, mem, 1),
-		// 						asm.InstExit(mem, 1),
-		// 					}
-		// 					proc := proc.New(id, code)
-
-		// 					vms[i].IO().InputWriter() <- NewExec(proc)
-		// 				}
-
-		// 				for _ = range vms {
-		// 					var actual TestResult
-		// 					Eventually(results, 10).Should(Receive(&actual))
-		// 					res, ok := actual.result.Values[0].(asm.ValuePublic)
-		// 					Expect(ok).To(BeTrue())
-
-		// 					twoPow := big.NewInt(0).SetUint64(uint64(1) << m)
-		// 					var mod *big.Int
-		// 					if negCase {
-		// 						mod = big.NewInt(0).Mod(big.NewInt(0).Neg(a.Neg().Value()), twoPow)
-		// 					} else {
-		// 						mod = big.NewInt(0).Mod(a.Value(), twoPow)
-		// 					}
-
-		// 					Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
-		// 				}
-		// 			}, 5)
 
 		// 			It("should compare integers", func(doneT Done) {
 		// 				defer close(doneT)
