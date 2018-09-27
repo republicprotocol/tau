@@ -874,7 +874,7 @@ var _ = Describe("Virtual Machine", func() {
 									})
 							}, 10)
 
-							FIt("should compute integers modulo powers of two", func(doneT Done) {
+							It("should compute integers modulo powers of two", func(doneT Done) {
 								defer close(doneT)
 								defer GinkgoRecover()
 
@@ -919,6 +919,45 @@ var _ = Describe("Virtual Machine", func() {
 										Expect(mod.Cmp(res.Value.Value())).To(Equal(0))
 									})
 							}, 5)
+
+							FIt("should compare integers", func(doneT Done) {
+								defer close(doneT)
+								defer GinkgoRecover()
+
+								pid := randomProcID()
+								k := uint64(30)
+								kappa := 1
+								a := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+								b := fp.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
+								sharesA := split(asm.NewValuePublic(a), uint64(entryNK.n), (entryNK.k+1)/2)
+								sharesB := split(asm.NewValuePublic(b), uint64(entryNK.n), (entryNK.k+1)/2)
+
+								runProcess(
+									entryNK.n, entryNK.k, entryCap.cap,
+									entryFailureRate.failureRate,
+									func(i int) proc.Proc {
+										mem := asm.Alloc(2)
+										return proc.New(pid, []asm.Inst{
+											asm.InstMove(mem.Offset(0), sharesA[i]),
+											asm.InstMove(mem.Offset(1), sharesB[i]),
+											macro.LT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(k), kappa, fp),
+											asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
+											asm.InstExit(mem.Offset(0), 1),
+										})
+									},
+									func(i int, value asm.Value) {
+										defer GinkgoRecover()
+
+										res, ok := value.(asm.ValuePublic)
+										Expect(ok).To(BeTrue())
+
+										if a.Value().Cmp(b.Value()) == -1 {
+											Expect(res.Value.Eq(fp.NewInField(big.NewInt(1)))).To(BeTrue())
+										} else {
+											Expect(res.Value.Eq(fp.NewInField(big.NewInt(0)))).To(BeTrue())
+										}
+									})
+							}, 10)
 						})
 					})
 				}
@@ -1011,53 +1050,6 @@ var _ = Describe("Virtual Machine", func() {
 		// 					Expect(acc.Eq(a)).To(BeTrue())
 		// 				}
 		// 			})
-
-		// 			It("should compare integers", func(doneT Done) {
-		// 				defer close(doneT)
-		// 				defer GinkgoRecover()
-
-		// 				done := make(chan (struct{}))
-		// 				vms := initVMs(entry.n, entry.k, entry.bufferCap)
-		// 				results := runVMs(done, vms)
-
-		// 				defer close(done)
-
-		// 				k := uint64(30)
-		// 				a := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-		// 				b := SecretField.NewInField(big.NewInt(0).SetUint64(rand.Uint64() % (uint64(1) << (k - 1))))
-		// 				polyA := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), a)
-		// 				polyB := algebra.NewRandomPolynomial(SecretField, uint(entry.k/2-1), b)
-		// 				sharesA := shamir.Split(polyA, uint64(entry.n))
-		// 				sharesB := shamir.Split(polyB, uint64(entry.n))
-
-		// 				id := [32]byte{0x69}
-		// 				for i := range vms {
-		// 					mem := asm.Alloc(2)
-		// 					code := []asm.Inst{
-		// 						asm.InstMove(mem.Offset(0), asm.NewValuePrivate(sharesA[i])),
-		// 						asm.InstMove(mem.Offset(1), asm.NewValuePrivate(sharesB[i])),
-		// 						macro.LT(mem.Offset(0), mem.Offset(0), mem.Offset(1), int(k), 1, SecretField),
-		// 						asm.InstOpen(mem.Offset(0), mem.Offset(0), 1),
-		// 						asm.InstExit(mem.Offset(0), 1),
-		// 					}
-		// 					proc := proc.New(id, code)
-
-		// 					vms[i].IO().InputWriter() <- NewExec(proc)
-		// 				}
-
-		// 				for _ = range vms {
-		// 					var actual TestResult
-		// 					Eventually(results, 10).Should(Receive(&actual))
-		// 					res, ok := actual.result.Values[0].(asm.ValuePublic)
-		// 					Expect(ok).To(BeTrue())
-		// 					if a.Value().Cmp(b.Value()) == -1 {
-		// 						Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(1)))).To(BeTrue())
-		// 					} else {
-		// 						Expect(res.Value.Eq(SecretField.NewInField(big.NewInt(0)))).To(BeTrue())
-		// 					}
-		// 				}
-		// 			}, 10)
-
 		// 		})
 		// 	}
 
