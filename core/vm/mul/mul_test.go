@@ -278,4 +278,12 @@ var _ = Describe("Multipliers", func() {
 			}
 		}
 	})
+
+	Context("when creating messages", func() {
+		It("should implement the message interface for all messages", func() {
+			Mul{}.IsMessage()
+			BroadcastMulShares{}.IsMessage()
+			Result{}.IsMessage()
+		})
+	})
 })
