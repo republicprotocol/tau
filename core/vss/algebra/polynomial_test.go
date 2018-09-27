@@ -1,7 +1,6 @@
 package algebra_test
 
 import (
-	"log"
 	"math/big"
 	"math/rand"
 
@@ -170,9 +169,6 @@ var _ = Describe("Polynomial", func() {
 					poly := new(Polynomial)
 
 					Expect(func() { *poly = NewRandomPolynomial(field, degree, secret) }).ToNot(Panic())
-					if prime.Cmp(big.NewInt(2)) == 0 {
-						log.Printf("secret: %v, poly: %+v", secret, *poly)
-					}
 					Expect(poly.Evaluate(field.NewInField(big.NewInt(0))).Eq(secret)).To(BeTrue())
 				}
 

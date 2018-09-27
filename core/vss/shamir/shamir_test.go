@@ -27,6 +27,23 @@ var _ = Describe("Shamir secret sharing", func() {
 		return uint(r)
 	}
 
+	Context("when accessing the index and value", func() {
+		DescribeTable("it should get the right values", func(prime *big.Int) {
+			field := NewField(prime)
+
+			for i := 0; i < Trials; i++ {
+				value := field.Random()
+				index := rand.Uint64()
+				share := New(index, value)
+
+				Expect(share.Value().Eq(value)).To(BeTrue())
+				Expect(share.Index()).To(Equal(index))
+			}
+		},
+			PrimeEntries...,
+		)
+	})
+
 	Context("when splitting a secret into shares", func() {
 		DescribeTable("it should panic if n is too small", func(prime *big.Int) {
 			field := NewField(prime)

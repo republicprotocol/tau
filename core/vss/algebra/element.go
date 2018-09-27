@@ -1,7 +1,6 @@
 package algebra
 
 import (
-	"fmt"
 	"math/big"
 )
 
@@ -19,10 +18,6 @@ func (lhs FpElement) Value() *big.Int {
 
 // FpElements is a slice.
 type FpElements []FpElement
-
-func (lhs FpElement) String() string {
-	return fmt.Sprintf("{p: %v, v: %v}", lhs.prime, lhs.value)
-}
 
 // Field returns the field that the element is in.
 func (lhs FpElement) Field() Fp {
