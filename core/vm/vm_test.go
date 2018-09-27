@@ -746,7 +746,7 @@ var _ = Describe("Virtual Machine", func() {
 							tableBits := []struct {
 								bits int
 							}{
-								{1}, {2}, {3}, {6}, {7}, {14}, {15}, {30}, {31},
+								{1}, {2}, {3}, {4}, {7}, {8}, {15}, {16},
 							}
 							for _, entryBits := range tableBits {
 								entryBits := entryBits
