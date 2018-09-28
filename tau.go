@@ -13,3 +13,9 @@ type (
 
 	Task = task.Task
 )
+
+var (
+	New = task.New
+
+	NewIO = task.NewIO
+)
