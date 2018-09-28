@@ -7,6 +7,8 @@ type (
 
 	Message = task.Message
 
+	MessageID = task.MessageID
+
 	Reducer = task.Reducer
 
 	Task = task.Task
