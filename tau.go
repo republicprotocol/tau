@@ -17,5 +17,11 @@ type (
 var (
 	New = task.New
 
+	NewError = task.NewError
+
 	NewIO = task.NewIO
+
+	NewMessageBatch = task.NewMessageBatch
+
+	NewTick = task.NewTick
 )
