@@ -3,6 +3,8 @@ package tau
 import "github.com/republicprotocol/tau/core/task"
 
 type (
+	Error = task.Error
+
 	IO = task.IO
 
 	Message = task.Message
