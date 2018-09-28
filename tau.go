@@ -13,7 +13,11 @@ type (
 
 	Reducer = task.Reducer
 
+	ReduceFunc = task.ReduceFunc
+
 	Task = task.Task
+
+	Tasks = task.Tasks
 )
 
 var (
