@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/republicprotocol/oro-go/core/task"
+	"github.com/republicprotocol/tau/core/task"
 )
 
 // RouteMessage to multiple tasks. A simulated failure rate in the range [0.0,

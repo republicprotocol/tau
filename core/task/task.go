@@ -4,31 +4,6 @@ import (
 	"github.com/republicprotocol/co-go"
 )
 
-// A Reducer consumes input Messages, uses them to modify its state, and
-// produces output Messages in response.
-type Reducer interface {
-
-	// Reduce a new state from the current state and the Message. An output
-	// Message can also be returned in response to the input Message. If the
-	// output Message is nil, it will be ignored.
-	Reduce(Message) Message
-}
-
-type reducer struct {
-	reduce func(Message) Message
-}
-
-// NewReducer returns a Reducer that uses a higher-order function as the reduce
-// function. The Reducer has no state of its own, however the higher-order
-// function can capture state if it is a closure.
-func NewReducer(reduce func(Message) Message) Reducer {
-	return &reducer{reduce}
-}
-
-func (reducer *reducer) Reduce(message Message) Message {
-	return reducer.reduce(message)
-}
-
 // A Task is an independently executing actor. It can only communicate with
 // other Task, and can only do so by consuming and producing Messages. A Task
 // can receive Messages from its parent Task, and can send Messages to its

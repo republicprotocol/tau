@@ -4,7 +4,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/republicprotocol/oro-go/core/collection/buffer"
+	"github.com/republicprotocol/tau/core/buffer"
 )
 
 // IO is used to buffer and flush Messages between Tasks.
