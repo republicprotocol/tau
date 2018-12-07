@@ -18,6 +18,8 @@ type (
 	Task = task.Task
 
 	Tasks = task.Tasks
+
+	Tick = task.Tick
 )
 
 var (
