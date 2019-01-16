@@ -9,6 +9,10 @@ type (
 
 	Message = task.Message
 
+	MessageBatch = task.MessageBatch
+
+	RandomMessage = task.RandomMessage
+
 	MessageID = task.MessageID
 
 	Reducer = task.Reducer
