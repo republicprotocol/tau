@@ -60,6 +60,15 @@ func NewError(err error) Message {
 func (message Error) IsMessage() {
 }
 
+// RandomMessage is an empty message that can be used for testing internally and
+// externally (projects using tau framework).
+type RandomMessage struct {
+}
+
+// IsMessage implements the Message interface for Random Message.
+func (msg RandomMessage) IsMessage() {
+}
+
 // A Tick is a Message that is used to signal the passing of time. Tasks should
 // rely on Ticks to keep track of time, instead of tracking it internally.
 type Tick struct {
