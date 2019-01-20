@@ -47,8 +47,8 @@ func (message MessageBatch) MessageID() MessageID {
 // automatically catches the stack trace to help with debugging the origin of
 // the error.
 type Error struct {
-	err error
-	id  MessageID
+	Error error
+	ID    MessageID
 }
 
 // NewError returns an Error. The stack trace is captured at the moment this
@@ -59,7 +59,7 @@ func NewError(err error, messageID MessageID) Message {
 
 // MessageID implements the Message interface for Error.
 func (message Error) MessageID() MessageID {
-	return message.id
+	return message.ID
 }
 
 // RandomMessage is an empty message that can be used for testing internally and
@@ -75,8 +75,8 @@ func (message RandomMessage) MessageID() MessageID {
 // A Tick is a Message that is used to signal the passing of time. Tasks should
 // rely on Ticks to keep track of time, instead of tracking it internally.
 type Tick struct {
-	time      time.Time
-	messageID MessageID
+	Time time.Time
+	ID   MessageID
 }
 
 // NewTick returns a Tick for a moment in time.
@@ -86,5 +86,5 @@ func NewTick(time time.Time, messageID MessageID) Message {
 
 // MessageID implements the Message interface for Tick.
 func (message Tick) MessageID() MessageID {
-	return message.messageID
+	return message.ID
 }
