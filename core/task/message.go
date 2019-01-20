@@ -24,10 +24,6 @@ func (id MessageID) String() string {
 // A Message is an interface that can be sent between Tasks.
 type Message interface {
 
-	// IsMessage is a marker function. It does nothing, but is used to prevent
-	// erroneously sending non-Message types between Tasks.
-	IsMessage()
-
 	// MessageID returns the `MessageID` of the Message.
 	MessageID() MessageID
 }
@@ -40,10 +36,6 @@ type MessageBatch []Message
 // NewMessageBatch returns a MessageBatch that contains a slice of Messages.
 func NewMessageBatch(messages []Message) Message {
 	return MessageBatch(messages)
-}
-
-// IsMessage implements the Message interface for MessageBatch.
-func (message MessageBatch) IsMessage() {
 }
 
 // MessageID implements the Message interface for MessageBatch.
@@ -65,10 +57,6 @@ func NewError(err error, messageID MessageID) Message {
 	return Error{fmt.Errorf("err = %v; stack = %v", err, string(debug.Stack())), messageID}
 }
 
-// IsMessage implements the Message interface for Error.
-func (message Error) IsMessage() {
-}
-
 // MessageID implements the Message interface for Error.
 func (message Error) MessageID() MessageID {
 	return message.id
@@ -77,10 +65,6 @@ func (message Error) MessageID() MessageID {
 // RandomMessage is an empty message that can be used for testing internally and
 // externally (projects using tau framework).
 type RandomMessage struct {
-}
-
-// IsMessage implements the Message interface for Random Message.
-func (message RandomMessage) IsMessage() {
 }
 
 // MessageID implements the Message interface for Random Message.
@@ -98,10 +82,6 @@ type Tick struct {
 // NewTick returns a Tick for a moment in time.
 func NewTick(time time.Time, messageID MessageID) Message {
 	return Tick{time, messageID}
-}
-
-// IsMessage implements the Message interface for Tick.
-func (message Tick) IsMessage() {
 }
 
 // MessageID implements the Message interface for Tick.
