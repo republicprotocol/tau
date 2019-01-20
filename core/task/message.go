@@ -65,11 +65,12 @@ func (message Error) MessageID() MessageID {
 // RandomMessage is an empty message that can be used for testing internally and
 // externally (projects using tau framework).
 type RandomMessage struct {
+	ID MessageID
 }
 
 // MessageID implements the Message interface for Random Message.
 func (message RandomMessage) MessageID() MessageID {
-	return [40]byte{}
+	return message.ID
 }
 
 // A Tick is a Message that is used to signal the passing of time. Tasks should
