@@ -48,19 +48,19 @@ func (io *inputOutput) Flush(done <-chan struct{}, reducer Reducer, children Chi
 
 	cases := []reflect.SelectCase{
 		// Read from the done channel
-		reflect.SelectCase{
+		{
 			Chan: reflect.ValueOf(done),
 			Dir:  reflect.SelectRecv,
 		},
 
 		// Read from own output buffer
-		reflect.SelectCase{
+		{
 			Chan: reflect.ValueOf(io.obuf.Peek()),
 			Dir:  reflect.SelectRecv,
 		},
 
 		// Read from own reader
-		reflect.SelectCase{
+		{
 			Chan: reflect.ValueOf(io.r),
 			Dir:  reflect.SelectRecv,
 		},
